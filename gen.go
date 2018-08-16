@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"unicode"
 
 	"text/template"
 )
@@ -50,8 +51,8 @@ var (
 func init() {
 
 	for i := 0; i < 255; i++ {
-		toLowerASCII[i] = byte(i)
-		toUpperASCII[i] = byte(i)
+		toUpperASCII[i] = byte(unicode.ToUpper(rune(i)))
+		toLowerASCII[i] = byte(unicode.ToLower(rune(i)))
 		toHexDigit[i] = 0xff
 	}
 	toNamedEscape['n'] = '\n'
@@ -94,12 +95,6 @@ func init() {
 	// toValue['{'] = 'o'
 	// toValue['n'] = 'n'
 	// toValue['"'] = 's'
-	for i := 'a'; i <= 'z'; i++ {
-		toLowerASCII[i] = byte(i)
-	}
-	for i := 'A'; i <= 'Z'; i++ {
-		toUpperASCII[i] = byte(i)
-	}
 	isSpaceASCII[' '] = 1
 	isSpaceASCII['\t'] = 1
 	isSpaceASCII['\n'] = 1
