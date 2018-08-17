@@ -9,7 +9,7 @@ import (
 
 func TestDocumentParse(t *testing.T) {
 	doc := njson.Document{}
-	p := njson.DocumentParser{}
+	p := njson.Parser{}
 	for _, src := range []string{
 		// `[]`,
 		// `{}`,
@@ -29,11 +29,10 @@ func TestDocumentParse(t *testing.T) {
 		mediumJSON,
 		largeJSON,
 	} {
-		err := p.ParseDocument(src, &doc)
+		root, err := p.Parse(src, &doc)
 		if err != nil {
 			t.Errorf("Parse error: %s", err)
-		}
-		if root := doc.Get(0); root == nil {
+		} else if root == nil {
 			t.Errorf("Nil root")
 		} else if out := root.AppendTo(nil); string(out) != src {
 			t.Errorf("Invalid root:\nexpect: %s\nactual: %s", src, out)
@@ -45,13 +44,13 @@ func TestDocumentParse(t *testing.T) {
 func benchmark(src string) func(b *testing.B) {
 	doc := njson.Document{}
 	out := []byte{}
-	p := njson.DocumentParser{}
+	p := njson.Parser{}
 
 	return func(b *testing.B) {
 		b.SetBytes(int64(len(src)))
-		if err := p.ParseDocument(src, &doc); err != nil {
+		if root, err := p.Parse(src, &doc); err != nil {
 			b.Errorf("Parse error: %s", err)
-		} else if out := doc.Get(0).AppendTo(out[:0]); string(out) != src {
+		} else if out := root.AppendTo(out[:0]); string(out) != src {
 			b.Errorf("Invalid parse")
 		}
 	}

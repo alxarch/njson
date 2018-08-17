@@ -18,19 +18,6 @@ func readHex(b1, b2 byte, b *byte) bool {
 	return true
 }
 
-func readHexByte(s string, b []byte, i, j int) bool {
-	var d byte
-	if d = ToHexDigit(s[i]); d == 0xff {
-		return false
-	}
-	b[j] = d << 4
-	if d = ToHexDigit(s[i+1]); d == 0xff {
-		return false
-	}
-	b[j] |= d
-	return true
-}
-
 func readRune(b0, b1 byte) rune {
 	return rune(uint16(b0)<<8 | uint16(b1))
 }

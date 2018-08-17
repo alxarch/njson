@@ -15,7 +15,7 @@ func MarshalTo(out []byte, x interface{}) ([]byte, error) {
 	if x == nil {
 		return append(out, strNull...), nil
 	}
-	enc, err := cachedEncoder(reflect.TypeOf(x))
+	enc, err := cachedEncoder(reflect.TypeOf(x), defaultOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -66,14 +66,13 @@ func (c *typeEncoder) Encode(out []byte, x interface{}) ([]byte, error) {
 	return c.encode(out, v)
 }
 
-func TypeEncoder(typ reflect.Type, options *CodecOptions) (Encoder, error) {
-	if options == nil {
-		return cachedEncoder(typ)
-	}
+func TypeEncoder(typ reflect.Type, options CodecOptions) (Encoder, error) {
+	options = options.normalize()
 	if typ == nil {
-		return interfaceCodec{}, nil
+		return interfaceCodec{options}, nil
 	}
-	return newTypeEncoder(typ, *options)
+
+	return cachedEncoder(typ, options)
 }
 
 func newTypeEncoder(typ reflect.Type, options CodecOptions) (*typeEncoder, error) {
@@ -93,7 +92,7 @@ func newTypeEncoder(typ reflect.Type, options CodecOptions) (*typeEncoder, error
 	case c.typ.Implements(typJSONMarshaler):
 		c.encoder = customJSONEncoder{}
 	default:
-		d, err := newEncoder(typ, options)
+		d, err := newEncoder(c.typ, options)
 		if err != nil {
 			return nil, err
 		}
@@ -114,46 +113,22 @@ func newEncoder(typ reflect.Type, options CodecOptions) (encoder, error) {
 	case typ.Implements(typTextMarshaler):
 		return textCodec{}, nil
 	}
-	switch typ.Kind() {
-	case reflect.Ptr:
-		return newPtrCodec(typ, options)
-	case reflect.Struct:
-		return newStructCodec(typ, options)
-	case reflect.Slice:
-		return newSliceCodec(typ, options)
-	case reflect.Map:
-		return newMapCodec(typ, options)
-	case reflect.Interface:
-		if typ.NumMethod() == 0 {
-			return interfaceCodec{}, nil
-		}
-		return nil, errInvalidType
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return intCodec{}, nil
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return uintCodec{}, nil
-	case reflect.Float32, reflect.Float64:
-		return floatCodec{}, nil
-	case reflect.Bool:
-		return boolCodec{}, nil
-	case reflect.String:
-		return stringCodec{}, nil
-	default:
-		return nil, errInvalidType
-	}
+
+	return newCodec(typ, options)
 }
 
 var (
 	encoderCacheLock sync.RWMutex
-	encoderCache     = map[reflect.Type]Encoder{}
+	encoderCache     = map[cacheKey]Encoder{}
 )
 
-func cachedEncoder(typ reflect.Type) (d Encoder, err error) {
+func cachedEncoder(typ reflect.Type, options CodecOptions) (d Encoder, err error) {
 	if typ == nil {
-		return interfaceCodec{}, nil
+		return interfaceCodec{options}, nil
 	}
+	key := cacheKey{typ, options}
 	encoderCacheLock.RLock()
-	d, ok := encoderCache[typ]
+	d, ok := encoderCache[key]
 	encoderCacheLock.RUnlock()
 	if ok {
 		return
@@ -162,7 +137,7 @@ func cachedEncoder(typ reflect.Type) (d Encoder, err error) {
 		return
 	}
 	encoderCacheLock.Lock()
-	encoderCache[typ] = d
+	encoderCache[key] = d
 	encoderCacheLock.Unlock()
 	return
 }

@@ -247,20 +247,9 @@ const (
 
 // Boolean flags
 const (
-	ValueTrue ValueInfo = 1 << (iota + 8)
+	ValueTrue  ValueInfo = ValueInfo(TypeBoolean) | 1<<(iota+8)
+	ValueFalse ValueInfo = ValueInfo(TypeBoolean)
 )
-
-// valueFlag1
-// valueFlag2
-
-// ValueType      = ValueString | ValueNumber | ValueBoolean | ValueNull | ValueObject | ValueArray
-// ValueNaN       = ValueNumber | valueFlag1 | valueFlag2
-// ValueFloat     = ValueNumber | valueFlag1
-// ValueNegative  = ValueNumber | valueFlag2
-// ValueTrue      = ValueBoolean | valueFlag1
-// ValueFalse     = ValueBoolean
-// ValueUnescaped = ValueString | valueFlag2
-// ValueKey       = ValueString | valueFlag1
 
 func (i ValueInfo) HasError() bool {
 	return i&ValueError == ValueError
@@ -268,10 +257,6 @@ func (i ValueInfo) HasError() bool {
 func (i ValueInfo) HasZeroDecimal() bool {
 	return i&ValueZeroDecimal == ValueZeroDecimal
 }
-
-// func (i ValueInfo) IsNegativeInteger() bool {
-// 	return i == ValueNegative
-// }
 
 func (i ValueInfo) Type() Type {
 	return Type(i)

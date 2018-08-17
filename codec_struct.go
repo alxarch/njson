@@ -12,16 +12,15 @@ type structCodec struct {
 
 type fieldCodec struct {
 	index []int
+	n     int
 	decoder
 	encoder
 	omit omiter
 }
 
-type omiter func(v reflect.Value) bool
-
 func (d *structCodec) omit(v reflect.Value) bool {
 	for _, field := range d.fields {
-		if !field.omit(v.FieldByIndex(field.index)) {
+		if f := fieldByIndex(v, field.index); f.IsValid() && !field.omit(f) {
 			return false
 		}
 	}
@@ -30,14 +29,14 @@ func (d *structCodec) omit(v reflect.Value) bool {
 
 func (d *structCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
 	var (
-		i   int
+		i   = 0
 		err error
 		fv  reflect.Value
 	)
 	b = append(b, delimBeginObject)
 	for name, field := range d.fields {
-		fv = v.FieldByIndex(field.index)
-		if field.omit(fv) {
+		fv = fieldByIndex(v, field.index)
+		if !fv.IsValid() || field.omit(fv) {
 			continue
 		}
 		if i > 0 {
@@ -65,7 +64,7 @@ func (d *structCodec) merge(typ reflect.Type, options CodecOptions, depth []int)
 		if !isExported(field.Name) {
 			continue
 		}
-		tag, omitempty, tagged := options.tag(field)
+		tag, omitempty, tagged := options.ParseField(field)
 		if tag == "-" {
 			continue
 		}
@@ -75,9 +74,18 @@ func (d *structCodec) merge(typ reflect.Type, options CodecOptions, depth []int)
 		}
 		index = append(index, field.Index...)
 		if !tagged && field.Anonymous {
-			// embedded struct
-			if err := d.merge(resolveStruct(field.Type), options, index); err != nil {
-				return err
+			t := field.Type
+			if t.Kind() == reflect.Ptr {
+				// Flag for fieldByIndex
+				index = append(index, -1)
+				t = field.Type.Elem()
+			}
+			if t.Kind() == reflect.Struct {
+				// embedded struct
+				err := d.merge(t, options, index)
+				if err != nil {
+					return err
+				}
 			}
 			continue
 		}
@@ -94,7 +102,7 @@ func (d *structCodec) merge(typ reflect.Type, options CodecOptions, depth []int)
 			return err
 		}
 		omit := omitNever
-		if omitempty || options.OmitEmpty {
+		if omitempty {
 			if enc, ok := enc.(*structCodec); ok {
 				omit = enc.omit
 			} else {
@@ -103,6 +111,7 @@ func (d *structCodec) merge(typ reflect.Type, options CodecOptions, depth []int)
 		}
 		d.fields[tag] = fieldCodec{
 			index:   index,
+			n:       len(index),
 			decoder: dec,
 			encoder: enc,
 			omit:    omit,
@@ -126,22 +135,53 @@ func newStructCodec(typ reflect.Type, options CodecOptions) (*structCodec, error
 	return &d, nil
 }
 
+func fieldByIndex(v reflect.Value, index []int) reflect.Value {
+	for _, i := range index {
+		if i == -1 {
+			if v.IsNil() {
+				return reflect.Value{}
+			}
+			v = v.Elem()
+		} else {
+			v = v.Field(i)
+		}
+	}
+	return v
+}
+
 func (d *structCodec) decode(v reflect.Value, n *Node) (err error) {
 	switch n.Type() {
 	case TypeNull:
 		v.Set(d.zero)
 		return nil
 	case TypeObject:
+		var (
+			field reflect.Value
+			fc    fieldCodec
+			i, j  int
+		)
 		for n = n.Value(); n != nil; n = n.Next() {
-			if f, ok := d.fields[n.src]; ok {
-				vv := v.FieldByIndex(f.index)
-				if !vv.IsValid() {
-					panic(f.index)
+			switch fc = d.fields[n.src]; fc.n {
+			case 0:
+				continue
+			case 1:
+				field = v.Field(fc.index[0])
+			default:
+				field = v.Field(fc.index[0])
+				for i = 1; i < fc.n; i++ {
+					switch j = fc.index[i]; j {
+					case -1:
+						if field.IsNil() {
+							field = reflect.New(field.Type().Elem())
+						}
+						field = field.Elem()
+					default:
+						field = field.Field(j)
+					}
 				}
-				err = f.decode(vv, n.Value())
-				if err != nil {
-					return
-				}
+			}
+			if err = fc.decode(field, n.Value()); err != nil {
+				return
 			}
 		}
 		return
@@ -187,6 +227,8 @@ func cmpIndex(a, b []int) int {
 	}
 	return 0
 }
+
+type omiter func(v reflect.Value) bool
 
 func omitNil(v reflect.Value) bool {
 	return v.IsNil()

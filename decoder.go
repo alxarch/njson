@@ -16,7 +16,7 @@ func UnmarshalFromString(s string, x interface{}) error {
 	if x == nil {
 		return errInvalidValueType
 	}
-	dec, err := cachedDecoder(reflect.TypeOf(x))
+	dec, err := cachedDecoder(reflect.TypeOf(x), defaultOptions)
 	if err != nil {
 		return err
 	}
@@ -144,14 +144,12 @@ func (customJSONDecoder) decode(v reflect.Value, n *Node) (err error) {
 	return
 }
 
-func TypeDecoder(typ reflect.Type, options *CodecOptions) (Decoder, error) {
-	if options == nil {
-		return cachedDecoder(typ)
-	}
+func TypeDecoder(typ reflect.Type, options CodecOptions) (Decoder, error) {
+	options = options.normalize()
 	if typ == nil {
-		return interfaceCodec{}, nil
+		return interfaceCodec{options}, nil
 	}
-	return newTypeDecoder(typ, *options)
+	return newTypeDecoder(typ, options)
 }
 
 func newTypeDecoder(typ reflect.Type, options CodecOptions) (*typeDecoder, error) {
@@ -192,62 +190,42 @@ func newDecoder(typ reflect.Type, options CodecOptions) (decoder, error) {
 	case typ.Implements(typTextUnmarshaler):
 		return textCodec{}, nil
 	}
-	switch typ.Kind() {
-	case reflect.Ptr:
-		return newPtrCodec(typ, options)
-	case reflect.Struct:
-		return newStructCodec(typ, options)
-	case reflect.Slice:
-		return newSliceCodec(typ, options)
-	case reflect.Map:
-		return newMapCodec(typ, options)
-	case reflect.Interface:
-		if typ.NumMethod() == 0 {
-			return interfaceCodec{}, nil
-		}
-		return nil, errInvalidType
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return intCodec{}, nil
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return uintCodec{}, nil
-	case reflect.Float32, reflect.Float64:
-		return floatCodec{}, nil
-	case reflect.Bool:
-		return boolCodec{}, nil
-	case reflect.String:
-		return stringCodec{}, nil
-	default:
-		return nil, errInvalidType
-	}
+	return newCodec(typ, options)
+}
+
+type cacheKey struct {
+	reflect.Type
+	CodecOptions
 }
 
 var (
 	decoderCacheLock sync.RWMutex
-	decoderCache     = map[reflect.Type]Decoder{}
+	decoderCache     = map[cacheKey]Decoder{}
 )
 
-func cachedDecoder(typ reflect.Type) (d Decoder, err error) {
+func cachedDecoder(typ reflect.Type, options CodecOptions) (d Decoder, err error) {
 	if typ == nil {
-		return interfaceCodec{}, nil
+		return interfaceCodec{options}, nil
 	}
+	key := cacheKey{typ, options}
 	decoderCacheLock.RLock()
-	d, ok := decoderCache[typ]
+	d, ok := decoderCache[key]
 	decoderCacheLock.RUnlock()
 	if ok {
 		return
 	}
-	if d, err = newTypeDecoder(typ, DefaultOptions()); err != nil {
+	if d, err = newTypeDecoder(typ, options); err != nil {
 		return
 	}
 	decoderCacheLock.Lock()
-	decoderCache[typ] = d
+	decoderCache[key] = d
 	decoderCacheLock.Unlock()
 	return
 }
 
 type parsePair struct {
 	Document
-	DocumentParser
+	Parser
 }
 
 var parsePool = sync.Pool{
@@ -256,7 +234,7 @@ var parsePool = sync.Pool{
 			Document: Document{
 				nodes: make([]Node, 0, 64),
 			},
-			DocumentParser: DocumentParser{
+			Parser: Parser{
 				stack: make([]uint16, 0, 64),
 			},
 		}

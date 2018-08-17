@@ -43,15 +43,15 @@ func (d *Document) add(t Token) (id uint16) {
 
 }
 
-func (d *Document) CreateNode(src string) (*Node, error) {
-	p := DocumentParser{}
-	id, err := p.Parse(src, d)
-	if err == nil {
-		return &d.nodes[id], nil
+func (d *Document) CreateNode(src string) (n *Node, err error) {
+	p := Parser{}
+	numNodes := d.n
+	n, err = p.Parse(src, d)
+	if err != nil {
+		d.nodes = d.nodes[:numNodes]
+		d.n = numNodes
 	}
-	d.nodes = d.nodes[:id]
-	d.n = id
-	return nil, err
+	return
 }
 
 func (d *Document) Get(id uint16) *Node {

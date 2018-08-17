@@ -143,10 +143,10 @@ func (n *Node) ToInterface() (interface{}, bool) {
 	case TypeString, TypeKey:
 		return n.Unescaped(), true
 	case TypeBoolean:
-		switch n.src {
-		case strTrue:
+		switch n.info {
+		case ValueTrue:
 			return true, true
-		case strFalse:
+		case ValueFalse:
 			return false, true
 		default:
 			return nil, false

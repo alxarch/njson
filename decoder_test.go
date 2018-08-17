@@ -109,13 +109,13 @@ func BenchmarkUnmarshal(b *testing.B) {
 			}
 		}
 	})
-	dec, err := njson.TypeDecoder(reflect.TypeOf(medium{}), nil)
+	dec, err := njson.TypeDecoder(reflect.TypeOf(medium{}), njson.DefaultOptions())
 	if err != nil {
 		b.Errorf("UnexpectedError: %s", err)
 	}
 	b.Run("njson", func(b *testing.B) {
 		m := medium{}
-		p := njson.DocumentParser{}
+		p := njson.Parser{}
 		doc := njson.Document{}
 		var err error
 		for i := 0; i < b.N; i++ {

@@ -8,20 +8,33 @@ import (
 )
 
 type CodecOptions struct {
-	TagOptions
-	OmitEmpty bool // Force omitempty on all fields
+	FieldParser        // If nil DefaultFieldParser is used
+	FloatPrecision int // strconv.FormatFloat precision for encoder
+}
+
+func (o CodecOptions) ParseField(f reflect.StructField) (name string, omiempty, ok bool) {
+	if o.FieldParser == nil {
+		return defaultFieldParser.ParseField(f)
+	}
+	return o.FieldParser.ParseField(f)
+}
+
+func (o CodecOptions) normalize() CodecOptions {
+	if o.FieldParser == nil {
+		o.FieldParser = defaultFieldParser
+	}
+	if o.FloatPrecision <= 0 {
+		o.FloatPrecision = defaultOptions.FloatPrecision
+	}
+	return o
 }
 
 const defaultTag = "json"
 
 var (
 	defaultOptions = CodecOptions{
-		TagOptions: TagOptions{
-			Key: defaultTag,
-			AutoName: func(name string) string {
-				return name
-			},
-		},
+		FieldParser:    fieldParser{defaultTag, false},
+		FloatPrecision: 6,
 	}
 )
 
@@ -30,32 +43,73 @@ type codec interface {
 	decoder
 }
 
+func newCodec(typ reflect.Type, options CodecOptions) (codec, error) {
+	if typ == nil {
+		return nil, errInvalidType
+	}
+	switch typ.Kind() {
+	case reflect.Ptr:
+		return newPtrCodec(typ, options)
+	case reflect.Struct:
+		return newStructCodec(typ, options)
+	case reflect.Slice:
+		return newSliceCodec(typ, options)
+	case reflect.Map:
+		return newMapCodec(typ, options)
+	case reflect.Interface:
+		if typ.NumMethod() == 0 {
+			return interfaceCodec{options}, nil
+		}
+		return nil, errInvalidType
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return intCodec{}, nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return uintCodec{}, nil
+	case reflect.Float32, reflect.Float64:
+		return floatCodec{options.FloatPrecision}, nil
+	case reflect.Bool:
+		return boolCodec{}, nil
+	case reflect.String:
+		return stringCodec{}, nil
+	default:
+		return nil, errInvalidType
+	}
+
+}
+
+var defaultFieldParser = NewFieldParser(defaultTag, false)
+
+func DefaultFieldParser() FieldParser {
+	return defaultFieldParser
+}
 func DefaultOptions() CodecOptions {
 	return defaultOptions
 }
 
-type TagOptions struct {
-	Key      string              // Tag key to use for encoder/decoder
-	AutoName func(string) string // Field name to json key converter
+type FieldParser interface {
+	ParseField(f reflect.StructField) (name string, omitempty, ok bool)
 }
 
-func (o TagOptions) key() (key string) {
-	if key = o.Key; key == "" {
+type fieldParser struct {
+	Key       string // Tag key to use for encoder/decoder
+	OmitEmpty bool   // Force omitempty on all fields
+}
+
+func NewFieldParser(key string, omitempty bool) FieldParser {
+	if key == "" {
 		key = defaultTag
 	}
-	return
+	return fieldParser{key, omitempty}
 }
 
-func (o TagOptions) tag(field reflect.StructField) (tag string, omitempty bool, ok bool) {
-	if tag, ok = field.Tag.Lookup(o.key()); ok {
+func (o fieldParser) ParseField(field reflect.StructField) (tag string, omitempty bool, ok bool) {
+	if tag, ok = field.Tag.Lookup(o.Key); ok {
 		if i := strings.IndexByte(tag, ','); i != -1 {
 			omitempty = strings.Index(tag[i:], "omitempty") > 0
 			tag = tag[:i]
 		}
-	} else if o.AutoName == nil {
-		tag = field.Name
 	} else {
-		tag = o.AutoName(field.Name)
+		tag = field.Name
 	}
 	return
 }
@@ -82,12 +136,12 @@ type boolCodec struct{}
 var _ codec = boolCodec{}
 
 func (boolCodec) decode(v reflect.Value, n *Node) (err error) {
-	switch n.src {
-	case strFalse:
-		v.SetBool(false)
-		return nil
-	case strTrue:
+	switch n.info {
+	case ValueTrue:
 		v.SetBool(true)
+		return nil
+	case ValueFalse:
+		v.SetBool(false)
 		return nil
 	default:
 		return errInvalidNodeType
@@ -133,12 +187,12 @@ func (intCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
 	return strconv.AppendInt(b, v.Int(), 10), nil
 }
 
-type floatCodec struct{}
+type floatCodec struct{ precision int }
 
 var _ codec = floatCodec{}
 
-func (floatCodec) encode(out []byte, v reflect.Value) ([]byte, error) {
-	return strconv.AppendFloat(out, v.Float(), 'f', 6, 64), nil
+func (c floatCodec) encode(out []byte, v reflect.Value) ([]byte, error) {
+	return strconv.AppendFloat(out, v.Float(), 'f', c.precision, 64), nil
 }
 
 func (floatCodec) decode(v reflect.Value, n *Node) (err error) {
@@ -149,7 +203,9 @@ func (floatCodec) decode(v reflect.Value, n *Node) (err error) {
 	return errInvalidNodeType
 }
 
-type interfaceCodec struct{}
+type interfaceCodec struct {
+	options CodecOptions
+}
 
 var _ codec = interfaceCodec{}
 
@@ -176,6 +232,7 @@ func (c interfaceCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
 	if v.IsNil() {
 		return append(b, strNull...), nil
 	}
+	return MarshalTo(b, v.Interface())
 	switch v = v.Elem(); v.Kind() {
 	case reflect.String:
 		b = append(b, delimString)
@@ -187,27 +244,12 @@ func (c interfaceCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
 		b = strconv.AppendUint(b, v.Uint(), 10)
 	case reflect.Bool:
 		b = strconv.AppendBool(b, v.Bool())
-	case reflect.Slice:
-		b = append(b, delimBeginArray)
-		var err error
-		var vv reflect.Value
-		for i := 0; i < v.Len(); i++ {
-			if i > 0 {
-				b = append(b, delimValueSeparator)
-			}
-			vv = v.Index(i)
-			if vv.CanInterface() {
-				b, err = c.encode(b, reflect.ValueOf(vv.Interface()))
-			} else {
-				err = errInvalidValueType
-			}
-			if err != nil {
-				return b, err
-			}
-		}
-		b = append(b, delimEndArray)
 	default:
-		return b, errInvalidValueType
+		enc, err := cachedEncoder(v.Type(), c.options)
+		if err != nil {
+			return b, err
+		}
+		return enc.encode(b, v)
 	}
 	return b, nil
 
