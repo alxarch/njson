@@ -10,6 +10,7 @@ import (
 type CodecOptions struct {
 	FieldParser        // If nil DefaultFieldParser is used
 	FloatPrecision int // strconv.FormatFloat precision for encoder
+	OmitMethod     string
 }
 
 func (o CodecOptions) ParseField(f reflect.StructField) (name string, omiempty, ok bool) {
@@ -26,15 +27,22 @@ func (o CodecOptions) normalize() CodecOptions {
 	if o.FloatPrecision <= 0 {
 		o.FloatPrecision = defaultOptions.FloatPrecision
 	}
+	if o.OmitMethod == "" {
+		o.OmitMethod = defaultOmitMethod
+	}
 	return o
 }
 
-const defaultTag = "json"
+const (
+	defaultTag        = "json"
+	defaultOmitMethod = "Omit"
+)
 
 var (
 	defaultOptions = CodecOptions{
 		FieldParser:    fieldParser{defaultTag, false},
 		FloatPrecision: 6,
+		OmitMethod:     defaultOmitMethod,
 	}
 )
 
@@ -103,9 +111,12 @@ func NewFieldParser(key string, omitempty bool) FieldParser {
 }
 
 func (o fieldParser) ParseField(field reflect.StructField) (tag string, omitempty bool, ok bool) {
+	omitempty = o.OmitEmpty
 	if tag, ok = field.Tag.Lookup(o.Key); ok {
 		if i := strings.IndexByte(tag, ','); i != -1 {
-			omitempty = strings.Index(tag[i:], "omitempty") > 0
+			if !omitempty {
+				omitempty = strings.Index(tag[i:], "omitempty") > 0
+			}
 			tag = tag[:i]
 		}
 	} else {
@@ -399,9 +410,14 @@ func newPtrCodec(typ reflect.Type, options CodecOptions) (*ptrCodec, error) {
 	if err != nil {
 		return nil, err
 	}
+	enc, err := newEncoder(typ.Elem(), options)
+	if err != nil {
+		return nil, err
+	}
 	return &ptrCodec{
 		typ:     typ.Elem(),
 		decoder: dec,
+		encoder: enc,
 		zero:    reflect.Zero(typ),
 	}, nil
 }
@@ -420,7 +436,7 @@ func (d *ptrCodec) decode(v reflect.Value, n *Node) error {
 		return nil
 	default:
 		if v.IsNil() {
-			v.Set(reflect.New(d.typ))
+			v.Set(reflect.New(v.Type().Elem()))
 		}
 		return d.decoder.decode(v.Elem(), n)
 	}

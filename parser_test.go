@@ -87,3 +87,40 @@ func init() {
 		smallJSON = string(data)
 	}
 }
+
+func TestParser_Parse(t *testing.T) {
+	tests := []struct {
+		src     string
+		wantErr bool
+	}{
+		{`{}`, false},
+		{`"foobarbaz"`, false},
+		{`1.2`, false},
+		{`0`, false},
+		{`-1`, false},
+		{`-1.2E-3`, false},
+		{`NaN`, false},
+		{`true`, false},
+		{`false`, false},
+		{`null`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.src, func(t *testing.T) {
+			p := njson.Parser{}
+			d := njson.Document{}
+			root, err := p.Parse(tt.src, &d)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Parser.Parse() Unexpected error: %v", err)
+				return
+			}
+			if root == nil {
+				t.Errorf("Parser.Parse() nil root")
+				return
+			}
+			out := root.AppendTo(nil)
+			if string(out) != tt.src {
+				t.Errorf("Parser.Parse() invalid node:\nactual: %s\nexpect: %s", out, tt.src)
+			}
+		})
+	}
+}

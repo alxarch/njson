@@ -49,6 +49,8 @@ type typeDecoder struct {
 	typ reflect.Type // PtrTo(typ)
 }
 
+// Decode implements the Decoder interface.
+// It handles the case of a x being a nil pointer by creating a new blank value.
 func (c *typeDecoder) Decode(x interface{}, n *Node) error {
 	if x == nil {
 		return errInvalidValueType
@@ -156,19 +158,17 @@ func newTypeDecoder(typ reflect.Type, options CodecOptions) (*typeDecoder, error
 	if typ == nil {
 		return nil, errInvalidType
 	}
-	c := typeDecoder{}
-	if typ.Kind() == reflect.Ptr {
-		c.typ = typ
-		typ = typ.Elem()
-	} else {
-		c.typ = reflect.PtrTo(typ)
+	if typ.Kind() != reflect.Ptr {
+		return nil, errInvalidType
 	}
+	c := typeDecoder{typ: typ}
 	switch {
-	case c.typ.Implements(typUnmarshaler):
+	case typ.Implements(typUnmarshaler):
 		c.decoder = customDecoder{}
-	case c.typ.Implements(typJSONUnmarshaler):
+	case typ.Implements(typJSONUnmarshaler):
 		c.decoder = customJSONDecoder{}
 	default:
+		typ = typ.Elem()
 		d, err := newDecoder(typ, options)
 		if err != nil {
 			return nil, err

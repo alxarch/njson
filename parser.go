@@ -223,7 +223,7 @@ scanToken:
 				goto eof
 			}
 			if !checkAnString(src[start:end]) {
-				return nil, NewError(pos, ErrBoolean)
+				return nil, NewError(pos, ErrNumber)
 			}
 			switch next = d.add(tokenNaN); next {
 			case root:
@@ -322,13 +322,13 @@ scanNumber:
 	for ; pos < n; pos++ {
 		if c = src[pos]; IsDigit(c) {
 			num = num*10 + uint64(c-'0')
-			continue
+		} else {
+			break
 		}
-		goto scanNumberIntegralEnd
 	}
-	goto eof
+	goto scanNumberIntegralEnd
 scanNumberIntegralEnd:
-	if IsNumberEnd(c) {
+	if pos == n || IsNumberEnd(c) {
 		if info == ValueNegativeInteger {
 			num = ^(num - 1)
 		}
@@ -346,27 +346,26 @@ scanNumberIntegralEnd:
 		goto scanNumberError
 	}
 	for ; pos < n; pos++ {
-		if c = src[pos]; IsDigit(c) {
-			continue
-		}
-		if IsNumberEnd(c) {
-			goto scanNumberEnd
-		}
-		switch c {
-		case 'e', 'E':
-			goto scanNumberScientific
-		default:
-			goto scanNumberError
+		if c = src[pos]; !IsDigit(c) {
+			break
 		}
 	}
-	goto eof
+	if pos == n || IsNumberEnd(c) {
+		goto scanNumberEnd
+	}
+	switch c {
+	case 'e', 'E':
+		goto scanNumberScientific
+	default:
+		goto scanNumberError
+	}
 scanNumberScientific:
 	for pos++; pos < n; pos++ {
 		if c = src[pos]; IsDigit(c) {
 			continue
 		}
 		if IsNumberEnd(c) {
-			goto scanNumberEnd
+			break
 		}
 		switch c {
 		case '-', '+':
@@ -377,7 +376,6 @@ scanNumberScientific:
 		}
 		goto scanNumberError
 	}
-	goto eof
 scanNumberEnd:
 	// check last part has at least 1 digit
 	if c = src[pos-1]; IsDigit(c) {
@@ -409,8 +407,8 @@ func checkRueString(data string) bool {
 	return data[1] == 'r' && data[2] == 'u' && data[3] == 'e'
 }
 func checkAnString(data string) bool {
-	_ = data[1]
-	return data[0] == 'a' && data[1] == 'N'
+	_ = data[2]
+	return data[1] == 'a' && data[2] == 'N'
 }
 func checkAlseString(data string) bool {
 	_ = data[4]

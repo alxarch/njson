@@ -2,7 +2,6 @@ package njson
 
 import (
 	"reflect"
-	"unicode"
 )
 
 type structCodec struct {
@@ -59,11 +58,13 @@ func (d *structCodec) merge(typ reflect.Type, options CodecOptions, depth []int)
 		return nil
 	}
 	n := typ.NumField()
+	v := reflect.New(typ).Elem()
 	for i := 0; i < n; i++ {
-		field := typ.Field(i)
-		if !isExported(field.Name) {
+		// Check field is exported and settable
+		if !v.Field(i).CanSet() {
 			continue
 		}
+		field := typ.Field(i)
 		tag, omitempty, tagged := options.ParseField(field)
 		if tag == "-" {
 			continue
@@ -106,7 +107,7 @@ func (d *structCodec) merge(typ reflect.Type, options CodecOptions, depth []int)
 			if enc, ok := enc.(*structCodec); ok {
 				omit = enc.omit
 			} else {
-				omit = newOmiter(field.Type)
+				omit = newOmiter(field.Type, options.OmitMethod)
 			}
 		}
 		d.fields[tag] = fieldCodec{
@@ -122,7 +123,10 @@ func (d *structCodec) merge(typ reflect.Type, options CodecOptions, depth []int)
 }
 
 func newStructCodec(typ reflect.Type, options CodecOptions) (*structCodec, error) {
-	if typ = resolveStruct(typ); typ == nil {
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+	if typ.Kind() != reflect.Struct {
 		return nil, errInvalidType
 	}
 	d := structCodec{
@@ -190,27 +194,6 @@ func (d *structCodec) decode(v reflect.Value, n *Node) (err error) {
 	}
 }
 
-func isExported(name string) bool {
-	for _, c := range name {
-		if unicode.IsUpper(c) {
-			return true
-		}
-		break
-	}
-	return false
-}
-
-func resolveStruct(typ reflect.Type) reflect.Type {
-	switch typ.Kind() {
-	case reflect.Ptr:
-		return resolveStruct(typ.Elem())
-	case reflect.Struct:
-		return typ
-	default:
-		return nil
-	}
-}
-
 func cmpIndex(a, b []int) int {
 	if len(a) > len(b) {
 		return -1
@@ -254,16 +237,63 @@ func omitNever(reflect.Value) bool {
 func omitAlways(reflect.Value) bool {
 	return true
 }
+
+func customOmiter(typ reflect.Type, methodName string) omiter {
+	if method, ok := typ.MethodByName(methodName); ok {
+		f := method.Func.Type()
+		if f.NumIn() == 1 && f.NumOut() == 1 && f.Out(0).Kind() == reflect.Bool {
+			return omiter(func(v reflect.Value) bool {
+				return v.Method(method.Index).Call(nil)[0].Bool()
+			})
+		}
+	}
+	return nil
+}
+
+// newCustomOmiter creates an omiter func for a type.
+//
+// It resolves an omiter event if the method is defined on
+// the type's pointer or the type's element (if it's a pointer)
+func newCustomOmiter(typ reflect.Type, methodName string) omiter {
+	if typ == nil {
+		return nil
+	}
+	if methodName == "" {
+		methodName = defaultOmitMethod
+	}
+	if om := customOmiter(typ, methodName); om != nil {
+		return om
+	}
+
+	switch typ.Kind() {
+	case reflect.Ptr:
+		// If pointer element implements omiter wrap it
+		if om := customOmiter(typ.Elem(), methodName); om != nil {
+			return omiter(func(v reflect.Value) bool {
+				return v.IsNil() || om(v.Elem())
+			})
+		}
+	default:
+		// If pointer to type implements omiter wrap it
+		if om := customOmiter(reflect.PtrTo(typ), methodName); om != nil {
+			return omiter(func(v reflect.Value) bool {
+				return v.CanAddr() && om(v.Addr())
+			})
+		}
+	}
+	return nil
+
+}
 func omitCustom(v reflect.Value) bool {
 	return v.Interface().(Omiter).Omit()
 }
 
-func newOmiter(typ reflect.Type) omiter {
+func newOmiter(typ reflect.Type, methodName string) omiter {
 	if typ == nil {
 		return omitAlways
 	}
-	if typ.Implements(typOmiter) {
-		return omitCustom
+	if om := newCustomOmiter(typ, methodName); om != nil {
+		return om
 	}
 	switch typ.Kind() {
 	case reflect.Ptr:

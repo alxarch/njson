@@ -8,6 +8,61 @@ import (
 	"github.com/alxarch/njson"
 )
 
+func TestDecoderNilPointer(t *testing.T) {
+	src := `{"Foo":1,"Bar":2,"Baz":3}`
+	type A struct{ Foo, Bar, Baz int }
+	var a *A = nil
+	err := njson.UnmarshalFromString(src, &a)
+	if err != nil {
+		t.Errorf("Unexpected error: %s", err)
+		return
+	}
+	if a == nil {
+		t.Errorf("Nil unmarshall")
+		return
+
+	}
+	if a.Foo != 1 {
+		t.Errorf("Invalid unmarshal Foo: %d", a.Foo)
+		return
+	}
+	if a.Bar != 2 {
+		t.Errorf("Invalid unmarshal Bar: %d", a.Bar)
+		return
+	}
+	if a.Baz != 3 {
+		t.Errorf("Invalid unmarshal Baz: %d", a.Baz)
+		return
+	}
+}
+func TestDecoderEmptyPointer(t *testing.T) {
+	src := `{"Foo":1,"Bar":2,"Baz":3}`
+	type A struct{ Foo, Bar, Baz int }
+	a := &A{}
+	err := njson.UnmarshalFromString(src, &a)
+	if err != nil {
+		t.Errorf("Unexpected error: %s", err)
+		return
+	}
+	if a == nil {
+		t.Errorf("Nil unmarshall")
+		return
+
+	}
+	if a.Foo != 1 {
+		t.Errorf("Invalid unmarshal Foo: %d", a.Foo)
+		return
+	}
+	if a.Bar != 2 {
+		t.Errorf("Invalid unmarshal Bar: %d", a.Bar)
+		return
+	}
+	if a.Baz != 3 {
+		t.Errorf("Invalid unmarshal Baz: %d", a.Baz)
+		return
+	}
+}
+
 func TestUnmarshalInterface(t *testing.T) {
 	src := `{"foo":1,"bar":2,"baz":3}`
 	var v interface{}
@@ -151,4 +206,51 @@ func TestUnmarshalEmbeddedFields(t *testing.T) {
 		return
 	}
 
+}
+
+func TestUnmarshalFromString(t *testing.T) {
+	type args struct {
+		s string
+		x interface{}
+	}
+	var (
+		f     float64
+		empty interface{}
+	)
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+		check   interface{}
+	}{
+		{"float64", args{"1.2", f}, true, nil},
+		{"float64", args{"1.2", empty}, true, nil},
+		{"float64", args{"1.2", &f}, false, 1.2},
+		// {"float64", args{"NaN", &f}, false, math.NaN()},
+		{"float64", args{"0", &f}, false, 0.0},
+		{"float64", args{"-1", &f}, false, -1.0},
+		{"float64", args{"{}", &f}, true, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := njson.UnmarshalFromString(tt.args.s, tt.args.x); (err != nil) != tt.wantErr {
+				t.Errorf("UnmarshalFromString(%v) Unexpected error: %v", tt.args.x, err)
+				return
+			}
+			if tt.check == nil {
+				return
+			}
+			v := reflect.ValueOf(tt.args.x)
+			if !v.IsValid() {
+				return
+			}
+			if v.Kind() == reflect.Ptr {
+				v = v.Elem()
+			}
+			if !reflect.DeepEqual(v.Interface(), tt.check) {
+				t.Errorf("UnmarshalFromString() %v != %v", v.Interface(), tt.check)
+				return
+			}
+		})
+	}
 }
