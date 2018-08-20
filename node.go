@@ -160,3 +160,13 @@ func (n *Node) ToInterface() (interface{}, bool) {
 	}
 
 }
+
+func (n *Node) IsObject() bool {
+	return n != nil && n.info == ValueInfo(TypeObject)
+}
+func (n *Node) IsArray() bool {
+	return n != nil && n.info == ValueInfo(TypeArray)
+}
+func (n *Node) IsNull() bool {
+	return n != nil && n.info == ValueInfo(TypeNull)
+}
