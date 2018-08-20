@@ -1,7 +1,9 @@
-package njson
+package unjson
 
 import (
 	"reflect"
+
+	"github.com/alxarch/njson"
 )
 
 type structCodec struct {
@@ -90,7 +92,7 @@ func (d *structCodec) merge(typ reflect.Type, options CodecOptions, depth []int)
 			}
 			continue
 		}
-		tag = QuoteString(tag)
+		tag = njson.QuoteString(tag)
 		if ff, duplicate := d.fields[tag]; duplicate && cmpIndex(ff.index, index) != -1 {
 			continue
 		}
@@ -153,19 +155,19 @@ func fieldByIndex(v reflect.Value, index []int) reflect.Value {
 	return v
 }
 
-func (d *structCodec) decode(v reflect.Value, n *Node) (err error) {
+func (d *structCodec) decode(v reflect.Value, n *njson.Node) (err error) {
 	switch n.Type() {
-	case TypeNull:
+	case njson.TypeNull:
 		v.Set(d.zero)
 		return nil
-	case TypeObject:
+	case njson.TypeObject:
 		var (
 			field reflect.Value
 			fc    fieldCodec
 			i, j  int
 		)
 		for n = n.Value(); n != nil; n = n.Next() {
-			switch fc = d.fields[n.src]; fc.n {
+			switch fc = d.fields[n.ToJSON()]; fc.n {
 			case 0:
 				continue
 			case 1:

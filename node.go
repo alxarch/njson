@@ -1,7 +1,5 @@
 package njson
 
-import "sync"
-
 type Node struct {
 	Token
 	doc    *Document
@@ -13,12 +11,6 @@ type Node struct {
 
 func (n *Node) IsRoot() bool {
 	return n.id == 0
-}
-
-var bufferpool = sync.Pool{
-	New: func() interface{} {
-		return make([]byte, 4096)
-	},
 }
 
 func (n *Node) AppendTo(data []byte) []byte {
@@ -88,8 +80,8 @@ func (n *Node) Value() *Node {
 	return n.doc.get(n.value)
 }
 
-func (n *Node) Index(i uint16) (v *Node) {
-	if n.Type() == TypeArray && i < n.size {
+func (n *Node) Index(i int) (v *Node) {
+	if n.Type() == TypeArray && 0 <= i && i < int(n.size) {
 		for v = n.Value(); v != nil && i > 0; v, i = v.Next(), i-1 {
 		}
 		return
@@ -170,10 +162,20 @@ func (n *Node) IsArray() bool {
 func (n *Node) IsNull() bool {
 	return n != nil && n.info == ValueInfo(TypeNull)
 }
+func (n *Node) IsKey() bool {
+	return n != nil && n.info&(ValueInfo(TypeKey)) != 0
+}
+func (n *Node) IsQuoted() bool {
+	return n != nil && n.info&(ValueInfo(TypeKey|TypeString)) != 0
+}
 func (n *Node) IsValue() bool {
 	return n != nil && n.info&ValueInfo(TypeAnyValue) != 0
 }
 
 func (n *Node) TypeError(want Type) error {
 	return TypeError(n.Type(), want)
+}
+
+type Unmarshaler interface {
+	UnmarshalNodeJSON(*Node) error
 }

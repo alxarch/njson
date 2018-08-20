@@ -1,4 +1,4 @@
-package njson
+package unjson
 
 import (
 	"encoding"

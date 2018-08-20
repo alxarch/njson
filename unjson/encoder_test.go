@@ -1,10 +1,10 @@
-package njson_test
+package unjson_test
 
 import (
 	"encoding/json"
 	"testing"
 
-	"github.com/alxarch/njson"
+	"github.com/alxarch/njson/unjson"
 )
 
 func TestMarshal(t *testing.T) {
@@ -12,7 +12,7 @@ func TestMarshal(t *testing.T) {
 		Foo string
 		Bar string
 	}{"foo", "bar"}
-	data, err := njson.MarshalTo(nil, v)
+	data, err := unjson.MarshalTo(nil, v)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
@@ -31,7 +31,7 @@ func TestMarshalPtr(t *testing.T) {
 		Foo string
 		Bar string
 	}{"foo", "bar"}
-	data, err := njson.MarshalTo(nil, &v)
+	data, err := unjson.MarshalTo(nil, &v)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
@@ -50,7 +50,7 @@ func TestMarshalInterfaceField(t *testing.T) {
 		Foo string
 		Bar interface{}
 	}{"foo", "bar"}
-	data, err := njson.MarshalTo(nil, &v)
+	data, err := unjson.MarshalTo(nil, &v)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
@@ -71,7 +71,7 @@ func TestMarshalInterface(t *testing.T) {
 	}{"foo", "bar"}
 	var x interface{} = &v
 
-	data, err := njson.MarshalTo(nil, &x)
+	data, err := unjson.MarshalTo(nil, &x)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return

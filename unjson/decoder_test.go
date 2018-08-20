@@ -1,18 +1,20 @@
-package njson_test
+package unjson_test
 
 import (
 	"encoding/json"
+	"io/ioutil"
 	"reflect"
 	"testing"
 
 	"github.com/alxarch/njson"
+	"github.com/alxarch/njson/unjson"
 )
 
 func TestDecoderNilPointer(t *testing.T) {
 	src := `{"Foo":1,"Bar":2,"Baz":3}`
 	type A struct{ Foo, Bar, Baz int }
 	var a *A = nil
-	err := njson.UnmarshalFromString(src, &a)
+	err := unjson.UnmarshalFromString(src, &a)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
@@ -39,7 +41,7 @@ func TestDecoderEmptyPointer(t *testing.T) {
 	src := `{"Foo":1,"Bar":2,"Baz":3}`
 	type A struct{ Foo, Bar, Baz int }
 	a := &A{}
-	err := njson.UnmarshalFromString(src, &a)
+	err := unjson.UnmarshalFromString(src, &a)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
@@ -66,7 +68,7 @@ func TestDecoderEmptyPointer(t *testing.T) {
 func TestUnmarshalInterface(t *testing.T) {
 	src := `{"foo":1,"bar":2,"baz":3}`
 	var v interface{}
-	err := njson.UnmarshalFromString(src, &v)
+	err := unjson.UnmarshalFromString(src, &v)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
@@ -92,7 +94,7 @@ func TestUnmarshalInterface(t *testing.T) {
 func TestUnmarshalMapInterface(t *testing.T) {
 	v := map[string]interface{}{}
 	src := `{"foo":1,"bar":2,"baz":3}`
-	err := njson.UnmarshalFromString(src, &v)
+	err := unjson.UnmarshalFromString(src, &v)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
@@ -102,7 +104,7 @@ func TestUnmarshalMapInterface(t *testing.T) {
 func TestUnmarshalMap(t *testing.T) {
 	v := map[string]int{}
 	src := `{"foo":1,"bar":2,"baz":3}`
-	if err := njson.UnmarshalFromString(src, &v); err != nil {
+	if err := unjson.UnmarshalFromString(src, &v); err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
 	}
@@ -129,7 +131,7 @@ func TestUnmarshal(t *testing.T) {
 			Bar interface{} `json:"bar"`
 		} `json:"baz"`
 	}{}
-	err := njson.UnmarshalFromString(src, &v)
+	err := unjson.UnmarshalFromString(src, &v)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
@@ -154,6 +156,15 @@ type medium struct {
 	Gender string `json:"gender"`
 }
 
+var mediumJSON string
+
+func init() {
+	data, err := ioutil.ReadFile("testdata/medium.min.json")
+	if err != nil {
+		panic(err)
+	}
+	mediumJSON = string(data)
+}
 func BenchmarkUnmarshal(b *testing.B) {
 	mediumJSONBytes := []byte(mediumJSON)
 	b.Run("json", func(b *testing.B) {
@@ -164,7 +175,7 @@ func BenchmarkUnmarshal(b *testing.B) {
 			}
 		}
 	})
-	dec, err := njson.TypeDecoder(reflect.TypeOf(medium{}), njson.DefaultOptions())
+	dec, err := unjson.TypeDecoder(reflect.TypeOf(medium{}), unjson.DefaultOptions())
 	if err != nil {
 		b.Errorf("UnexpectedError: %s", err)
 	}
@@ -193,7 +204,7 @@ func TestUnmarshalEmbeddedFields(t *testing.T) {
 		Bar string
 	}
 	b := B{}
-	if err := njson.UnmarshalFromString(`{"Foo":"foo","Bar":"bar"}`, &b); err != nil {
+	if err := unjson.UnmarshalFromString(`{"Foo":"foo","Bar":"bar"}`, &b); err != nil {
 		t.Errorf("Unexcpected error: %s", err)
 		return
 	}
@@ -233,7 +244,7 @@ func TestUnmarshalFromString(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := njson.UnmarshalFromString(tt.args.s, tt.args.x); (err != nil) != tt.wantErr {
+			if err := unjson.UnmarshalFromString(tt.args.s, tt.args.x); (err != nil) != tt.wantErr {
 				t.Errorf("UnmarshalFromString(%v) Unexpected error: %v", tt.args.x, err)
 				return
 			}

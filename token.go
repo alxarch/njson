@@ -125,6 +125,16 @@ func (t *Token) ToUint() (uint64, bool) {
 		return 0, false
 	}
 }
+func (t *Token) ToBool() (bool, bool) {
+	switch t.info {
+	case ValueTrue:
+		return true, true
+	case ValueFalse:
+		return false, true
+	default:
+		return false, false
+	}
+}
 func negative(u uint64) uint64 {
 	return ^(u - 1)
 }
@@ -181,6 +191,9 @@ var (
 
 func (t *Token) ToJSON() string {
 	return t.src
+}
+func (t *Token) Bytes() []byte {
+	return s2b(t.src)
 }
 
 func hexByte(b []byte, pos int) (c byte) {

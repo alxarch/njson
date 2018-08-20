@@ -1,4 +1,4 @@
-package njson
+package unjson
 
 import (
 	"encoding"
@@ -6,6 +6,8 @@ import (
 	"errors"
 	"reflect"
 	"sync"
+
+	"github.com/alxarch/njson"
 )
 
 func Unmarshal(data []byte, x interface{}) error {
@@ -23,25 +25,21 @@ func UnmarshalFromString(s string, x interface{}) error {
 	return dec.DecodeString(x, s)
 }
 
-type Unmarshaler interface {
-	UnmarshalNodeJSON(*Node) error
-}
-
 var (
-	typUnmarshaler     = reflect.TypeOf((*Unmarshaler)(nil)).Elem()
+	typUnmarshaler     = reflect.TypeOf((*njson.Unmarshaler)(nil)).Elem()
 	typJSONUnmarshaler = reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()
 	typTextUnmarshaler = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 )
 
 // Decoder is a type specific decoder
 type Decoder interface {
-	Decode(x interface{}, n *Node) error
+	Decode(x interface{}, n *njson.Node) error
 	DecodeString(x interface{}, src string) error
 	decoder // disallow external implementations
 }
 
 type decoder interface {
-	decode(v reflect.Value, n *Node) error
+	decode(v reflect.Value, n *njson.Node) error
 }
 
 type typeDecoder struct {
@@ -51,7 +49,7 @@ type typeDecoder struct {
 
 // Decode implements the Decoder interface.
 // It handles the case of a x being a nil pointer by creating a new blank value.
-func (c *typeDecoder) Decode(x interface{}, n *Node) error {
+func (c *typeDecoder) Decode(x interface{}, n *njson.Node) error {
 	if x == nil {
 		return errInvalidValueType
 	}
@@ -60,7 +58,7 @@ func (c *typeDecoder) Decode(x interface{}, n *Node) error {
 		return errInvalidValueType
 	}
 	if v.IsNil() {
-		if n.Type() == TypeNull {
+		if n.Type() == njson.TypeNull {
 			return nil
 		}
 		v.Set(reflect.New(c.typ.Elem()))
@@ -87,15 +85,15 @@ var (
 // customDecoder implements the Decoder interface for types implementing Unmarshaller
 type customDecoder struct{}
 
-func (customDecoder) Decode(x interface{}, n *Node) error {
-	if x, ok := x.(Unmarshaler); ok {
+func (customDecoder) Decode(x interface{}, n *njson.Node) error {
+	if x, ok := x.(njson.Unmarshaler); ok {
 		return x.UnmarshalNodeJSON(n)
 	}
 	return errInvalidValueType
 }
 
 func (customDecoder) DecodeString(x interface{}, src string) (err error) {
-	if x, ok := x.(Unmarshaler); ok {
+	if x, ok := x.(njson.Unmarshaler); ok {
 		p := parsePool.Get().(*parsePair)
 		p.Reset()
 		if _, err = p.Parse(src, &p.Document); err == nil {
@@ -107,17 +105,17 @@ func (customDecoder) DecodeString(x interface{}, src string) (err error) {
 	return errInvalidValueType
 }
 
-func (customDecoder) decode(v reflect.Value, tok *Node) error {
-	return v.Interface().(Unmarshaler).UnmarshalNodeJSON(tok)
+func (customDecoder) decode(v reflect.Value, tok *njson.Node) error {
+	return v.Interface().(njson.Unmarshaler).UnmarshalNodeJSON(tok)
 }
 
 // customJSONDecoder implements the Decoder interface for types implementing json.Unmarshaller
 type customJSONDecoder struct{}
 
-func (customJSONDecoder) Decode(x interface{}, n *Node) (err error) {
+func (customJSONDecoder) Decode(x interface{}, n *njson.Node) (err error) {
 	if u, ok := x.(json.Unmarshaler); ok {
-		if n.src != "" {
-			return u.UnmarshalJSON(s2b(n.src))
+		if n.ToJSON() != "" {
+			return u.UnmarshalJSON(n.Bytes())
 		}
 		b := bufferpool.Get().([]byte)
 		b = n.AppendTo(b[:0])
@@ -130,14 +128,14 @@ func (customJSONDecoder) Decode(x interface{}, n *Node) (err error) {
 
 func (customJSONDecoder) DecodeString(x interface{}, src string) error {
 	if x, ok := x.(json.Unmarshaler); ok {
-		return x.UnmarshalJSON(s2b(src))
+		return x.UnmarshalJSON([]byte(src))
 	}
 	return errInvalidValueType
 }
 
-func (customJSONDecoder) decode(v reflect.Value, n *Node) (err error) {
-	if n.src != "" {
-		return v.Interface().(json.Unmarshaler).UnmarshalJSON(s2b(n.src))
+func (customJSONDecoder) decode(v reflect.Value, n *njson.Node) (err error) {
+	if n.ToJSON() != "" {
+		return v.Interface().(json.Unmarshaler).UnmarshalJSON(n.Bytes())
 	}
 	b := bufferpool.Get().([]byte)
 	b = n.AppendTo(b[:0])
@@ -224,19 +222,15 @@ func cachedDecoder(typ reflect.Type, options CodecOptions) (d Decoder, err error
 }
 
 type parsePair struct {
-	Document
-	Parser
+	njson.Document
+	njson.Parser
 }
 
 var parsePool = sync.Pool{
 	New: func() interface{} {
 		p := parsePair{
-			Document: Document{
-				nodes: make([]Node, 0, 64),
-			},
-			Parser: Parser{
-				stack: make([]uint16, 0, 64),
-			},
+			Document: njson.Document{},
+			Parser:   njson.Parser{},
 		}
 		return &p
 	},
