@@ -242,25 +242,25 @@ func (c interfaceCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
 		return append(b, strNull...), nil
 	}
 	return MarshalTo(b, v.Interface())
-	switch v = v.Elem(); v.Kind() {
-	case reflect.String:
-		b = append(b, delimString)
-		b = njson.EscapeString(b, v.String())
-		b = append(b, delimString)
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		b = strconv.AppendInt(b, v.Int(), 10)
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		b = strconv.AppendUint(b, v.Uint(), 10)
-	case reflect.Bool:
-		b = strconv.AppendBool(b, v.Bool())
-	default:
-		enc, err := cachedEncoder(v.Type(), c.options)
-		if err != nil {
-			return b, err
-		}
-		return enc.encode(b, v)
-	}
-	return b, nil
+	// switch v = v.Elem(); v.Kind() {
+	// case reflect.String:
+	// 	b = append(b, delimString)
+	// 	b = njson.EscapeString(b, v.String())
+	// 	b = append(b, delimString)
+	// case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+	// 	b = strconv.AppendInt(b, v.Int(), 10)
+	// case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+	// 	b = strconv.AppendUint(b, v.Uint(), 10)
+	// case reflect.Bool:
+	// 	b = strconv.AppendBool(b, v.Bool())
+	// default:
+	// 	enc, err := cachedEncoder(v.Type(), c.options)
+	// 	if err != nil {
+	// 		return b, err
+	// 	}
+	// 	return enc.encode(b, v)
+	// }
+	// return b, nil
 
 }
 
