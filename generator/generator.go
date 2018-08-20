@@ -1,5 +1,11 @@
 package generator
 
+/*
+Package generator is a code generator for njson.Unmarsaler
+
+It parses a package dir and can generate (t *T)UnmarshalNodeJSON(*njson.Node) error methods.
+*/
+
 import (
 	"bytes"
 	"fmt"
@@ -14,7 +20,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 
 	"github.com/iancoleman/strcase"
@@ -22,27 +27,13 @@ import (
 	"github.com/alxarch/njson"
 )
 
-const DefaultTagKey = "json"
+// TODO: handle json.Unmarshaler
+// TODO: handle njson.Unmarshaler
+// TODO: handle encoding.TextUnmarshaler
+// TODO: handle flag combinations (ie if tag key is not json don't use UnmarshalJSON)
+// TODO: generate AppendJSON([]byte) ([]byte, error) methods
 
-func ParseFieldTag(tag, key string) (name string, omitempty, ok bool) {
-	if key == "" {
-		key = DefaultTagKey
-	}
-	tag, ok = reflect.StructTag(tag).Lookup(key)
-	if !ok {
-		return
-	}
-	name = tag
-	if ok = name != "-"; !ok {
-		return
-	}
-	if i := strings.IndexByte(tag, ','); i > -1 {
-		name = tag[:i]
-		omitempty = strings.Index(tag[i:], "omitempty") > 0
-	}
-	return
-}
-
+// Generator is a source code generator for njson unmarshal methods.
 type Generator struct {
 	options
 	pkg     *types.Package
@@ -52,6 +43,7 @@ type Generator struct {
 	info    types.Info
 }
 
+// ResolveType returns the underlying unnamed type.
 func ResolveType(typ types.Type) types.Type {
 	for typ != nil {
 		if _, ok := typ.(*types.Named); ok {
@@ -63,6 +55,7 @@ func ResolveType(typ types.Type) types.Type {
 	return typ
 }
 
+// LookupType looks up a named type in the package's definitions.
 func (g *Generator) LookupType(name string) (t *types.Named) {
 	for _, def := range g.info.Defs {
 		if def == nil {
@@ -81,6 +74,7 @@ func (g *Generator) LookupType(name string) (t *types.Named) {
 	return nil
 }
 
+// StructField describes a struct's field.
 type StructField struct {
 	*types.Var
 	NameJSON  string
@@ -92,8 +86,10 @@ func (f *StructField) String() string {
 	return f.Var.String() + " " + f.Path.String()
 }
 
+// StructFields is a map of a struct's fields
 type StructFields map[string]StructField
 
+// Add adds a field to a field map handling duplicates.
 func (fields StructFields) Add(f *types.Var, name string, omitempty bool, path FieldPath) {
 	name = string(njson.EscapeString(nil, name))
 	_, duplicate := fields[name]
@@ -104,6 +100,7 @@ func (fields StructFields) Add(f *types.Var, name string, omitempty bool, path F
 	fields[name] = StructField{f, name, omitempty, path.Copy()}
 }
 
+// FieldIndex is a part of the path of a field in a struct.
 type FieldIndex struct {
 	Index int
 	Type  types.Type
@@ -114,26 +111,30 @@ func (i FieldIndex) String() string {
 	return i.Name
 }
 
+// FieldPath is the path of a field in a struct.
 type FieldPath []FieldIndex
 
-func TypeName(t types.Type) string {
+func fieldTypeName(t types.Type) string {
 	switch t := t.(type) {
 	case *types.Named:
 		return t.Obj().Name()
 	case *types.Pointer:
-		return TypeName(t.Elem())
+		return fieldTypeName(t.Elem())
 	default:
 		return t.String()
 	}
 }
+
+// TypeName resolves a type's local name in the scope of the generator's package.
 func (g *Generator) TypeName(t types.Type) string {
-	name, pkg := g.ResolveTypeName(t)
+	name, pkg := g.resolveTypeName(t)
 	if pkg != nil {
 		g.Import(pkg)
 	}
 	return name
 }
-func (g *Generator) ResolveTypeName(t types.Type) (string, *types.Package) {
+
+func (g *Generator) resolveTypeName(t types.Type) (string, *types.Package) {
 	switch t := t.(type) {
 	case *types.Named:
 		pkg := t.Obj().Pkg()
@@ -142,7 +143,7 @@ func (g *Generator) ResolveTypeName(t types.Type) (string, *types.Package) {
 		}
 		return t.String(), pkg
 	case *types.Pointer:
-		return g.ResolveTypeName(t.Elem())
+		return g.resolveTypeName(t.Elem())
 	default:
 		return t.String(), nil
 	}
@@ -157,12 +158,14 @@ func (p FieldPath) String() string {
 	return string(buf)
 }
 
+// Copy creates a copy of a path.
 func (p FieldPath) Copy() FieldPath {
 	cp := make([]FieldIndex, len(p))
 	copy(cp, p)
 	return cp
 }
 
+// ComparePaths compares the paths of two fields.
 func ComparePaths(a, b FieldPath) int {
 	if len(a) < len(b) {
 		return -1
@@ -181,6 +184,7 @@ func ComparePaths(a, b FieldPath) int {
 	return 0
 }
 
+// MergeFields merges a struct's fields to a field map.
 func (g *Generator) MergeFields(fields StructFields, s *types.Struct, path FieldPath) error {
 	if s == nil {
 		return nil
@@ -201,7 +205,7 @@ func (g *Generator) MergeFields(fields StructFields, s *types.Struct, path Field
 			if ptr, isPointer := t.(*types.Pointer); isPointer {
 				t = ptr.Elem()
 			}
-			name = g.JSONFieldName(TypeName(t))
+			name = g.JSONFieldName(fieldTypeName(t))
 			tt := ResolveType(t)
 			if tt, ok := tt.(*types.Struct); ok {
 				// embedded struct
@@ -219,6 +223,7 @@ func (g *Generator) MergeFields(fields StructFields, s *types.Struct, path Field
 	return nil
 }
 
+// StructFields creates a fields map for a struct.
 func (g *Generator) StructFields(s *types.Struct, path FieldPath) (StructFields, error) {
 	size := 0
 	if s != nil {
@@ -232,6 +237,7 @@ func (g *Generator) StructFields(s *types.Struct, path FieldPath) (StructFields,
 	return fields, nil
 }
 
+// SliceUnmarshaler generates the code block to unmarshal a slice.
 func (g *Generator) SliceUnmarshaler(T types.Type, t *types.Slice) (code string, err error) {
 	body, err := g.TypeUnmarshaler(t.Elem())
 	if err != nil {
@@ -261,6 +267,7 @@ default:
 	return
 }
 
+// PointerUnmarshaler generates the code block to unmarshal a pointer type.
 func (g *Generator) PointerUnmarshaler(T types.Type, t *types.Pointer) (code string, err error) {
 	body, err := g.TypeUnmarshaler(t.Elem())
 	if err != nil {
@@ -282,10 +289,12 @@ default:
 	return
 }
 
+// InterfaceUnmarshaler generates the code block to unmarshal an empty interface.
 func (g *Generator) InterfaceUnmarshaler(t types.Type, b *types.Interface) (code string, err error) {
 	return `if x, ok := n.ToInterface(); ok { *r = x } else { return n.TypeError(njson.AnyValue) }`, nil
 }
 
+// BasicUnmarshaler generates the code block to unmarshal a basic type.
 func (g *Generator) BasicUnmarshaler(t types.Type, b *types.Basic) (code string, err error) {
 	switch b.Kind() {
 	case types.Bool:
@@ -304,6 +313,7 @@ func (g *Generator) BasicUnmarshaler(t types.Type, b *types.Basic) (code string,
 	return fmt.Sprintf(code, g.TypeName(t)), nil
 }
 
+// EnsurePath generates a code block to ensure the path to an embedded pointer to struct has no nils.
 func (g *Generator) EnsurePath(path FieldPath) (code string) {
 	if last := len(path) - 1; last > 0 {
 		for i := 0; i < last; i++ {
@@ -322,7 +332,8 @@ func (g *Generator) EnsurePath(path FieldPath) (code string) {
 	return
 }
 
-func (g *Generator) MapUnmarshaller(t types.Type, m *types.Map) (code string, err error) {
+// MapUnmarshaler generates the code block to unmarshal a map.
+func (g *Generator) MapUnmarshaler(t types.Type, m *types.Map) (code string, err error) {
 	typK := g.TypeName(m.Key())
 	typV := g.TypeName(m.Elem())
 	bodyK, err := g.TypeUnmarshaler(m.Key())
@@ -362,6 +373,7 @@ default:
 	return
 }
 
+// StructUnmarshaler generates the code block to unmarshal a struct.
 func (g *Generator) StructUnmarshaler(t *types.Struct) (code string, err error) {
 	fields, err := g.StructFields(t, nil)
 	if err != nil {
@@ -395,6 +407,7 @@ for k := n.Value(); k != nil; k = k.Next() {
 
 }
 
+// CanUnmarshal returns if can be unmarshaled
 func CanUnmarshal(t types.Type) bool {
 	tt := ResolveType(t)
 	if tt == nil {
@@ -439,11 +452,12 @@ func (e typeError) Error() string {
 	return fmt.Sprintf("Unsupported type %s %#v", e.typ, e.typ)
 }
 
+// TypeUnmarshaler returns the code block for unmarshaling a type.
 func (g *Generator) TypeUnmarshaler(t types.Type) (code string, err error) {
 	typ := ResolveType(t)
 	switch typ := typ.(type) {
 	case *types.Map:
-		return g.MapUnmarshaller(t, typ)
+		return g.MapUnmarshaler(t, typ)
 	case *types.Struct:
 		return g.StructUnmarshaler(typ)
 	case *types.Slice:
@@ -462,6 +476,7 @@ func (g *Generator) TypeUnmarshaler(t types.Type) (code string, err error) {
 	}
 }
 
+// AllStructs returns all structs from the package.
 func (g *Generator) AllStructs() (all []string) {
 	for _, def := range g.info.Defs {
 		if def == nil {
@@ -487,8 +502,10 @@ func (g *Generator) AllStructs() (all []string) {
 
 }
 
+// UnmarshalMethodName is the default name for the unmarshal function
 const UnmarshalMethodName = "UnmarshalNodeJSON"
 
+// UnmarshalMethodName returns the name for the unmarshal method.
 func (g *Generator) UnmarshalMethodName() (m string) {
 	m = UnmarshalMethodName
 	switch g.TagKey() {
@@ -499,6 +516,7 @@ func (g *Generator) UnmarshalMethodName() (m string) {
 	return m
 }
 
+// WriteUnmarshaler writes an unmarshaler method for a type in the generator's buffer.
 func (g *Generator) WriteUnmarshaler(typeName string) (err error) {
 	_, code, err := g.Unmarshaler(typeName)
 	if err != nil {
@@ -509,6 +527,7 @@ func (g *Generator) WriteUnmarshaler(typeName string) (err error) {
 	return
 }
 
+// Unmarshaler generates an unmarshaler method for a type
 func (g *Generator) Unmarshaler(typeName string) (typ *types.Named, code string, err error) {
 	typ = g.LookupType(typeName)
 	if typ == nil {
@@ -575,6 +594,7 @@ func filterTestFiles(f os.FileInfo) bool {
 	return !strings.HasSuffix(f.Name(), "_test.go")
 }
 
+// New creates a new Generator for a package named targetPkg and parses the specified path.
 func New(path string, targetPkg string, options ...Option) (*Generator, error) {
 	g, err := newGenerator(path, targetPkg)
 	if err != nil {
@@ -586,6 +606,7 @@ func New(path string, targetPkg string, options ...Option) (*Generator, error) {
 	return g, nil
 }
 
+// Reset resets the generator to start a new file.
 func (g *Generator) Reset() {
 	g.buffer.Reset()
 	g.imports = nil
@@ -599,6 +620,7 @@ func inject(fset *token.FileSet, target, pkg string) (*ast.File, error) {
 	return parser.ParseFile(fset, filename, src, 0)
 }
 
+// Import adds packages to import in the generated file
 func (g *Generator) Import(imports ...*types.Package) {
 	if len(imports) == 0 {
 		return
@@ -612,8 +634,9 @@ func (g *Generator) Import(imports ...*types.Package) {
 	return
 }
 
+// DumpTo writes the generated file without checking and formatting.
 func (g *Generator) DumpTo(w io.Writer) error {
-	if err := g.WriteHeaderTo(w); err != nil {
+	if _, err := w.Write([]byte(g.Header())); err != nil {
 		return err
 	}
 	if _, err := g.buffer.WriteTo(w); err != nil {
@@ -622,10 +645,11 @@ func (g *Generator) DumpTo(w io.Writer) error {
 	return nil
 }
 
-func (g *Generator) WriteFormattedTo(w io.Writer) error {
+// PrintTo writes the generated file after checking and formatting.
+func (g *Generator) PrintTo(w io.Writer) error {
 	fset := token.NewFileSet()
 	buf := new(bytes.Buffer)
-	g.WriteHeaderTo(buf)
+	buf.WriteString(g.Header())
 	g.buffer.WriteTo(buf)
 	filename := fmt.Sprintf("%s_njson.go", g.pkg.Name())
 	astFile, err := parser.ParseFile(fset, filename, buf.Bytes(), parser.ParseComments)
@@ -648,15 +672,19 @@ func isGeneratedByNJSON(f *ast.File) bool {
 	return len(f.Comments) > 0 && len(f.Comments[0].List) > 0 && f.Comments[0].List[0].Text == headerComment
 }
 
-func (g *Generator) WriteHeaderTo(w io.Writer) (err error) {
-	fmt.Fprintln(w, headerComment)
-	fmt.Fprintf(w, "package %s\n", g.pkg.Name())
+// Header returns the header code for the generated file.
+func (g *Generator) Header() string {
+	h := []string{}
+	h = append(h, headerComment)
+	h = append(h, fmt.Sprintf("package %s", g.pkg.Name()))
+
 	for path, pkg := range g.imports {
 		if filepath.Base(path) == pkg.Name() {
-			fmt.Fprintf(w, "import %q\n", path)
+			h = append(h, fmt.Sprintf("import %q", path))
 		} else {
-			fmt.Fprintf(w, "import %s %q\n", pkg.Name(), path)
+			h = append(h, fmt.Sprintf("import %s %q", pkg.Name(), path))
 		}
 	}
-	return
+	return strings.Join(h, "\n")
+
 }

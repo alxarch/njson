@@ -15,9 +15,6 @@ import (
 	"github.com/alxarch/njson/generator"
 )
 
-// TODO: handle json.Unmarshaler
-// TODO: Generate marshallers to njson.Document
-// TODO: handle flags and combinations (ie if tag key is not json don't use UnmarshalJSON)
 var (
 	targetPath     = flag.String("p", ".", "Path to scan for .go files.")
 	tagKey         = flag.String("k", "json", "Struct tag key.")
@@ -101,23 +98,23 @@ func main() {
 	}
 	if *debug {
 		g.DumpTo(os.Stderr)
-	} else {
-		var out io.Writer = os.Stdout
-		if *writeFile {
-			filename := targetPkg + "_njson.go"
-			filename = filepath.Join(*targetPath, filename)
-			f, err := os.Create(filename)
-			defer f.Close()
-			if err != nil {
-				log.Fatalf("Failed to open file %q for writing: %s", filename, err)
-			}
-			out = f
+		return
+	}
 
+	var out io.Writer = os.Stdout
+	if *writeFile {
+		filename := targetPkg + "_njson.go"
+		filename = filepath.Join(*targetPath, filename)
+		f, err := os.Create(filename)
+		defer f.Close()
+		if err != nil {
+			log.Fatalf("Failed to open file %q for writing: %s", filename, err)
 		}
-		if err := g.WriteFormattedTo(out); err != nil {
-			logger.Fatalf("Failed to write output: %s", err)
-		}
+		out = f
 
+	}
+	if err := g.PrintTo(out); err != nil {
+		logger.Fatalf("Failed to write output: %s", err)
 	}
 
 }
