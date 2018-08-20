@@ -170,3 +170,10 @@ func (n *Node) IsArray() bool {
 func (n *Node) IsNull() bool {
 	return n != nil && n.info == ValueInfo(TypeNull)
 }
+func (n *Node) IsValue() bool {
+	return n != nil && n.info&ValueInfo(TypeAnyValue) != 0
+}
+
+func (n *Node) TypeError(want Type) error {
+	return TypeError(n.Type(), want)
+}

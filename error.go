@@ -1,6 +1,9 @@
 package njson
 
-import "strconv"
+import (
+	"fmt"
+	"strconv"
+)
 
 type Error int
 
@@ -78,4 +81,16 @@ func NewError(pos int, errno Error) error {
 		Position: int64(pos),
 		Errno:    errno,
 	}
+}
+
+type typeError struct {
+	Type Type
+	Want Type
+}
+
+func TypeError(t, want Type) error {
+	return typeError{t, want}
+}
+func (e typeError) Error() string {
+	return fmt.Sprintf("Invalid type %s not in %v", e.Type, e.Want.Types())
 }

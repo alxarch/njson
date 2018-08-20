@@ -3,6 +3,7 @@ package njson
 import (
 	"errors"
 	"math"
+	"math/bits"
 	"strconv"
 )
 
@@ -17,15 +18,34 @@ type Token struct {
 type Type byte
 
 const (
-	TypeString Type = 1 << iota
+	TypeInvalid Type = iota
+	TypeString  Type = 1 << iota
 	TypeNumber
 	TypeBoolean
 	TypeNull
 	TypeArray
 	TypeObject
 	TypeKey
+	TypeAnyValue = TypeString | TypeNumber | TypeBoolean | TypeObject | TypeArray | TypeNull
 	typeSourceOK = TypeString | TypeNumber | TypeBoolean | TypeNull
 )
+
+func (t Type) Types() (types []Type) {
+	if t == 0 {
+		return []Type{}
+	}
+	if bits.OnesCount(uint(t)) == 1 {
+		return []Type{t}
+	}
+	for i := Type(0); i < 8; i++ {
+		tt := Type(1 << i)
+		if t&tt != 0 {
+			types = append(types, tt)
+		}
+	}
+	return
+
+}
 
 func (t Type) hasSource() bool {
 	return t&typeSourceOK != 0
