@@ -103,7 +103,7 @@ func main() {
 
 	var out io.Writer = os.Stdout
 	if *writeFile {
-		filename := targetPkg + "_njson.go"
+		filename := g.Filename()
 		filename = filepath.Join(*targetPath, filename)
 		f, err := os.Create(filename)
 		defer f.Close()

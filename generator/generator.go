@@ -557,10 +557,12 @@ var injectPackages = map[string]string{
 	"encoding/json": "encoding/json",
 }
 
-func newGenerator(path, targetPkg string) (g *Generator, err error) {
+type fileFilter func(os.FileInfo) bool
+
+func newGenerator(path, targetPkg string, filter fileFilter) (g *Generator, err error) {
 	fset := token.NewFileSet()
 	mode := parser.ParseComments | parser.DeclarationErrors
-	astPkgs, err := parser.ParseDir(fset, path, filterTestFiles, mode)
+	astPkgs, err := parser.ParseDir(fset, path, filter, mode)
 	if err != nil {
 		return nil, err
 	}
@@ -596,7 +598,11 @@ func filterTestFiles(f os.FileInfo) bool {
 
 // New creates a new Generator for a package named targetPkg and parses the specified path.
 func New(path string, targetPkg string, options ...Option) (*Generator, error) {
-	g, err := newGenerator(path, targetPkg)
+	var filter fileFilter
+	if !strings.HasSuffix(targetPkg, "_test") {
+		filter = filterTestFiles
+	}
+	g, err := newGenerator(path, targetPkg, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -604,6 +610,21 @@ func New(path string, targetPkg string, options ...Option) (*Generator, error) {
 		opt(g)
 	}
 	return g, nil
+}
+func (g *Generator) PkgName() string {
+	return g.pkg.Name()
+}
+
+func (g *Generator) Filename() (name string) {
+	name = g.PkgName()
+	if strings.HasSuffix(name, "_test") {
+		name = strings.TrimSuffix(name, "_test")
+		name = name + "_njson_test.go"
+		return
+	}
+	name = name + "_njson.go"
+	return
+
 }
 
 // Reset resets the generator to start a new file.
@@ -651,7 +672,7 @@ func (g *Generator) PrintTo(w io.Writer) error {
 	buf := new(bytes.Buffer)
 	buf.WriteString(g.Header())
 	g.buffer.WriteTo(buf)
-	filename := fmt.Sprintf("%s_njson.go", g.pkg.Name())
+	filename := g.Filename()
 	astFile, err := parser.ParseFile(fset, filename, buf.Bytes(), parser.ParseComments)
 	if err != nil {
 		return err
