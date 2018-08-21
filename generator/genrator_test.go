@@ -6,7 +6,7 @@ import (
 	"github.com/alxarch/njson"
 )
 
-//go:generate njson -all -w generator_test
+//go:generate go run ../cmd/njson/njson.go -all -w generator_test
 
 type Foo struct {
 	Bar string
