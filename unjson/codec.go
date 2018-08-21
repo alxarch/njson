@@ -500,3 +500,19 @@ var bufferpool = sync.Pool{
 		return make([]byte, 4096)
 	},
 }
+
+const (
+	delimString         = '"'
+	delimBeginObject    = '{'
+	delimEndObject      = '}'
+	delimBeginArray     = '['
+	delimEndArray       = ']'
+	delimNameSeparator  = ':'
+	delimValueSeparator = ','
+)
+
+const (
+	strFalse = "false"
+	strTrue  = "true"
+	strNull  = "null"
+)
