@@ -298,7 +298,7 @@ func (g *Generator) InterfaceUnmarshaler(t types.Type, b *types.Interface) (code
 func (g *Generator) BasicUnmarshaler(t types.Type, b *types.Basic) (code string, err error) {
 	switch b.Kind() {
 	case types.Bool:
-		code = "if b, ok := n.ToBool(); ok { *r = %s(b) } else { return n.TypeError(njson.TypeBool) }"
+		code = "if b, ok := n.ToBool(); ok { *r = %s(b) } else { return n.TypeError(njson.TypeBoolean) }"
 	case types.String:
 		code = "*r = %s(n.Unescaped())"
 	case types.Int, types.Int8, types.Int16, types.Int32, types.Int64:
