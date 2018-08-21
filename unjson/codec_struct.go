@@ -14,8 +14,8 @@ type structCodec struct {
 type fieldCodec struct {
 	index []int
 	n     int
-	decoder
-	encoder
+	unmarshaler
+	marshaler
 	omit omiter
 }
 
@@ -28,7 +28,7 @@ func (d *structCodec) omit(v reflect.Value) bool {
 	return true
 }
 
-func (d *structCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
+func (d *structCodec) marshal(b []byte, v reflect.Value) ([]byte, error) {
 	var (
 		i   = 0
 		err error
@@ -43,9 +43,11 @@ func (d *structCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
 		if i > 0 {
 			b = append(b, delimValueSeparator)
 		}
+		b = append(b, delimString)
 		b = append(b, name...)
+		b = append(b, delimString)
 		b = append(b, delimNameSeparator)
-		b, err = field.encode(b, fv)
+		b, err = field.marshal(b, fv)
 		if err != nil {
 			return b, err
 		}
@@ -55,7 +57,7 @@ func (d *structCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
 	return b, nil
 }
 
-func (d *structCodec) merge(typ reflect.Type, options CodecOptions, depth []int) error {
+func (d *structCodec) merge(typ reflect.Type, options Options, depth []int) error {
 	if typ == nil {
 		return nil
 	}
@@ -92,15 +94,15 @@ func (d *structCodec) merge(typ reflect.Type, options CodecOptions, depth []int)
 			}
 			continue
 		}
-		tag = njson.QuoteString(tag)
+		tag = string(njson.AppendEscaped(nil, tag))
 		if ff, duplicate := d.fields[tag]; duplicate && cmpIndex(ff.index, index) != -1 {
 			continue
 		}
-		dec, err := newDecoder(field.Type, options)
+		dec, err := newUnmarshaler(field.Type, options)
 		if err != nil {
 			return err
 		}
-		enc, err := newEncoder(field.Type, options)
+		enc, err := newMarshaler(field.Type, options)
 		if err != nil {
 			return err
 		}
@@ -113,18 +115,18 @@ func (d *structCodec) merge(typ reflect.Type, options CodecOptions, depth []int)
 			}
 		}
 		d.fields[tag] = fieldCodec{
-			index:   index,
-			n:       len(index),
-			decoder: dec,
-			encoder: enc,
-			omit:    omit,
+			index:       index,
+			n:           len(index),
+			unmarshaler: dec,
+			marshaler:   enc,
+			omit:        omit,
 		}
 	}
 	return nil
 
 }
 
-func newStructCodec(typ reflect.Type, options CodecOptions) (*structCodec, error) {
+func newStructCodec(typ reflect.Type, options Options) (*structCodec, error) {
 	if typ.Kind() == reflect.Ptr {
 		typ = typ.Elem()
 	}
@@ -155,7 +157,7 @@ func fieldByIndex(v reflect.Value, index []int) reflect.Value {
 	return v
 }
 
-func (d *structCodec) decode(v reflect.Value, n *njson.Node) (err error) {
+func (d *structCodec) unmarshal(v reflect.Value, n *njson.Node) (err error) {
 	switch n.Type() {
 	case njson.TypeNull:
 		v.Set(d.zero)
@@ -167,7 +169,7 @@ func (d *structCodec) decode(v reflect.Value, n *njson.Node) (err error) {
 			i, j  int
 		)
 		for n = n.Value(); n != nil; n = n.Next() {
-			switch fc = d.fields[n.ToJSON()]; fc.n {
+			switch fc = d.fields[n.Escaped()]; fc.n {
 			case 0:
 				continue
 			case 1:
@@ -186,13 +188,13 @@ func (d *structCodec) decode(v reflect.Value, n *njson.Node) (err error) {
 					}
 				}
 			}
-			if err = fc.decode(field, n.Value()); err != nil {
+			if err = fc.unmarshal(field, n.Value()); err != nil {
 				return
 			}
 		}
 		return
 	default:
-		return errInvalidNodeType
+		return n.TypeError(njson.TypeObject | njson.TypeNull)
 	}
 }
 

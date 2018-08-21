@@ -30,7 +30,7 @@ func TestUnescape(t *testing.T) {
 func TestEscapeString(t *testing.T) {
 	b := make([]byte, 64)
 	test := func(u, s string) {
-		if b = njson.EscapeString(b[:0], s); string(b) != u {
+		if b = njson.AppendEscaped(b[:0], s); string(b) != u {
 			t.Errorf("Invalid escape:\n%q %d\n%q %d", u, utf8.RuneCountInString(s), b, utf8.RuneCount((b)))
 		}
 		if b = njson.EscapeBytes(b[:0], []byte(s)); string(b) != u {

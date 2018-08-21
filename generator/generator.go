@@ -91,7 +91,7 @@ type StructFields map[string]StructField
 
 // Add adds a field to a field map handling duplicates.
 func (fields StructFields) Add(f *types.Var, name string, omitempty bool, path FieldPath) {
-	name = string(njson.EscapeString(nil, name))
+	name = string(njson.AppendEscaped(nil, name))
 	_, duplicate := fields[name]
 	if duplicate && ComparePaths(fields[name].Path, path) == -1 {
 		// keep existing
@@ -248,10 +248,10 @@ func (g *Generator) SliceUnmarshaler(T types.Type, t *types.Slice) (code string,
 switch {
 case n.IsArray():
 	// Ensure slice is big enough
-	if cap(*r) < n.Len() {
-		*r = make([]%s, len(*r) + n.Len())
+	if size := n.Len(); cap(*r) < size {
+		*r = make([]%s, len(*r) + size)
 	} else {
-		*r = (*r)[:n.Len()]
+		*r = (*r)[:size]
 	}
 	s := *r
 	for i, n := 0, n.Value(); n != nil; n, i = n.Next(), i+1 {
@@ -385,7 +385,7 @@ if !n.IsObject() {
 }
 for k := n.Value(); k != nil; k = k.Next() {
 	n := k.Value()
-	switch k.Unescaped() {`)
+	switch k.Escaped() {`)
 	for name, field := range fields {
 		body, err := g.TypeUnmarshaler(field.Type())
 		if err != nil {
@@ -397,7 +397,7 @@ for k := n.Value(); k != nil; k = k.Next() {
 			r := &r%s
 			%s
 		}
-		`, fmt.Sprintf("`\"%s\"`", name), g.EnsurePath(field.Path), field.Path, body)
+		`, fmt.Sprintf("`%s`", name), g.EnsurePath(field.Path), field.Path, body)
 	}
 	code += `
 	}

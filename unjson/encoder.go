@@ -5,54 +5,37 @@ import (
 	"encoding/json"
 	"reflect"
 	"sync"
+
+	"github.com/alxarch/njson"
 )
 
-func Marshal(x interface{}) ([]byte, error) {
-	return MarshalTo(nil, x)
-}
-
-func MarshalTo(out []byte, x interface{}) ([]byte, error) {
-	if x == nil {
-		return append(out, strNull...), nil
-	}
-	enc, err := cachedEncoder(reflect.TypeOf(x), defaultOptions)
-	if err != nil {
-		return nil, err
-	}
-	return enc.Encode(out, x)
-}
-
-// Encoder is a type specific encoder
-type Encoder interface {
-	Encode(out []byte, x interface{}) ([]byte, error)
-	encoder // disallow external implementations
-}
-
+// Marshaler is a type specific encoder
 type Marshaler interface {
-	AppendJSON([]byte) ([]byte, error)
+	MarshalTo(out []byte, x interface{}) ([]byte, error)
+	marshaler // disallow external implementations
 }
 
 type Omiter interface {
 	Omit() bool
 }
 
-type encoder interface {
-	encode(out []byte, v reflect.Value) ([]byte, error)
+type marshaler interface {
+	marshal(out []byte, v reflect.Value) ([]byte, error)
 }
 
-type typeEncoder struct {
-	encoder
+type typeMarshaler struct {
+	marshaler
 	typ reflect.Type
 }
 
 var (
-	typMarshaler     = reflect.TypeOf((*Marshaler)(nil)).Elem()
+	typNodeMarshaler = reflect.TypeOf((*njson.Appender)(nil)).Elem()
 	typOmiter        = reflect.TypeOf((*Omiter)(nil)).Elem()
 	typJSONMarshaler = reflect.TypeOf((*json.Marshaler)(nil)).Elem()
 	typTextMarshaler = reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem()
 )
 
-func (c *typeEncoder) Encode(out []byte, x interface{}) ([]byte, error) {
+func (m *typeMarshaler) MarshalTo(out []byte, x interface{}) ([]byte, error) {
 	if x == nil {
 		return out, errInvalidValueType
 	}
@@ -60,56 +43,56 @@ func (c *typeEncoder) Encode(out []byte, x interface{}) ([]byte, error) {
 	if v.Kind() == reflect.Ptr {
 		v = v.Elem()
 	}
-	if v.Type() != c.typ {
+	if v.Type() != m.typ {
 		return out, errInvalidValueType
 	}
-	return c.encode(out, v)
+	return m.marshal(out, v)
 }
 
-func TypeEncoder(typ reflect.Type, options CodecOptions) (Encoder, error) {
+func TypeMarshaler(typ reflect.Type, options Options) (Marshaler, error) {
 	options = options.normalize()
 	if typ == nil {
 		return interfaceCodec{options}, nil
 	}
 
-	return cachedEncoder(typ, options)
+	return cachedMarshaler(typ, options)
 }
 
-func newTypeEncoder(typ reflect.Type, options CodecOptions) (*typeEncoder, error) {
+func newTypeMarshaler(typ reflect.Type, options Options) (*typeMarshaler, error) {
 	if typ == nil {
 		return nil, errInvalidType
 	}
-	c := typeEncoder{}
+	m := typeMarshaler{}
 	if typ.Kind() == reflect.Ptr {
-		c.typ = typ.Elem()
+		m.typ = typ.Elem()
 	} else {
-		c.typ = typ
+		m.typ = typ
 		typ = reflect.PtrTo(typ)
 	}
 	switch {
-	case c.typ.Implements(typMarshaler):
-		c.encoder = customEncoder{}
-	case c.typ.Implements(typJSONMarshaler):
-		c.encoder = customJSONEncoder{}
+	case m.typ.Implements(typNodeMarshaler):
+		m.marshaler = njsonMarshaler{}
+	case m.typ.Implements(typJSONMarshaler):
+		m.marshaler = jsonMarshaler{}
 	default:
-		d, err := newEncoder(c.typ, options)
+		d, err := newMarshaler(m.typ, options)
 		if err != nil {
 			return nil, err
 		}
-		c.encoder = d
+		m.marshaler = d
 	}
-	return &c, nil
+	return &m, nil
 }
 
-func newEncoder(typ reflect.Type, options CodecOptions) (encoder, error) {
+func newMarshaler(typ reflect.Type, options Options) (marshaler, error) {
 	if typ == nil {
 		return nil, errInvalidType
 	}
 	switch {
-	case typ.Implements(typMarshaler):
-		return customEncoder{}, nil
+	case typ.Implements(typNodeMarshaler):
+		return njsonMarshaler{}, nil
 	case typ.Implements(typJSONMarshaler):
-		return customJSONEncoder{}, nil
+		return jsonMarshaler{}, nil
 	case typ.Implements(typTextMarshaler):
 		return textCodec{}, nil
 	}
@@ -118,39 +101,39 @@ func newEncoder(typ reflect.Type, options CodecOptions) (encoder, error) {
 }
 
 var (
-	encoderCacheLock sync.RWMutex
-	encoderCache     = map[cacheKey]Encoder{}
+	marshalCacheLock sync.RWMutex
+	marhsalCache     = map[cacheKey]Marshaler{}
 )
 
-func cachedEncoder(typ reflect.Type, options CodecOptions) (d Encoder, err error) {
+func cachedMarshaler(typ reflect.Type, options Options) (m Marshaler, err error) {
 	if typ == nil {
 		return interfaceCodec{options}, nil
 	}
 	key := cacheKey{typ, options}
-	encoderCacheLock.RLock()
-	d, ok := encoderCache[key]
-	encoderCacheLock.RUnlock()
+	marshalCacheLock.RLock()
+	m, ok := marhsalCache[key]
+	marshalCacheLock.RUnlock()
 	if ok {
 		return
 	}
-	if d, err = newTypeEncoder(typ, DefaultOptions()); err != nil {
+	if m, err = newTypeMarshaler(typ, DefaultOptions()); err != nil {
 		return
 	}
-	encoderCacheLock.Lock()
-	encoderCache[key] = d
-	encoderCacheLock.Unlock()
+	marshalCacheLock.Lock()
+	marhsalCache[key] = m
+	marshalCacheLock.Unlock()
 	return
 }
 
-type customEncoder struct{}
+type njsonMarshaler struct{}
 
-func (customEncoder) encode(out []byte, v reflect.Value) ([]byte, error) {
-	return v.Interface().(Marshaler).AppendJSON(out)
+func (njsonMarshaler) marshal(out []byte, v reflect.Value) ([]byte, error) {
+	return v.Interface().(njson.Appender).AppendJSON(out)
 }
 
-type customJSONEncoder struct{}
+type jsonMarshaler struct{}
 
-func (customJSONEncoder) encode(out []byte, v reflect.Value) (b []byte, err error) {
+func (jsonMarshaler) marshal(out []byte, v reflect.Value) (b []byte, err error) {
 	b, err = v.Interface().(json.Marshaler).MarshalJSON()
 	if err == nil && b != nil {
 		out = append(out, b...)

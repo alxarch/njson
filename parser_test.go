@@ -9,32 +9,32 @@ import (
 
 func TestDocumentParse(t *testing.T) {
 	doc := njson.Document{}
-	p := njson.Parser{}
 	for _, src := range []string{
-		// `[]`,
-		// `{}`,
-		// `[{"foo":"bar"},2,3]`,
-		// `{"answer":42}`,
-		// `{"answer":"42"}`,
-		// `{"answer":true}`,
-		// `{"answer":null}`,
-		// `{"answer":false}`,
-		// `{"results":[]}`,
-		// `{"results":[42],"error":null}`,
+		`[]`,
+		`{}`,
+		`[{"foo":"bar"},2,3]`,
+		`{"answer":42}`,
+		`{"answer":"42"}`,
+		`{"answer":true}`,
+		`{"answer":null}`,
+		`{"answer":false}`,
+		`{"results":[]}`,
+		`{"results":[42],"error":null}`,
 
 		`{"baz":{"foo":"bar"}}`,
-		// `{"foo":"bar","bar":23,"baz":{"foo":21.2}}`,
-		// `{"results":[{"id":42,"name":"answer"},{"id":43,"name":"answerplusone"}],"error":null}`,
+		`{"foo":"bar","bar":23,"baz":{"foo":21.2}}`,
+		`{"results":[{"id":42,"name":"answer"},{"id":43,"name":"answerplusone"}],"error":null}`,
 		smallJSON,
 		mediumJSON,
 		largeJSON,
 	} {
-		root, err := p.Parse(src, &doc)
+		doc.Reset()
+		root, err := doc.Parse(src)
 		if err != nil {
 			t.Errorf("Parse error: %s", err)
 		} else if root == nil {
 			t.Errorf("Nil root")
-		} else if out := root.AppendTo(nil); string(out) != src {
+		} else if out, _ := root.AppendJSON(nil); string(out) != src {
 			t.Errorf("Invalid root:\nexpect: %s\nactual: %s", src, out)
 		}
 	}
@@ -42,15 +42,15 @@ func TestDocumentParse(t *testing.T) {
 }
 
 func benchmark(src string) func(b *testing.B) {
-	doc := njson.Document{}
+	doc := njson.BlankDocument()
+	defer doc.Close()
 	out := []byte{}
-	p := njson.Parser{}
 
 	return func(b *testing.B) {
-		b.SetBytes(int64(len(src)))
-		if root, err := p.Parse(src, &doc); err != nil {
+		// b.SetBytes(int64(len(src)))
+		if root, err := doc.Parse(src); err != nil {
 			b.Errorf("Parse error: %s", err)
-		} else if out := root.AppendTo(out[:0]); string(out) != src {
+		} else if out, _ := root.AppendJSON(out[:0]); string(out) != src {
 			b.Errorf("Invalid parse")
 		}
 	}
@@ -103,21 +103,33 @@ func TestParser_Parse(t *testing.T) {
 		{`true`, false},
 		{`false`, false},
 		{`null`, false},
+		{`{"foo\n":"bar"}`, false},
+		{`-a4`, true},
+		{`[{"foo":"bar"},2,3]`, false},
+		{`{"answer":42}`, false},
+		{`{"answer":"42"}`, false},
+		{`{"answer":true}`, false},
+		{`{"answer":null}`, false},
+		{`{"answer":false}`, false},
+		{`{"results":[]}`, false},
+		{`{"results":[42],"error":null}`, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.src, func(t *testing.T) {
-			p := njson.Parser{}
 			d := njson.Document{}
-			root, err := p.Parse(tt.src, &d)
+			root, err := d.Parse(tt.src)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("Parser.Parse() Unexpected error: %v", err)
+				t.Errorf("Parser.Parse(%q) Unexpected error: %v", tt.src, err)
+				return
+			}
+			if tt.wantErr {
 				return
 			}
 			if root == nil {
 				t.Errorf("Parser.Parse() nil root")
 				return
 			}
-			out := root.AppendTo(nil)
+			out, _ := root.AppendJSON(nil)
 			if string(out) != tt.src {
 				t.Errorf("Parser.Parse() invalid node:\nactual: %s\nexpect: %s", out, tt.src)
 			}

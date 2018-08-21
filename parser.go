@@ -1,14 +1,39 @@
 package njson
 
-import (
-	"errors"
-	"math"
-)
+// parser is a JSON parser.
+type parser struct {
+	*Document
+	n      uint16
+	parent uint16
+	prev   uint16
+	mode   Type
+}
 
-func Parse(src string) (*Document, error) {
-	d := Document{}
-	_, err := d.CreateNode(src)
-	return &d, err
+// Parse parses a JSON source string to a Document.
+func (d *Document) Parse(src string) (root *Node, err error) {
+	if d == nil {
+		err = errNilDocument
+		return
+	}
+	if d.n == MaxDocumentSize {
+		return nil, errDocumentMaxSize
+	}
+	n := len(src)
+	if n == 0 {
+		return nil, errEmptyJSON
+	}
+	id, pos, err := d.parse(src, n)
+	d.stack = d.stack[:0]
+	switch err {
+	case nil:
+		root = &d.nodes[id]
+	case errInvalidToken:
+		err = ParseError(pos, src[pos])
+		fallthrough
+	default:
+		d.nodes = d.nodes[:id]
+	}
+	return
 }
 
 const (
@@ -22,88 +47,58 @@ const (
 	delimValueSeparator = ','
 )
 
-type Parser struct {
-	stack  []uint16
-	n      uint16
-	mode   Type
-	parent uint16
-	prev   uint16
-}
-
-func (p *Parser) reset() {
-	*p = Parser{
-		stack:  p.stack[:0],
-		n:      math.MaxUint16,
-		parent: MaxDocumentSize,
+func (d *Document) parser() parser {
+	return parser{
+		Document: d,
+		n:        MaxDocumentSize,
+		parent:   MaxDocumentSize,
 	}
 }
 
-func (p *Parser) push(typ Type, n uint16) {
+func (p *parser) push(typ Type, n uint16) {
+	// p.n initialized to MaxDocumentSize so p.n++ overflows it to 0
 	p.n++
 	p.stack = append(p.stack, n)
 	p.mode = typ
 	p.parent = n
 }
 
-func (p *Parser) link(d *Document, id uint16) {
-	d.nodes[id].parent = p.parent
-	if p.parent == MaxDocumentSize {
-		p.parent = id
-	} else {
-		switch p.mode {
-		case TypeArray:
-			d.nodes[p.parent].size++
-			if p.prev == p.parent {
-				d.nodes[p.prev].value = id
-			} else {
-				d.nodes[p.prev].next = id
-			}
-		case TypeKey:
-			d.nodes[p.parent].value = id
-		default:
-			return
+func (p *parser) link(id uint16) {
+	p.nodes[id].parent = p.parent
+	switch p.mode {
+	case TypeArray:
+		if p.prev == p.parent {
+			p.nodes[p.prev].value = id
+		} else {
+			p.nodes[p.prev].next = id
 		}
+	case TypeKey:
+		p.nodes[p.parent].value = id
+	default:
+		return
 	}
 	p.prev = id
 }
 
-func (p *Parser) pop(d *Document) {
+func (p *parser) pop() {
 	p.stack = p.stack[:p.n]
 	p.n--
 	p.prev = p.parent
 	p.parent = p.stack[p.n]
-	p.mode = d.nodes[p.parent].Type()
+	p.mode = p.nodes[p.parent].Type()
 }
 
-const (
-	MaxDocumentSize = math.MaxUint16
-)
-
-var (
-	errDocumentMaxSize = errors.New("Document max size")
-)
-
-func (p *Parser) Parse(src string, d *Document) (rootNode *Node, err error) {
-	if d == nil {
-		return nil, errors.New("Nil document")
-	}
+// Parse parses a JSON string into a Document.
+func (d *Document) parse(src string, n int) (root uint16, pos int, err error) {
 	var (
-		c     byte
-		n     = (len(src))
-		pos   int
-		start int // token start
-		end   int // token end
-		info  ValueInfo
-		num   uint64
-		next  uint16
-		root  = d.n
+		p          = d.parser()
+		info       ValueInfo
+		next       uint16
+		start, end int // token start, end
+		num        uint64
+		c          byte
 	)
-
-	if root == MaxDocumentSize {
-		return nil, errDocumentMaxSize
-	}
-
-	p.reset()
+	root = d.n
 
 scanToken:
 	for ; pos < n; pos++ {
@@ -112,129 +107,104 @@ scanToken:
 		}
 		switch c {
 		case delimBeginObject:
-			if next = d.add(tokenObject); next == MaxDocumentSize {
-				return nil, errDocumentMaxSize
+			switch next = d.add(tokenObject); next {
+			case MaxDocumentSize:
+				goto max
+			case root:
+				p.prev = next
+			default:
+				p.link(next)
 			}
-			p.link(d, next)
 			p.push(TypeObject, next)
 			goto scanKey
 		case delimEndObject:
 			switch p.mode {
 			case TypeKey:
-				p.pop(d)
+				p.pop()
 				fallthrough
 			case TypeObject:
 				if p.n == 0 {
-					goto done
+					return
 				}
-				p.pop(d)
+				p.pop()
 			default:
-				return nil, NewError(pos, ErrObjectEnd)
+				goto abort
 			}
 		case delimBeginArray:
-			if next = d.add(tokenArray); next == MaxDocumentSize {
-				return nil, errDocumentMaxSize
+			switch next = d.add(tokenArray); next {
+			case MaxDocumentSize:
+				goto max
+			case root:
+				p.prev = next
+			default:
+				p.link(next)
 			}
-			p.link(d, next)
 			p.push(TypeArray, next)
 		case delimEndArray:
 			if p.n == 0 {
-				goto done
+				return
 			}
-			p.pop(d)
+			p.pop()
 		case delimValueSeparator:
 			switch p.mode {
 			case TypeObject, TypeKey:
 				goto scanKey
 			case TypeArray:
 			default:
-				return nil, NewError(pos, ErrMore)
+				goto abort
 			}
 		case delimString:
-			info = ValueInfo(TypeString)
+			info, num = ValueInfo(TypeString), 0
+			pos++
 			start = pos
-			for pos++; pos < n; pos++ {
+			for ; pos < n; pos++ {
 				switch c = src[pos]; c {
 				case delimString:
-					switch next = d.add(Token{info: info, src: src[start : pos+1]}); next {
-					case root:
-						goto done
-					case MaxDocumentSize:
-						return nil, errDocumentMaxSize
-					default:
-						p.link(d, next)
-						continue scanToken
-					}
+					end = pos
+					pos++
+					goto value
 				case delimEscape:
 					info |= ValueUnescaped
 					pos++
 				}
 			}
+			// will go to eof
 		case 'n':
 			if start, end = pos, pos+4; end > n {
 				goto eof
 			}
 			if !checkUllString(src[start:end]) {
-				return nil, NewError(pos, ErrNull)
+				goto abort
 			}
-			switch next = d.add(tokenNull); next {
-			case root:
-				goto done
-			case MaxDocumentSize:
-				return nil, errDocumentMaxSize
-			default:
-				p.link(d, next)
-				pos = end - 1
-			}
+			pos, num, info = end, 0, ValueInfo(TypeNull)
+			goto value
 		case 'f':
 			if start, end = pos, pos+5; end > n {
 				goto eof
 			}
 			if !checkAlseString(src[start:end]) {
-				return nil, NewError(pos, ErrBoolean)
+				goto abort
 			}
-			switch next = d.add(tokenFalse); next {
-			case root:
-				goto done
-			case MaxDocumentSize:
-				return nil, errDocumentMaxSize
-			default:
-				p.link(d, next)
-				pos = end - 1
-			}
+			pos, num, info = end, 0, ValueInfo(TypeBoolean)
+			goto value
 		case 't':
 			if start, end = pos, pos+4; end > n {
 				goto eof
 			}
 			if !checkRueString(src[start:end]) {
-				return nil, NewError(pos, ErrBoolean)
+				goto abort
 			}
-			switch next = d.add(tokenTrue); next {
-			case root:
-				goto done
-			case MaxDocumentSize:
-				return nil, errDocumentMaxSize
-			default:
-				p.link(d, next)
-				pos = end - 1
-			}
+			pos, num, info = end, 0, ValueInfo(TypeBoolean)
+			goto value
 		case 'N':
 			if start, end = pos, pos+3; end > n {
 				goto eof
 			}
 			if !checkAnString(src[start:end]) {
-				return nil, NewError(pos, ErrNumber)
+				goto abort
 			}
-			switch next = d.add(tokenNaN); next {
-			case root:
-				goto done
-			case MaxDocumentSize:
-				return nil, errDocumentMaxSize
-			default:
-				p.link(d, next)
-				pos = end - 1
-			}
-
+			pos, num, info = end, uNaN, ValueNumberFloat
+			goto value
 		case '-':
 			start = pos
 			if pos++; pos >= n {
@@ -248,11 +218,21 @@ scanToken:
 				info = ValueInfo(TypeNumber)
 				goto scanNumber
 			}
-			return nil, NewError(pos, ErrType)
+			goto abort
 		}
 	}
 eof:
-	return nil, NewError(n, ErrEOF)
+	err = errEOF
+	return
+abort:
+	err = errInvalidToken
+	return
+max:
+	err = errDocumentMaxSize
+	return
+wtf:
+	err = errPanic
+	return
 scanKey:
 	for pos++; pos < n; pos++ {
 		if c = src[pos]; IsSpaceASCII(c) {
@@ -263,15 +243,16 @@ scanKey:
 			if p.mode == TypeObject {
 				goto scanToken
 			}
-			return nil, NewError(pos, ErrObjectEnd)
+			goto abort
 		case delimString:
 			info = ValueInfo(TypeKey)
+			pos++
 			start = pos
-			for pos++; pos < n; pos++ {
+			for ; pos < n; pos++ {
 				switch c = src[pos]; c {
 				case delimString:
-					pos++
 					end = pos
+					pos++
 					goto scanKeyEnd
 				case delimEscape:
 					info |= ValueUnescaped
@@ -280,7 +261,7 @@ scanKey:
 			}
 			goto eof
 		default:
-			return nil, NewError(pos, ErrKey)
+			goto abort
 		}
 	}
 	goto eof
@@ -290,27 +271,33 @@ scanKeyEnd:
 			continue
 		}
 		if c != delimNameSeparator {
-			return nil, NewError(pos, ErrKey)
+			goto abort
 		}
-		if next = d.add(Token{info: info, src: src[start:end]}); next == MaxDocumentSize {
-			return nil, errDocumentMaxSize
+		next = d.add(Token{info: info, src: src[start:end]})
+		if root < next && next < MaxDocumentSize {
+			switch p.mode {
+			case TypeObject:
+				d.nodes[p.parent].value = next
+			case TypeKey:
+				d.nodes[p.parent].next = next
+				p.pop()
+			default:
+				goto wtf
+			}
+			p.prev = next
+			p.push(TypeKey, next)
+			pos++
+			goto scanToken
 		}
-		switch p.mode {
-		case TypeObject:
-			d.nodes[p.parent].value = next
-		case TypeKey:
-			d.nodes[p.parent].next = next
-			p.pop(d)
+		switch next {
+		case MaxDocumentSize:
+			goto max
 		default:
-			return nil, NewError(pos, ErrPanic)
+			goto wtf
 		}
-		p.prev = next
-		d.nodes[p.parent].size++
-		p.push(TypeKey, next)
-		pos++
-		goto scanToken
 	}
 	goto eof
+
 scanNumber:
 	num = 0
 	if c == '0' {
@@ -330,7 +317,7 @@ scanNumber:
 scanNumberIntegralEnd:
 	if pos == n || IsNumberEnd(c) {
 		if info == ValueNegativeInteger {
-			num = ^(num - 1)
+			num = negative(num)
 		}
 		goto scanNumberEnd
 	}
@@ -343,7 +330,7 @@ scanNumberIntegralEnd:
 		info |= ValueFloat
 		pos++
 	default:
-		goto scanNumberError
+		goto abort
 	}
 	for ; pos < n; pos++ {
 		if c = src[pos]; !IsDigit(c) {
@@ -357,7 +344,7 @@ scanNumberIntegralEnd:
 	case 'e', 'E':
 		goto scanNumberScientific
 	default:
-		goto scanNumberError
+		goto abort
 	}
 scanNumberScientific:
 	for pos++; pos < n; pos++ {
@@ -374,26 +361,26 @@ scanNumberScientific:
 				continue scanNumberScientific
 			}
 		}
-		goto scanNumberError
+		goto abort
 	}
 scanNumberEnd:
 	// check last part has at least 1 digit
 	if c = src[pos-1]; IsDigit(c) {
-		switch next = d.add(Token{info: info, src: src[start:pos], num: num}); next {
-		case root:
-			goto done
-		case MaxDocumentSize:
-			return nil, errDocumentMaxSize
-		default:
-			p.link(d, next)
-			goto scanToken
-		}
+		end = pos
+		goto value
 	}
-scanNumberError:
-	return nil, NewError(pos, ErrNumber)
-
-done:
-	return &d.nodes[root], nil
+	goto abort
+value:
+	next = d.add(Token{info: info, src: src[start:end], num: num})
+	switch next {
+	case root:
+		return
+	case MaxDocumentSize:
+		goto max
+	default:
+		p.link(next)
+		goto scanToken
+	}
 
 }
 
@@ -421,23 +408,5 @@ var (
 	}
 	tokenArray = Token{
 		info: ValueInfo(TypeArray),
-	}
-	tokenTrue = Token{
-		info: ValueInfo(TypeBoolean) | ValueTrue,
-		src:  strTrue,
-	}
-	tokenFalse = Token{
-		info: ValueInfo(TypeBoolean),
-		src:  strFalse,
-	}
-	tokenNaN = Token{
-		info: ValueNumberFloat,
-		src:  strNaN,
-		num:  uNaN,
-	}
-	tokenNull = Token{
-		info: ValueInfo(TypeNull),
-		src:  strNull,
-		num:  uNaN,
 	}
 )

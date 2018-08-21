@@ -22,32 +22,43 @@ func readRune(b0, b1 byte) rune {
 	return rune(uint16(b0)<<8 | uint16(b1))
 }
 
-func AppendUnescaped(b []byte, src string) []byte {
+// AppendUnescaped appends unescaped s to b
+func AppendUnescaped(b []byte, s string) []byte {
+	// Ensure b has enough space to unescape s
 	offset := len(b)
-	n := offset + len(src)
+	n := offset + len(s)
 	if cap(b) < n {
-		b = append(b, src...)
+		b = append(b, s...)
 	} else {
 		b = b[:n]
 	}
-	n = offset + Unescape(b[:offset], src)
+	n = offset + Unescape(b[:offset], s)
 	return b[:n]
 }
 
-func Unescape(dst []byte, src string) (n int) {
-	if n = strings.IndexByte(src, delimEscape); n == -1 {
-		n = len(src)
+// AppendQuoted appends JSON quoted value of s.
+func AppendQuoted(b []byte, s string) []byte {
+	b = append(b, delimString)
+	b = AppendEscaped(b, s)
+	b = append(b, delimString)
+	return b
+}
+
+// Unescape unescapes a string inside dst buffer which must have sufficient size (ie len(s)).
+func Unescape(dst []byte, s string) (n int) {
+	if n = strings.IndexByte(s, delimEscape); n == -1 {
+		n = len(s)
 	}
 
 	var (
 		c      byte
-		end    = len(src)
+		end    = len(s)
 		r1, r2 rune
 		buf    = [utf8.UTFMax]byte{}
-		i      = copy(dst, src[:n])
+		i      = copy(dst, s[:n])
 	)
 	for ; i < end; i++ {
-		if c = src[i]; c != '\\' {
+		if c = s[i]; c != '\\' {
 			dst[n] = c
 			n++
 			continue
@@ -57,14 +68,14 @@ func Unescape(dst []byte, src string) (n int) {
 			n++
 			return
 		}
-		switch c = src[i]; c {
+		switch c = s[i]; c {
 		case '"', '/', '\\':
 			dst[n] = c
 			n++
 		case 'u':
 			r1 = utf8.RuneError
 			if i+4 < end {
-				if readHex(src[i+1], src[i+2], &buf[0]) && readHex(src[i+3], src[i+4], &buf[1]) {
+				if readHex(s[i+1], s[i+2], &buf[0]) && readHex(s[i+3], s[i+4], &buf[1]) {
 					r1 = readRune(buf[0], buf[1])
 				}
 				i += 4
@@ -74,8 +85,8 @@ func Unescape(dst []byte, src string) (n int) {
 			case utf8.ValidRune(r1):
 			case utf16.IsSurrogate(r1):
 				r2 = utf8.RuneError
-				if i+6 < end && src[i+1] == delimEscape && src[i+2] == 'u' {
-					if readHex(src[i+3], src[i+4], &buf[0]) && readHex(src[i+5], src[i+6], &buf[1]) {
+				if i+6 < end && s[i+1] == delimEscape && s[i+2] == 'u' {
+					if readHex(s[i+3], s[i+4], &buf[0]) && readHex(s[i+5], s[i+6], &buf[1]) {
 						r2 = readRune(buf[0], buf[1])
 					}
 					i += 6
@@ -98,15 +109,7 @@ func Unescape(dst []byte, src string) (n int) {
 	return
 }
 
-func QuoteString(s string) string {
-	out := make([]byte, 1, ((3*len(s))/2)+2)
-	out[0] = '"'
-	out = EscapeString(out, s)
-	out = append(out, '"')
-	return b2s(out)
-}
-
-func EscapeString(dst []byte, s string) []byte {
+func AppendEscaped(dst []byte, s string) []byte {
 	buf := [3 * utf8.UTFMax]byte{}
 	for _, r := range s {
 		switch r {

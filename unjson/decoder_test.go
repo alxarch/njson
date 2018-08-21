@@ -175,20 +175,21 @@ func BenchmarkUnmarshal(b *testing.B) {
 			}
 		}
 	})
-	dec, err := unjson.TypeDecoder(reflect.TypeOf(medium{}), unjson.DefaultOptions())
+	dec, err := unjson.TypeUnmarshaler(reflect.TypeOf(medium{}), unjson.DefaultOptions())
 	if err != nil {
 		b.Errorf("UnexpectedError: %s", err)
 	}
 	b.Run("njson", func(b *testing.B) {
 		m := medium{}
-		p := njson.Parser{}
-		doc := njson.Document{}
+		doc := njson.BlankDocument()
+		defer doc.Close()
 		var err error
+		var root *njson.Node
 		for i := 0; i < b.N; i++ {
 			doc.Reset()
-			if _, err = p.Parse(mediumJSON, &doc); err != nil {
+			if root, err = doc.Parse(mediumJSON); err != nil {
 				b.Errorf("UnexpectedError: %s", err)
-			} else if err = dec.Decode(&m, doc.Get(0)); err != nil {
+			} else if err = dec.Unmarshal(&m, root); err != nil {
 				b.Errorf("UnexpectedError: %s", err)
 			}
 		}

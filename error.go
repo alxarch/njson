@@ -1,86 +1,51 @@
 package njson
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 )
 
-type Error int
+type errMsg string
 
-func (e Error) String() string {
-	switch e {
-	case ErrNone:
-		return "None"
-	case ErrEOF:
-		return "EOF"
-	case ErrType:
-		return "Type"
-	case ErrNull:
-		return "Null"
-	case ErrKey:
-		return "Key"
-	case ErrEmpty:
-		return "Empty"
-	case ErrString:
-		return "String"
-	case ErrArray:
-		return "Array"
-	case ErrArrayEnd:
-		return "Unexpected array end"
-	case ErrObjectEnd:
-		return "Unexpected object end"
-	case ErrObject:
-		return "Object"
-	case ErrNumber:
-		return "Number"
-	case ErrBoolean:
-		return "Boolean"
-	case ErrPanic:
-		return "Invalid scan state"
-	default:
-		return "Unknown error"
-	}
+func (e errMsg) Error() string {
+	return string(e)
+}
+func (e errMsg) String() string {
+	return string(e)
 }
 
-const (
-	ErrNone Error = 0 - iota
-	ErrEOF
-	ErrType
-	ErrMore
-	ErrNull
-	ErrKey
-	ErrEmpty
-	ErrString
-	ErrStringUnescape
-	ErrArray
-	ErrArrayEnd
-	ErrObject
-	ErrObjectEnd
-	ErrNumber
-	ErrBoolean
-	ErrPanic
+var (
+	errDocumentMaxSize = errors.New("Document max size")
+	errNilDocument     = errors.New("Nil document")
+	errPanic           = errors.New("Invalid parser state")
+	errEOF             = errors.New("Unexpected end of input")
+	errEmptyJSON       = errors.New("Empty JSON source")
+	errInvalidToken    = errors.New("Invalid token")
 )
 
-type TokenError struct {
-	Position int64
-	Errno    Error
-	Token    byte
+type parseError struct {
+	pos int64
+	c   byte
+	// str  string
+	// want string
+	// typ Type
 }
 
-func (e TokenError) Error() string {
-	data := make([]byte, 0, 64)
-	data = append(data, "Token error at position "...)
-	data = strconv.AppendInt(data, e.Position, 10)
-	data = append(data, ':', ' ')
-	data = append(data, e.Errno.String()...)
-	return string(data)
+func (p parseError) Error() string {
+	buf := make([]byte, 0, 64)
+	buf = append(buf, "Invalid token '"...)
+	buf = append(buf, p.c)
+	buf = append(buf, "' at position "...)
+	buf = strconv.AppendInt(buf, p.pos, 10)
+	// if p.typ != 0 {
+	// 	buf = append(buf, " while scanning "...)
+	// 	buf = append(buf, p.typ.String()...)
+	// }
+	return string(buf)
 }
-
-func NewError(pos int, errno Error) error {
-	return TokenError{
-		Position: int64(pos),
-		Errno:    errno,
-	}
+func ParseError(pos int, c byte) error {
+	return parseError{int64(pos), c}
 }
 
 type typeError struct {
@@ -92,5 +57,8 @@ func TypeError(t, want Type) error {
 	return typeError{t, want}
 }
 func (e typeError) Error() string {
+	if e.Want&e.Type != 0 {
+		return fmt.Sprintf("Invalid value for type %s", e.Type)
+	}
 	return fmt.Sprintf("Invalid type %s not in %v", e.Type, e.Want.Types())
 }

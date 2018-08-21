@@ -20,3 +20,7 @@ func s2b(s string) []byte {
 	}
 	return *(*[]byte)(unsafe.Pointer(&b))
 }
+
+func b2sEqual(b []byte, s string) bool {
+	return b2s(b) == s
+}

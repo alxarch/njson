@@ -10,20 +10,20 @@ import (
 	"github.com/alxarch/njson"
 )
 
-type CodecOptions struct {
+type Options struct {
 	FieldParser        // If nil DefaultFieldParser is used
 	FloatPrecision int // strconv.FormatFloat precision for encoder
 	OmitMethod     string
 }
 
-func (o CodecOptions) ParseField(f reflect.StructField) (name string, omiempty, ok bool) {
+func (o Options) ParseField(f reflect.StructField) (name string, omiempty, ok bool) {
 	if o.FieldParser == nil {
 		return defaultFieldParser.ParseField(f)
 	}
 	return o.FieldParser.ParseField(f)
 }
 
-func (o CodecOptions) normalize() CodecOptions {
+func (o Options) normalize() Options {
 	if o.FieldParser == nil {
 		o.FieldParser = defaultFieldParser
 	}
@@ -42,7 +42,7 @@ const (
 )
 
 var (
-	defaultOptions = CodecOptions{
+	defaultOptions = Options{
 		FieldParser:    fieldParser{defaultTag, false},
 		FloatPrecision: 6,
 		OmitMethod:     defaultOmitMethod,
@@ -50,11 +50,11 @@ var (
 )
 
 type codec interface {
-	encoder
-	decoder
+	marshaler
+	unmarshaler
 }
 
-func newCodec(typ reflect.Type, options CodecOptions) (codec, error) {
+func newCodec(typ reflect.Type, options Options) (codec, error) {
 	if typ == nil {
 		return nil, errInvalidType
 	}
@@ -93,7 +93,7 @@ var defaultFieldParser = NewFieldParser(defaultTag, false)
 func DefaultFieldParser() FieldParser {
 	return defaultFieldParser
 }
-func DefaultOptions() CodecOptions {
+func DefaultOptions() Options {
 	return defaultOptions
 }
 
@@ -132,15 +132,15 @@ type stringCodec struct{}
 
 var _ codec = stringCodec{}
 
-func (stringCodec) decode(v reflect.Value, n *njson.Node) (err error) {
+func (stringCodec) unmarshal(v reflect.Value, n *njson.Node) (err error) {
 	s := n.Unescaped()
 	v.SetString(s)
 	return
 }
 
-func (stringCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
+func (stringCodec) marshal(b []byte, v reflect.Value) ([]byte, error) {
 	b = append(b, delimString)
-	b = njson.EscapeString(b, v.String())
+	b = njson.AppendEscaped(b, v.String())
 	b = append(b, delimString)
 	return b, nil
 }
@@ -149,7 +149,7 @@ type boolCodec struct{}
 
 var _ codec = boolCodec{}
 
-func (boolCodec) decode(v reflect.Value, n *njson.Node) (err error) {
+func (boolCodec) unmarshal(v reflect.Value, n *njson.Node) (err error) {
 	if b, ok := n.ToBool(); ok {
 		v.SetBool(b)
 		return nil
@@ -157,7 +157,7 @@ func (boolCodec) decode(v reflect.Value, n *njson.Node) (err error) {
 	return n.TypeError(njson.TypeBoolean)
 }
 
-func (boolCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
+func (boolCodec) marshal(b []byte, v reflect.Value) ([]byte, error) {
 	if v.Bool() {
 		return append(b, strTrue...), nil
 	}
@@ -168,15 +168,15 @@ type uintCodec struct{}
 
 var _ codec = uintCodec{}
 
-func (uintCodec) decode(v reflect.Value, n *njson.Node) (err error) {
+func (uintCodec) unmarshal(v reflect.Value, n *njson.Node) (err error) {
 	if u, ok := n.ToUint(); ok {
 		v.SetUint(u)
 		return nil
 	}
-	return errInvalidNodeType
+	return n.TypeError(njson.TypeNumber)
 }
 
-func (uintCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
+func (uintCodec) marshal(b []byte, v reflect.Value) ([]byte, error) {
 	return strconv.AppendUint(b, v.Uint(), 10), nil
 }
 
@@ -184,15 +184,15 @@ type intCodec struct{}
 
 var _ codec = intCodec{}
 
-func (intCodec) decode(v reflect.Value, n *njson.Node) (err error) {
+func (intCodec) unmarshal(v reflect.Value, n *njson.Node) (err error) {
 	if i, ok := n.ToInt(); ok {
 		v.SetInt(i)
 		return nil
 	}
-	return errInvalidNodeType
+	return n.TypeError(njson.TypeNumber)
 }
 
-func (intCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
+func (intCodec) marshal(b []byte, v reflect.Value) ([]byte, error) {
 	return strconv.AppendInt(b, v.Int(), 10), nil
 }
 
@@ -200,25 +200,25 @@ type floatCodec struct{ precision int }
 
 var _ codec = floatCodec{}
 
-func (c floatCodec) encode(out []byte, v reflect.Value) ([]byte, error) {
+func (c floatCodec) marshal(out []byte, v reflect.Value) ([]byte, error) {
 	return strconv.AppendFloat(out, v.Float(), 'f', c.precision, 64), nil
 }
 
-func (floatCodec) decode(v reflect.Value, n *njson.Node) (err error) {
+func (floatCodec) unmarshal(v reflect.Value, n *njson.Node) (err error) {
 	if f, ok := n.ToFloat(); ok {
 		v.SetFloat(f)
 		return nil
 	}
-	return errInvalidNodeType
+	return n.TypeError(njson.TypeNumber)
 }
 
 type interfaceCodec struct {
-	options CodecOptions
+	options Options
 }
 
 var _ codec = interfaceCodec{}
 
-func (interfaceCodec) decode(v reflect.Value, n *njson.Node) error {
+func (interfaceCodec) unmarshal(v reflect.Value, n *njson.Node) error {
 	if !v.CanAddr() {
 		return errInvalidValueType
 	}
@@ -227,75 +227,56 @@ func (interfaceCodec) decode(v reflect.Value, n *njson.Node) error {
 		*xx = x
 		return nil
 	}
-	return errInvalidNodeType
+	return n.TypeError(njson.TypeAnyValue)
 }
 
-func (c interfaceCodec) Encode(out []byte, x interface{}) ([]byte, error) {
+func (c interfaceCodec) MarshalTo(out []byte, x interface{}) ([]byte, error) {
 	if x == nil {
 		return append(out, strNull...), nil
 	}
-	return c.encode(out, reflect.ValueOf(x))
+	return c.marshal(out, reflect.ValueOf(x))
 }
 
-func (c interfaceCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
+func (c interfaceCodec) marshal(b []byte, v reflect.Value) ([]byte, error) {
 	if v.IsNil() {
 		return append(b, strNull...), nil
 	}
 	return MarshalTo(b, v.Interface())
-	// switch v = v.Elem(); v.Kind() {
-	// case reflect.String:
-	// 	b = append(b, delimString)
-	// 	b = njson.EscapeString(b, v.String())
-	// 	b = append(b, delimString)
-	// case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-	// 	b = strconv.AppendInt(b, v.Int(), 10)
-	// case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-	// 	b = strconv.AppendUint(b, v.Uint(), 10)
-	// case reflect.Bool:
-	// 	b = strconv.AppendBool(b, v.Bool())
-	// default:
-	// 	enc, err := cachedEncoder(v.Type(), c.options)
-	// 	if err != nil {
-	// 		return b, err
-	// 	}
-	// 	return enc.encode(b, v)
-	// }
-	// return b, nil
-
 }
 
-func (d interfaceCodec) DecodeString(x interface{}, src string) (err error) {
-	p := parsePool.Get().(*parsePair)
+func (d interfaceCodec) UnmarshalFromString(x interface{}, src string) (err error) {
+	p := njson.BlankDocument()
 	p.Reset()
-	if _, err = p.Parse(src, &p.Document); err == nil {
-		err = d.Decode(x, p.Get(0))
+	root, err := p.Parse(src)
+	if err == nil {
+		err = d.Unmarshal(x, root)
 	}
-	parsePool.Put(p)
+	p.Close()
 	return
 }
 
-func (interfaceCodec) Decode(x interface{}, n *njson.Node) error {
+func (interfaceCodec) Unmarshal(x interface{}, n *njson.Node) error {
 	if x, ok := x.(*interface{}); ok {
 		if *x, ok = n.ToInterface(); !ok {
-			return errInvalidNodeType
+			return n.TypeError(njson.TypeAnyValue)
 		}
 		return nil
 	}
-	return errInvalidValueType
+	return n.TypeError(njson.TypeAnyValue)
 }
 
 type textCodec struct{}
 
 var _ codec = textCodec{}
 
-func (textCodec) decode(v reflect.Value, n *njson.Node) error {
-	if n.IsQuoted() {
+func (textCodec) unmarshal(v reflect.Value, n *njson.Node) error {
+	if n.IsString() {
 		return v.Interface().(encoding.TextUnmarshaler).UnmarshalText(n.UnescapedBytes())
 	}
-	return errInvalidNodeType
+	return n.TypeError(njson.TypeString)
 }
 
-func (textCodec) encode(out []byte, v reflect.Value) (text []byte, err error) {
+func (textCodec) marshal(out []byte, v reflect.Value) (text []byte, err error) {
 	text, err = v.Interface().(encoding.TextMarshaler).MarshalText()
 	if err == nil {
 		out = append(out, text...)
@@ -305,21 +286,21 @@ func (textCodec) encode(out []byte, v reflect.Value) (text []byte, err error) {
 
 type mapCodec struct {
 	typ        reflect.Type
-	keyDecoder decoder
+	keyDecoder unmarshaler
 	keyZero    reflect.Value
 	valZero    reflect.Value
-	decoder    decoder
-	encoder    encoder
+	decoder    unmarshaler
+	encoder    marshaler
 }
 
 var _ codec = (*mapCodec)(nil)
 
-func newMapCodec(typ reflect.Type, options CodecOptions) (*mapCodec, error) {
+func newMapCodec(typ reflect.Type, options Options) (*mapCodec, error) {
 	if typ.Kind() != reflect.Map {
 		return nil, errInvalidType
 	}
 
-	var keys decoder
+	var keys unmarshaler
 	if typ.Key().Implements(typTextUnmarshaler) {
 		keys = textCodec{}
 	} else if typ.Key().Kind() == reflect.String {
@@ -327,11 +308,11 @@ func newMapCodec(typ reflect.Type, options CodecOptions) (*mapCodec, error) {
 	} else {
 		return nil, errInvalidType
 	}
-	dec, err := newDecoder(typ.Elem(), options)
+	dec, err := newUnmarshaler(typ.Elem(), options)
 	if err != nil {
 		return nil, err
 	}
-	enc, err := newEncoder(typ.Elem(), options)
+	enc, err := newMarshaler(typ.Elem(), options)
 	if err != nil {
 		return nil, err
 	}
@@ -345,7 +326,7 @@ func newMapCodec(typ reflect.Type, options CodecOptions) (*mapCodec, error) {
 	}, nil
 }
 
-func (d *mapCodec) encode(out []byte, v reflect.Value) ([]byte, error) {
+func (d *mapCodec) marshal(out []byte, v reflect.Value) ([]byte, error) {
 	if v.IsNil() {
 		return append(out, strNull...), nil
 	}
@@ -358,7 +339,7 @@ func (d *mapCodec) encode(out []byte, v reflect.Value) ([]byte, error) {
 		out = append(out, delimString)
 		out = append(out, v.String()...)
 		out = append(out, delimString, delimNameSeparator)
-		out, err = d.encoder.encode(out, v.MapIndex(key))
+		out, err = d.encoder.marshal(out, v.MapIndex(key))
 		if err != nil {
 			return out, err
 		}
@@ -368,7 +349,7 @@ func (d *mapCodec) encode(out []byte, v reflect.Value) ([]byte, error) {
 
 }
 
-func (d *mapCodec) decode(v reflect.Value, n *njson.Node) (err error) {
+func (d *mapCodec) unmarshal(v reflect.Value, n *njson.Node) (err error) {
 	switch n.Type() {
 	case njson.TypeNull:
 		return
@@ -377,12 +358,12 @@ func (d *mapCodec) decode(v reflect.Value, n *njson.Node) (err error) {
 		val := reflect.New(d.typ.Elem()).Elem()
 		for n = n.Value(); n != nil; n = n.Next() {
 			key.Set(d.keyZero)
-			err = d.keyDecoder.decode(key, n)
+			err = d.keyDecoder.unmarshal(key, n)
 			if err != nil {
 				return
 			}
 			val.Set(d.valZero)
-			err = d.decoder.decode(val, n.Value())
+			err = d.decoder.unmarshal(val, n.Value())
 			if err != nil {
 				return
 			}
@@ -390,25 +371,25 @@ func (d *mapCodec) decode(v reflect.Value, n *njson.Node) (err error) {
 		}
 		return
 	default:
-		return errInvalidNodeType
+		return n.TypeError(njson.TypeObject | njson.TypeNull)
 	}
 }
 
 type ptrCodec struct {
-	decoder decoder
-	encoder encoder
+	decoder unmarshaler
+	encoder marshaler
 	zero    reflect.Value
 	typ     reflect.Type
 }
 
 var _ codec = (*ptrCodec)(nil)
 
-func newPtrCodec(typ reflect.Type, options CodecOptions) (*ptrCodec, error) {
-	dec, err := newDecoder(typ.Elem(), options)
+func newPtrCodec(typ reflect.Type, options Options) (*ptrCodec, error) {
+	dec, err := newUnmarshaler(typ.Elem(), options)
 	if err != nil {
 		return nil, err
 	}
-	enc, err := newEncoder(typ.Elem(), options)
+	enc, err := newMarshaler(typ.Elem(), options)
 	if err != nil {
 		return nil, err
 	}
@@ -420,14 +401,14 @@ func newPtrCodec(typ reflect.Type, options CodecOptions) (*ptrCodec, error) {
 	}, nil
 }
 
-func (d *ptrCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
+func (d *ptrCodec) marshal(b []byte, v reflect.Value) ([]byte, error) {
 	if v.IsNil() {
 		return append(b, strNull...), nil
 	}
-	return d.encoder.encode(b, v.Elem())
+	return d.encoder.marshal(b, v.Elem())
 }
 
-func (d *ptrCodec) decode(v reflect.Value, n *njson.Node) error {
+func (d *ptrCodec) unmarshal(v reflect.Value, n *njson.Node) error {
 	switch n.Type() {
 	case njson.TypeNull:
 		v.Set(d.zero)
@@ -436,24 +417,24 @@ func (d *ptrCodec) decode(v reflect.Value, n *njson.Node) error {
 		if v.IsNil() {
 			v.Set(reflect.New(v.Type().Elem()))
 		}
-		return d.decoder.decode(v.Elem(), n)
+		return d.decoder.unmarshal(v.Elem(), n)
 	}
 }
 
 type sliceCodec struct {
 	typ     reflect.Type
-	decoder decoder
-	encoder encoder
+	decoder unmarshaler
+	encoder marshaler
 }
 
 var _ codec = (*sliceCodec)(nil)
 
-func newSliceCodec(typ reflect.Type, options CodecOptions) (*sliceCodec, error) {
-	dec, err := newDecoder(typ.Elem(), options)
+func newSliceCodec(typ reflect.Type, options Options) (*sliceCodec, error) {
+	dec, err := newUnmarshaler(typ.Elem(), options)
 	if err != nil {
 		return nil, err
 	}
-	enc, err := newEncoder(typ.Elem(), options)
+	enc, err := newMarshaler(typ.Elem(), options)
 	if err != nil {
 		return nil, err
 	}
@@ -464,7 +445,7 @@ func newSliceCodec(typ reflect.Type, options CodecOptions) (*sliceCodec, error) 
 	}, nil
 }
 
-func (d sliceCodec) encode(out []byte, v reflect.Value) ([]byte, error) {
+func (d sliceCodec) marshal(out []byte, v reflect.Value) ([]byte, error) {
 	out = append(out, delimBeginArray)
 	if !v.IsNil() {
 		var (
@@ -476,7 +457,7 @@ func (d sliceCodec) encode(out []byte, v reflect.Value) ([]byte, error) {
 			if i > 0 {
 				out = append(out, delimValueSeparator)
 			}
-			out, err = d.encoder.encode(out, v.Index(i))
+			out, err = d.encoder.marshal(out, v.Index(i))
 			if err != nil {
 				return out, err
 			}
@@ -486,7 +467,7 @@ func (d sliceCodec) encode(out []byte, v reflect.Value) ([]byte, error) {
 	return out, nil
 }
 
-func (d sliceCodec) decode(v reflect.Value, n *njson.Node) (err error) {
+func (d sliceCodec) unmarshal(v reflect.Value, n *njson.Node) (err error) {
 	switch n.Type() {
 	case njson.TypeNull:
 		if !v.IsNil() {
@@ -501,14 +482,15 @@ func (d sliceCodec) decode(v reflect.Value, n *njson.Node) (err error) {
 		}
 
 		for i, next := 0, n.Value(); next != nil && i < size; i, next = i+1, next.Next() {
-			err = d.decoder.decode(v.Index(i), next)
+			err = d.decoder.unmarshal(v.Index(i), next)
 			if err != nil {
 				v.SetLen(i)
 				break
 			}
 		}
 	default:
-		return errInvalidNodeType
+		return n.TypeError(njson.TypeArray | njson.TypeNull)
+
 	}
 	return nil
 }

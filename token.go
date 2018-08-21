@@ -7,12 +7,12 @@ import (
 	"strconv"
 )
 
-// Token is an intermediate JSON representation that allows DOM traversal of JSON documents
+// Token is a JSON token
 type Token struct {
-	info ValueInfo
-	size uint16
-	src  string
-	num  uint64
+	info  ValueInfo
+	extra uint16 // Used for unescaped token index in keys/strings
+	src   string
+	num   uint64
 }
 
 type Type byte
@@ -27,7 +27,8 @@ const (
 	TypeObject
 	TypeKey
 	TypeAnyValue = TypeString | TypeNumber | TypeBoolean | TypeObject | TypeArray | TypeNull
-	typeSourceOK = TypeString | TypeNumber | TypeBoolean | TypeNull
+	TypeSized    = TypeObject | TypeArray
+	// typeSourceOK = TypeString | TypeNumber | TypeBoolean | TypeNull
 )
 
 func (t Type) Types() (types []Type) {
@@ -45,14 +46,6 @@ func (t Type) Types() (types []Type) {
 	}
 	return
 
-}
-
-func (t Type) hasSource() bool {
-	return t&typeSourceOK != 0
-}
-
-func (t Type) v() ValueInfo {
-	return ValueInfo(t)
 }
 
 const (
@@ -80,19 +73,6 @@ func (t Type) String() string {
 		return "Boolean"
 	default:
 		return "InvalidToken"
-	}
-}
-
-func (t *Token) unquote() (s string) {
-	return t.src[1 : len(t.src)-1]
-}
-
-func (t *Token) Len() int {
-	switch t.Type() {
-	case TypeArray, TypeObject:
-		return int(t.size)
-	default:
-		return 0
 	}
 }
 
@@ -172,14 +152,6 @@ func (t *Token) ToFloat() (float64, bool) {
 	}
 }
 
-// SizeHint returns a size hint for array and object elements.
-// The maximum value for a hint is math.MaxUint16 - 1
-// It's best to use the Len() method that handles this corner case
-// by traversing the list of tokens.
-func (t *Token) SizeHint() uint16 {
-	return t.size
-}
-
 var (
 	uNaN = math.Float64bits(math.NaN())
 	fNaN = math.NaN()
@@ -189,41 +161,42 @@ var (
 	errInvalidJSONString = errors.New("Invalid JSON string")
 )
 
-func (t *Token) ToJSON() string {
+// Escaped return the JSON escaped string form.
+func (t *Token) Escaped() string {
 	return t.src
 }
 func (t *Token) Bytes() []byte {
 	return s2b(t.src)
 }
 
-func hexByte(b []byte, pos int) (c byte) {
-	return ToHexDigit(b[pos])<<4 | ToHexDigit(b[pos])
-}
+// func hexByte(b []byte, pos int) (c byte) {
+// 	return ToHexDigit(b[pos])<<4 | ToHexDigit(b[pos])
+// }
 
-func hexDigit(c byte) (byte, bool) {
-	switch {
-	case '0' <= c && c <= '9':
-		return (c - '0'), true
-	case 'a' <= c && c <= 'f':
-		return (c - 'a'), true
-	case 'A' <= c && c <= 'F':
-		return (c - 'A'), true
-	default:
-		return c, false
-	}
-}
+// func hexDigit(c byte) (byte, bool) {
+// 	switch {
+// 	case '0' <= c && c <= '9':
+// 		return (c - '0'), true
+// 	case 'a' <= c && c <= 'f':
+// 		return (c - 'a'), true
+// 	case 'A' <= c && c <= 'F':
+// 		return (c - 'A'), true
+// 	default:
+// 		return c, false
+// 	}
+// }
 
-func equalStrBytes(s string, b []byte) bool {
-	if len(s) == len(b) {
-		for i := 0; i < len(s); i++ {
-			if s[i] != b[i] {
-				return false
-			}
-		}
-		return true
-	}
-	return false
-}
+// func equalStrBytes(s string, b []byte) bool {
+// 	if len(s) == len(b) {
+// 		for i := 0; i < len(s); i++ {
+// 			if s[i] != b[i] {
+// 				return false
+// 			}
+// 		}
+// 		return true
+// 	}
+// 	return false
+// }
 
 func (t *Token) Type() Type {
 	if t == nil {
@@ -232,31 +205,7 @@ func (t *Token) Type() Type {
 	return t.info.Type()
 }
 
-func (t *Token) Unescaped() string {
-	if t.info.IsQuoted() {
-		if t.info&ValueUnescaped == ValueUnescaped {
-			buf := make([]byte, len(t.src))
-			buf = buf[:Unescape(buf, t.unquote())]
-			return b2s(buf)
-		}
-		return t.unquote()
-	}
-	return t.src
-}
-
-func (t *Token) UnescapedBytes() (buf []byte) {
-	if t.info.IsQuoted() {
-		if t.info&ValueUnescaped == ValueUnescaped {
-			buf = make([]byte, len(t.src))
-			buf = buf[:Unescape(buf, t.unquote())]
-		} else {
-			buf = s2b(t.unquote())
-		}
-		return
-	}
-	return s2b(t.src)
-}
-
+// ValueInfo holds type and value information for a Token
 type ValueInfo uint16
 
 // Number flags
@@ -294,10 +243,10 @@ func (i ValueInfo) HasZeroDecimal() bool {
 func (i ValueInfo) Type() Type {
 	return Type(i)
 }
-func (i ValueInfo) IsQuoted() bool {
-	return i&ValueInfo(TypeString|TypeKey) != 0
-}
+
+const needsEscape = ValueUnescaped | ValueInfo(TypeString) | ValueInfo(TypeKey)
 
 func (i ValueInfo) NeedsEscape() bool {
-	return (i&ValueUnescaped == ValueUnescaped) && i.IsQuoted()
+	// This works because type bits are on the right side :)
+	return (i & needsEscape) > ValueUnescaped
 }
