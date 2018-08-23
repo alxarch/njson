@@ -16,7 +16,7 @@ type Options struct {
 	OmitMethod     string
 }
 
-func (o Options) ParseField(f reflect.StructField) (name string, omiempty, ok bool) {
+func (o Options) parseField(f reflect.StructField) (name string, omiempty, ok bool) {
 	if o.FieldParser == nil {
 		return defaultFieldParser.ParseField(f)
 	}

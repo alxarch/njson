@@ -11,9 +11,11 @@ import (
 )
 
 var (
-	typNodeUnmarshaler = reflect.TypeOf((*njson.Unmarshaler)(nil)).Elem()
-	typJSONUnmarshaler = reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()
-	typTextUnmarshaler = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
+	typNodeUnmarshaler       = reflect.TypeOf((*njson.Unmarshaler)(nil)).Elem()
+	typNodeUnmarshalerMethod = typNodeUnmarshaler.Method(0).Type
+	njsonUnmarshalMethod     = typNodeUnmarshalerMethod.Name
+	typJSONUnmarshaler       = reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()
+	typTextUnmarshaler       = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 )
 
 // Unmarshaler is a type specific decoder
@@ -170,7 +172,7 @@ func newUnmarshaler(typ reflect.Type, options Options) (unmarshaler, error) {
 	}
 	switch {
 	case typ.Implements(typNodeUnmarshaler):
-		return jsonUnmarshaler{}, nil
+		return njsonUnmarshaler{}, nil
 	case typ.Implements(typJSONUnmarshaler):
 		return jsonUnmarshaler{}, nil
 	case typ.Implements(typTextUnmarshaler):

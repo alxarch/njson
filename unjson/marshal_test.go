@@ -28,7 +28,7 @@ func TestMarshal(t *testing.T) {
 
 func TestMarshalPtr(t *testing.T) {
 	v := struct {
-		Foo string
+		Foo string `json:"foo"`
 		Bar string
 	}{"foo", "bar"}
 	data, err := unjson.MarshalTo(nil, &v)
@@ -37,7 +37,7 @@ func TestMarshalPtr(t *testing.T) {
 		return
 	}
 	switch string(data) {
-	case `{"Bar":"bar","Foo":"foo"}`, `{"Foo":"foo","Bar":"bar"}`:
+	case `{"Bar":"bar","foo":"foo"}`, `{"foo":"foo","Bar":"bar"}`:
 	default:
 		expect, _ := json.Marshal(v)
 		t.Errorf("Invalid marshal:\nactual: %s\nexpect: %s", data, expect)

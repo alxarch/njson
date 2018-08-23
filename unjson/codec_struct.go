@@ -69,7 +69,7 @@ func (d *structCodec) merge(typ reflect.Type, options Options, depth []int) erro
 			continue
 		}
 		field := typ.Field(i)
-		tag, omitempty, tagged := options.ParseField(field)
+		tag, omitempty, tagged := options.parseField(field)
 		if tag == "-" {
 			continue
 		}
@@ -98,18 +98,18 @@ func (d *structCodec) merge(typ reflect.Type, options Options, depth []int) erro
 		if ff, duplicate := d.fields[tag]; duplicate && cmpIndex(ff.index, index) != -1 {
 			continue
 		}
-		dec, err := newUnmarshaler(field.Type, options)
+		u, err := newUnmarshaler(field.Type, options)
 		if err != nil {
 			return err
 		}
-		enc, err := newMarshaler(field.Type, options)
+		m, err := newMarshaler(field.Type, options)
 		if err != nil {
 			return err
 		}
 		omit := omitNever
 		if omitempty {
-			if enc, ok := enc.(*structCodec); ok {
-				omit = enc.omit
+			if m, ok := m.(*structCodec); ok {
+				omit = m.omit
 			} else {
 				omit = newOmiter(field.Type, options.OmitMethod)
 			}
@@ -117,8 +117,8 @@ func (d *structCodec) merge(typ reflect.Type, options Options, depth []int) erro
 		d.fields[tag] = fieldCodec{
 			index:       index,
 			n:           len(index),
-			unmarshaler: dec,
-			marshaler:   enc,
+			unmarshaler: u,
+			marshaler:   m,
 			omit:        omit,
 		}
 	}
