@@ -10,9 +10,8 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
-	"go/importer"
+	"go/format"
 	"go/parser"
-	"go/printer"
 	"go/token"
 	"go/types"
 	"io"
@@ -20,12 +19,13 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
-	"github.com/iancoleman/strcase"
-
+	"github.com/alxarch/meta"
 	"github.com/alxarch/njson"
+	"github.com/alxarch/njson/njsonutil"
 )
 
 // TODO: handle json.Unmarshaler
@@ -36,43 +36,11 @@ import (
 
 // Generator is a source code generator for njson unmarshal methods.
 type Generator struct {
+	*meta.Package
 	options
-	pkg     *types.Package
+	test    bool
 	buffer  bytes.Buffer
 	imports map[string]*types.Package
-	files   []*ast.File
-	info    types.Info
-}
-
-// ResolveType returns the underlying unnamed type.
-func ResolveType(typ types.Type) types.Type {
-	for typ != nil {
-		if _, ok := typ.(*types.Named); ok {
-			typ = typ.Underlying()
-		} else {
-			break
-		}
-	}
-	return typ
-}
-
-// LookupType looks up a named type in the package's definitions.
-func (g *Generator) LookupType(name string) (t *types.Named) {
-	for _, def := range g.info.Defs {
-		if def == nil {
-			continue
-		}
-		typ := def.Type()
-		if typ == nil {
-			continue
-		}
-		if typ, ok := typ.(*types.Named); ok {
-			if obj := typ.Obj(); obj != nil && obj.Name() == name {
-				return typ
-			}
-		}
-	}
-	return nil
 }
 
 // StructField describes a struct's field.
@@ -128,26 +96,11 @@ func fieldTypeName(t types.Type) string {
 
 // TypeName resolves a type's local name in the scope of the generator's package.
 func (g *Generator) TypeName(t types.Type) string {
-	name, pkg := g.resolveTypeName(t)
-	if pkg != nil {
-		g.Import(pkg)
+	pkg, name, ok := g.QName(t)
+	if ok && pkg != "" {
+		g.Import(g.FindImport(pkg))
 	}
 	return name
-}
-
-func (g *Generator) resolveTypeName(t types.Type) (string, *types.Package) {
-	switch t := t.(type) {
-	case *types.Named:
-		pkg := t.Obj().Pkg()
-		if pkg == g.pkg {
-			return t.Obj().Name(), nil
-		}
-		return t.String(), pkg
-	case *types.Pointer:
-		return g.resolveTypeName(t.Elem())
-	default:
-		return t.String(), nil
-	}
 }
 
 func (p FieldPath) String() string {
@@ -202,12 +155,12 @@ func (g *Generator) MergeFields(fields StructFields, s *types.Struct, path Field
 
 		path = append(path[:depth], FieldIndex{i, field.Type(), field.Name()})
 		if !tagged && field.Anonymous() {
-			t := ResolveType(field.Type())
+			t := meta.Resolve(field.Type())
 			if ptr, isPointer := t.(*types.Pointer); isPointer {
 				t = ptr.Elem()
 			}
 			name = g.JSONFieldName(fieldTypeName(t))
-			tt := ResolveType(t)
+			tt := meta.Resolve(t)
 			if tt, ok := tt.(*types.Struct); ok {
 				// embedded struct
 				if err := g.MergeFields(fields, tt, path); err != nil {
@@ -319,7 +272,7 @@ func (g *Generator) EnsurePath(path FieldPath) (code string) {
 	if last := len(path) - 1; last > 0 {
 		for i := 0; i < last; i++ {
 			f := &path[i]
-			t := ResolveType(f.Type)
+			t := meta.Resolve(f.Type)
 			if t == nil {
 				return
 			}
@@ -386,7 +339,8 @@ if !n.IsObject() {
 }
 for k := n.Value(); k != nil; k = k.Next() {
 	n := k.Value()
-	switch k.Escaped() {`)
+	switch k.Escaped() {
+`)
 	for name, field := range fields {
 		body, err := g.TypeUnmarshaler(field.Type())
 		if err != nil {
@@ -410,7 +364,7 @@ for k := n.Value(); k != nil; k = k.Next() {
 
 // CanUnmarshal returns if can be unmarshaled
 func CanUnmarshal(t types.Type) bool {
-	tt := ResolveType(t)
+	tt := meta.Resolve(t)
 	if tt == nil {
 		return false
 	}
@@ -455,7 +409,7 @@ func (e typeError) Error() string {
 
 // TypeUnmarshaler returns the code block for unmarshaling a type.
 func (g *Generator) TypeUnmarshaler(t types.Type) (code string, err error) {
-	typ := ResolveType(t)
+	typ := meta.Resolve(t)
 	switch typ := typ.(type) {
 	case *types.Map:
 		return g.MapUnmarshaler(t, typ)
@@ -479,42 +433,28 @@ func (g *Generator) TypeUnmarshaler(t types.Type) (code string, err error) {
 
 // AllStructs returns all structs from the package.
 func (g *Generator) AllStructs() (all []string) {
-	for _, def := range g.info.Defs {
-		if def == nil {
-			continue
-		}
-		typ := def.Type()
-		if typ == nil {
-			continue
-		}
-		if typ, ok := typ.(*types.Named); ok {
-			obj := typ.Obj()
-			if obj == nil || obj.Pkg() != g.pkg {
-				continue
-			}
-			if t := ResolveType(typ); t != nil {
-				if _, ok := t.(*types.Struct); ok {
-					all = append(all, typ.Obj().Name())
-				}
-			}
+	types := g.Package.DefinedTypes(meta.IsStruct)
+	for _, typ := range types {
+		if _, name, _ := meta.QName(typ); name != "" {
+			all = append(all, name)
 		}
 	}
 	return
+}
+
+var (
+	unmarshalMethodName = reflect.TypeOf((*njson.Unmarshaler)(nil)).Elem().Method(0).Name
+)
+
+// UnmarshalMethodName is the default name for the unmarshal function
+func UnmarshalMethodName() string {
+	return unmarshalMethodName
 
 }
 
-// UnmarshalMethodName is the default name for the unmarshal function
-const UnmarshalMethodName = "UnmarshalNodeJSON"
-
 // UnmarshalMethodName returns the name for the unmarshal method.
 func (g *Generator) UnmarshalMethodName() (m string) {
-	m = UnmarshalMethodName
-	switch g.TagKey() {
-	case "", DefaultTagKey:
-	default:
-		m += strcase.ToCamel(g.TagKey())
-	}
-	return m
+	return njsonutil.TaggedMethodName(unmarshalMethodName, g.TagKey())
 }
 
 // WriteUnmarshaler writes an unmarshaler method for a type in the generator's buffer.
@@ -524,84 +464,92 @@ func (g *Generator) WriteUnmarshaler(typeName string) (err error) {
 		return
 	}
 	g.Import(njsonPkg)
-	_, err = g.buffer.WriteString(code)
+	_, err = g.buffer.Write(code)
+	return
+}
+
+// UnmarshalerTest generates an unmarshaler method for a type
+func (g *Generator) UnmarshalerTest(typeName string) (typ *types.Named, code string, err error) {
+	typ, _ = g.LookupType(typeName)
+	if typ == nil {
+		return nil, "", fmt.Errorf("Type %s not found", typeName)
+	}
+
+	vars := g.DefinedVars(meta.AssignableTo(typ))
+	sliceVars := g.DefinedVars(meta.AssignableTo(types.NewSlice(typ)))
+	if len(vars) == 0 && len(sliceVars) == 0 {
+		return
+	}
+	method := g.UnmarshalMethodName()
+	names := []string{}
+	for _, v := range vars {
+		names = append(names, v.Name)
+	}
+	appends := ""
+	for _, v := range sliceVars {
+		appends += fmt.Sprintf("t_ = append(t_, []%s(%s)...)\n", typeName, v.Name)
+	}
+
+	code += fmt.Sprintf(`
+func Test%[1]s_%[2]s(t *testing.T) {
+	t_ := []%[1]s{%[3]s}
+	%[4]s
+	for _, v := range t_ {
+		t.Run("%[1]s.%[2]s", njsonutil.UnmarshalTest(v))
+	}
+}`, typeName, method, strings.Join(names, ","), appends)
+
 	return
 }
 
 // Unmarshaler generates an unmarshaler method for a type
-func (g *Generator) Unmarshaler(typeName string) (typ *types.Named, code string, err error) {
-	typ = g.LookupType(typeName)
+func (g *Generator) Unmarshaler(typeName string) (typ *types.Named, code []byte, err error) {
+	typ, _ = g.LookupType(typeName)
 	if typ == nil {
-		return nil, "", fmt.Errorf("Type %s not found", typeName)
+		return nil, nil, fmt.Errorf("Type %s not found", typeName)
 	}
 	receiverName := strings.ToLower(typeName[:1])
 	method := g.UnmarshalMethodName()
 	body, err := g.TypeUnmarshaler(typ)
 	if err != nil {
-		return typ, "", err
+		return
 	}
-	code = fmt.Sprintf(`
+	code = []byte(fmt.Sprintf(`
 		func (%[1]s *%[2]s) %[3]s(n *njson.Node) error {
 			if !n.IsValue() {
 				return n.TypeError(njson.TypeAnyValue)
+			}
+			if n.IsNull() {
+				return nil
 			}
 			r := %[1]s
 			%[4]s
 			return nil
 		}
-	`, receiverName, typeName, method, body)
-
+	`, receiverName, typeName, method, body))
+	code, err = format.Source(code)
 	return
 }
 
-var injectPackages = map[string]string{
-	"encoding/json": "encoding/json",
-}
-
-type fileFilter func(os.FileInfo) bool
-
-func newGenerator(path, targetPkg string, filter fileFilter) (g *Generator, err error) {
-	fset := token.NewFileSet()
+func newGenerator(path, targetPkg string, filter func(os.FileInfo) bool) (g *Generator, err error) {
 	mode := parser.ParseComments | parser.DeclarationErrors
-	astPkgs, err := parser.ParseDir(fset, path, filter, mode)
+	p, err := meta.ParsePackage(targetPkg, path, filter, mode, func(f *ast.File) bool {
+		return !isGeneratedByNJSON(f)
+	})
 	if err != nil {
-		return nil, err
-	}
-	pkg := astPkgs[targetPkg]
-	if pkg == nil {
-		return nil, fmt.Errorf("Target package %s not found in path", targetPkg)
+		return
 	}
 	g = new(Generator)
-	for _, f := range pkg.Files {
-		if !isGeneratedByNJSON(f) {
-			g.files = append(g.files, f)
-		}
-	}
+	g.Package = p
 	g.logger = log.New(ioutil.Discard, "", 0)
-	g.info = types.Info{
-		Defs: make(map[*ast.Ident]types.Object),
-	}
-	config := types.Config{
-		IgnoreFuncBodies: true,
-		FakeImportC:      true,
-		Importer:         importer.Default(),
-	}
-	g.pkg, err = config.Check(pkg.Name, fset, g.files, &g.info)
-	if err != nil {
-		return nil, err
-	}
 	return
-}
-
-func filterTestFiles(f os.FileInfo) bool {
-	return !strings.HasSuffix(f.Name(), "_test.go")
 }
 
 // New creates a new Generator for a package named targetPkg and parses the specified path.
 func New(path string, targetPkg string, options ...Option) (*Generator, error) {
-	var filter fileFilter
+	var filter func(os.FileInfo) bool
 	if !strings.HasSuffix(targetPkg, "_test") {
-		filter = filterTestFiles
+		filter = meta.IgnoreTestFiles
 	}
 	g, err := newGenerator(path, targetPkg, filter)
 	if err != nil {
@@ -612,12 +560,9 @@ func New(path string, targetPkg string, options ...Option) (*Generator, error) {
 	}
 	return g, nil
 }
-func (g *Generator) PkgName() string {
-	return g.pkg.Name()
-}
 
 func (g *Generator) Filename() (name string) {
-	name = g.PkgName()
+	name = g.Name()
 	if strings.HasSuffix(name, "_test") {
 		name = strings.TrimSuffix(name, "_test")
 		name = name + "_njson_test.go"
@@ -632,14 +577,6 @@ func (g *Generator) Filename() (name string) {
 func (g *Generator) Reset() {
 	g.buffer.Reset()
 	g.imports = nil
-}
-
-func inject(fset *token.FileSet, target, pkg string) (*ast.File, error) {
-	src := fmt.Sprintf(`package %s
-	import _ %q
-	`, target, pkg)
-	filename := fmt.Sprintf("njson/inject/%s.go", pkg)
-	return parser.ParseFile(fset, filename, src, 0)
 }
 
 // Import adds packages to import in the generated file
@@ -678,7 +615,8 @@ func (g *Generator) PrintTo(w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	return printer.Fprint(w, fset, astFile)
+	ast.SortImports(fset, astFile)
+	return format.Node(w, fset, astFile)
 }
 
 const (
@@ -686,12 +624,22 @@ const (
 	njsonPkgName = "njson"
 )
 
-var njsonPkg = types.NewPackage(njsonPkgPath, njsonPkgName)
+var (
+	njsonPkg = types.NewPackage(njsonPkgPath, njsonPkgName)
+	// njsonutilPkg = types.NewPackage(njsonPkgPath+"/njsonutil", "njsonutil")
+	// testingPkg   = types.NewPackage("testing", "testing")
+	// reflectPkg   = types.NewPackage("reflect", "reflect")
+	// jsonPkg      = types.NewPackage("encoding/json", "json")
+	// fmtPkg       = types.NewPackage("fmt", "fmt")
+	// stringsPkg   = types.NewPackage("strings", "strings")
+)
 
-const headerComment = `// Code generated by njson on %s; DO NOT EDIT.`
+const (
+	headerComment = `// Code generated by njson on %s; DO NOT EDIT.`
+)
 
 func isGeneratedByNJSON(f *ast.File) bool {
-	return len(f.Comments) > 0 && len(f.Comments[0].List) > 0 && f.Comments[0].List[0].Text == headerComment
+	return len(f.Comments) > 0 && strings.HasPrefix(f.Comments[0].Text(), "Code generated by njson")
 }
 
 // Header returns the header code for the generated file.
@@ -700,7 +648,7 @@ func (g *Generator) Header() string {
 	now := time.Now().In(time.UTC)
 	ts := now.Format(time.RFC1123)
 	h = append(h, fmt.Sprintf(headerComment, ts))
-	h = append(h, fmt.Sprintf("package %s", g.pkg.Name()))
+	h = append(h, fmt.Sprintf("package %s", g.Name()))
 
 	for path, pkg := range g.imports {
 		if filepath.Base(path) == pkg.Name() {

@@ -3,25 +3,19 @@ package generator_test
 import (
 	"testing"
 
-	"github.com/alxarch/njson"
+	"github.com/alxarch/njson/njsonutil"
 )
 
-//go:generate go run ../cmd/njson/njson.go -all -w generator_test
+//go:generate go run ../cmd/njson/njson.go -w generator_test ^Test
 
-type Foo struct {
+type TestFoo struct {
 	Bar string
 }
 
 func TestFooUnmarshal(t *testing.T) {
-	foo := Foo{}
-	d := njson.BlankDocument()
-	defer d.Close()
-	if n, err := d.Parse(`{"Bar": "baz"}`); err != nil {
-		t.Errorf("Unexpected parse error: %s", err)
-	} else if err := foo.UnmarshalNodeJSON(n); err != nil {
-		t.Errorf("Unexpected error: %s", err)
-	} else if foo.Bar != "baz" {
-		t.Errorf("Invalid unmarshal: %v", foo)
-	}
+	test := njsonutil.UnmarshalTest
+	t.Run("Bar Foo", test(TestFoo{}))
+	t.Run("Blank Foo", test(TestFoo{"Bar"}))
+	t.Run("Foo null input", test(TestFoo{}, njsonutil.Input([]byte(`null`))))
 
 }
