@@ -21,13 +21,14 @@ var (
 	onlyTagged   = flag.Bool("only-tagged", false, "Only use tagged fields.")
 	onlyExported = flag.Bool("only-exported", false, "Only use exported fields.")
 	// allStructs     = flag.Bool("all", false, "Generate methods for all defined structs in package.")
-	forceOmitEmpty = flag.Bool("omitempty", false, "Force omitempty on all fields.")
-	// generateMethods = flag.String("methods", "both", "Methods to generate (unmarshal|marshal|both).")
-	matchFieldNames = flag.String("match", ".*", "Regex for filtering by field name.")
-	caseTransform   = flag.String("case", "none", "Field name case transformation for untagged fields (none|snake|camel|lower).")
-	writeFile       = flag.Bool("w", false, `Write output to a file named "{pkgname}_njson.go".`)
-	debug           = flag.Bool("d", false, "Debug mode.")
-	tests           = flag.Bool("tests", false, "Write test methods.")
+	forceOmitEmpty    = flag.Bool("omitempty", false, "Force omitempty on all fields.")
+	generateAppend    = flag.Bool("append", false, "Generate AppendJSON methods.")
+	generateUnmarshal = flag.Bool("unmarshal", false, "Generate UnmarshalNodeJSON methods.")
+	matchFieldNames   = flag.String("match", ".*", "Regex for filtering by field name.")
+	caseTransform     = flag.String("case", "none", "Field name case transformation for untagged fields (none|snake|camel|lower).")
+	writeFile         = flag.Bool("w", false, `Write output to a file named "{pkgname}_njson.go".`)
+	debug             = flag.Bool("d", false, "Debug mode.")
+	// tests           = flag.Bool("tests", false, "Write test methods.")
 )
 
 func init() {
@@ -71,6 +72,10 @@ func main() {
 		}
 		options = append(options, generator.MatchFieldName(rx))
 	}
+	if *generateAppend == *generateUnmarshal {
+		*generateAppend = true
+		*generateUnmarshal = true
+	}
 
 	g, err := generator.New(*targetPath, targetPkg, options...)
 	if err != nil {
@@ -109,8 +114,15 @@ func main() {
 	// }
 
 	for _, typ := range types {
-		if err := g.WriteUnmarshaler(typ); err != nil {
-			logger.Fatal(err)
+		if *generateUnmarshal {
+			if err := g.WriteUnmarshaler(typ); err != nil {
+				logger.Fatal(err)
+			}
+		}
+		if *generateAppend {
+			if err := g.WriteAppender(typ); err != nil {
+				logger.Fatal(err)
+			}
 		}
 		// if t != nil {
 		// 	if err := t.WriteUnmarshalerTest(typ); err != nil {

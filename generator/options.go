@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/alxarch/meta"
+
 	"github.com/iancoleman/strcase"
 )
 
@@ -82,25 +84,35 @@ func (o *options) TagKey() string {
 	return o.tagKey
 }
 
-func (o *options) parseField(field *types.Var, tag string) (name string, omitempty, tagged, skip bool) {
-	if skip = !o.MatchField(field.Name()); skip {
+const (
+	paramOmitempty = "omitempty"
+)
+
+func (o *options) parseField(field *types.Var, tag string) (name string, t meta.Tag, ok bool) {
+	if ok = o != nil && field != nil; !ok {
 		return
 	}
-	if skip = o.onlyExported && !field.Exported(); skip {
+	name = meta.FieldName(field)
+	if ok = o.MatchField(name); !ok {
 		return
 	}
-	name, omitempty, tagged = ParseFieldTag(tag, o.TagKey())
-	if skip = o.onlyTagged && !tagged; skip {
+	if ok = !o.onlyExported || field.Exported(); !ok {
 		return
 	}
-	if skip = name == "-"; skip {
+	t, tagged := meta.ParseTag(tag, o.TagKey())
+	// name, omitempty, tagged = ParseFieldTag(tag, o.TagKey())
+	if ok = !o.onlyTagged || tagged; !ok {
 		return
 	}
-	if name == "" {
-		name = o.JSONFieldName(field.Name())
+	if ok = t.Name != "-"; !ok {
+		return
 	}
+	if t.Name == "" {
+		t.Name = o.JSONFieldName(name)
+	}
+
 	if o.forceOmitEmpty {
-		omitempty = true
+		t.Params = t.Params.With(paramOmitempty)
 	}
 	return
 }

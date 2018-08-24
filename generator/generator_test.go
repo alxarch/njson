@@ -6,16 +6,33 @@ import (
 	"github.com/alxarch/njson/njsonutil"
 )
 
-//go:generate go run ../cmd/njson/njson.go -w generator_test ^Test
+//go:generate go run ../cmd/njson/njson.go -w generator_test "_$"
 
-type TestFoo struct {
-	Bar string
+type Foo_ struct {
+	Bar string `json:"bar,omitempty"`
 }
 
 func TestFooUnmarshal(t *testing.T) {
 	test := njsonutil.UnmarshalTest
-	t.Run("Bar Foo", test(TestFoo{}))
-	t.Run("Blank Foo", test(TestFoo{"Bar"}))
-	t.Run("Foo null input", test(TestFoo{}, njsonutil.Input([]byte(`null`))))
+	t.Run("Bar Foo", test(Foo_{}))
+	t.Run("Blank Foo", test(Foo_{"Bar"}))
+	t.Run("Foo null input", test(Foo_{}, njsonutil.Input([]byte(`null`))))
+
+}
+
+type Coords struct {
+	Lat float64
+	Lon float64
+}
+
+type NamedCoords_ struct {
+	Coords
+	Name string `json:"name,omitempty"`
+}
+
+func TestNamedCoords(t *testing.T) {
+	test := njsonutil.UnmarshalTest
+	t.Run("Empty", test(NamedCoords_{}))
+	t.Run("All fields", test(NamedCoords_{Coords{1.2, 1.3}, "Foo"}))
 
 }

@@ -19,20 +19,16 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"time"
 
 	"github.com/alxarch/meta"
-	"github.com/alxarch/njson"
-	"github.com/alxarch/njson/njsonutil"
 )
 
 // TODO: handle json.Unmarshaler
 // TODO: handle njson.Unmarshaler
 // TODO: handle encoding.TextUnmarshaler
 // TODO: handle flag combinations (ie if tag key is not json don't use UnmarshalJSON)
-// TODO: generate AppendJSON([]byte) ([]byte, error) methods
 
 // Generator is a source code generator for njson unmarshal methods.
 type Generator struct {
@@ -43,362 +39,6 @@ type Generator struct {
 	imports map[string]*types.Package
 }
 
-// StructField describes a struct's field.
-type StructField struct {
-	*types.Var
-	NameJSON  string
-	OmitEmpty bool
-	Path      FieldPath
-}
-
-func (f *StructField) String() string {
-	return f.Var.String() + " " + f.Path.String()
-}
-
-// StructFields is a map of a struct's fields
-type StructFields map[string]StructField
-
-// Add adds a field to a field map handling duplicates.
-func (fields StructFields) Add(f *types.Var, name string, omitempty bool, path FieldPath) {
-	name = string(njson.AppendEscaped(nil, name))
-	_, duplicate := fields[name]
-	if duplicate && ComparePaths(fields[name].Path, path) == -1 {
-		// keep existing
-		return
-	}
-	fields[name] = StructField{f, name, omitempty, path.Copy()}
-}
-
-// FieldIndex is a part of the path of a field in a struct.
-type FieldIndex struct {
-	Index int
-	Type  types.Type
-	Name  string
-}
-
-func (i FieldIndex) String() string {
-	return i.Name
-}
-
-// FieldPath is the path of a field in a struct.
-type FieldPath []FieldIndex
-
-func fieldTypeName(t types.Type) string {
-	switch t := t.(type) {
-	case *types.Named:
-		return t.Obj().Name()
-	case *types.Pointer:
-		return fieldTypeName(t.Elem())
-	default:
-		return t.String()
-	}
-}
-
-// TypeName resolves a type's local name in the scope of the generator's package.
-func (g *Generator) TypeName(t types.Type) string {
-	pkg, name, ok := g.QName(t)
-	if ok && pkg != "" {
-		g.Import(g.FindImport(pkg))
-	}
-	return name
-}
-
-func (p FieldPath) String() string {
-	buf := make([]byte, 0, len(p)*16)
-	for i := range p {
-		buf = append(buf, '.')
-		buf = append(buf, p[i].Name...)
-	}
-	return string(buf)
-}
-
-// Copy creates a copy of a path.
-func (p FieldPath) Copy() FieldPath {
-	cp := make([]FieldIndex, len(p))
-	copy(cp, p)
-	return cp
-}
-
-// ComparePaths compares the paths of two fields.
-func ComparePaths(a, b FieldPath) int {
-	if len(a) < len(b) {
-		return -1
-	}
-	if len(b) < len(a) {
-		return 1
-	}
-	for i := range a {
-		if a[i].Index < b[i].Index {
-			return -1
-		}
-		if b[i].Index < a[i].Index {
-			return 1
-		}
-	}
-	return 0
-}
-
-// MergeFields merges a struct's fields to a field map.
-func (g *Generator) MergeFields(fields StructFields, s *types.Struct, path FieldPath) error {
-	if s == nil {
-		return nil
-	}
-
-	depth := len(path)
-
-	for i := 0; i < s.NumFields(); i++ {
-		field := s.Field(i)
-		name, omitempty, tagged, skip := g.parseField(field, s.Tag(i))
-		if skip {
-			continue
-		}
-
-		path = append(path[:depth], FieldIndex{i, field.Type(), field.Name()})
-		if !tagged && field.Anonymous() {
-			t := meta.Resolve(field.Type())
-			if ptr, isPointer := t.(*types.Pointer); isPointer {
-				t = ptr.Elem()
-			}
-			name = g.JSONFieldName(fieldTypeName(t))
-			tt := meta.Resolve(t)
-			if tt, ok := tt.(*types.Struct); ok {
-				// embedded struct
-				if err := g.MergeFields(fields, tt, path); err != nil {
-					return err
-				}
-				continue
-			}
-		}
-		if CanUnmarshal(field.Type()) {
-			fields.Add(field, name, omitempty, path)
-		}
-
-	}
-	return nil
-}
-
-// StructFields creates a fields map for a struct.
-func (g *Generator) StructFields(s *types.Struct, path FieldPath) (StructFields, error) {
-	size := 0
-	if s != nil {
-		size = s.NumFields()
-	}
-	fields := StructFields(make(map[string]StructField, size))
-	err := g.MergeFields(fields, s, nil)
-	if err != nil {
-		return nil, err
-	}
-	return fields, nil
-}
-
-// SliceUnmarshaler generates the code block to unmarshal a slice.
-func (g *Generator) SliceUnmarshaler(T types.Type, t *types.Slice) (code string, err error) {
-	body, err := g.TypeUnmarshaler(t.Elem())
-	if err != nil {
-		return
-	}
-	typeName := g.TypeName(t.Elem())
-	code = fmt.Sprintf(`
-switch {
-case n.IsArray():
-	// Ensure slice is big enough
-	if size := n.Len(); cap(*r) < size {
-		*r = make([]%s, len(*r) + size)
-	} else {
-		*r = (*r)[:size]
-	}
-	s := *r
-	for i, n := 0, n.Value(); n != nil; n, i = n.Next(), i+1 {
-		r := &s[i]
-		%s
-	}
-case n.IsNull():
-	*r = nil
-default:
-	return n.TypeError(njson.TypeArray|njson.TypeNull)
-}
-`, typeName, body)
-	return
-}
-
-// PointerUnmarshaler generates the code block to unmarshal a pointer type.
-func (g *Generator) PointerUnmarshaler(T types.Type, t *types.Pointer) (code string, err error) {
-	body, err := g.TypeUnmarshaler(t.Elem())
-	if err != nil {
-		return
-	}
-	typeName := g.TypeName(t.Elem())
-	code = fmt.Sprintf(`
-switch {
-case n.IsNull():
-	*r = nil
-case *r == nil:
-	*r = new(%s)
-	fallthrough
-default:
-	r := *r
-	%s
-}
-`, typeName, body)
-	return
-}
-
-// InterfaceUnmarshaler generates the code block to unmarshal an empty interface.
-func (g *Generator) InterfaceUnmarshaler(t types.Type, b *types.Interface) (code string, err error) {
-	return `if x, ok := n.ToInterface(); ok { *r = x } else { return n.TypeError(njson.AnyValue) }`, nil
-}
-
-// BasicUnmarshaler generates the code block to unmarshal a basic type.
-func (g *Generator) BasicUnmarshaler(t types.Type, b *types.Basic) (code string, err error) {
-	switch b.Kind() {
-	case types.Bool:
-		code = "if b, ok := n.ToBool(); ok { *r = %s(b) } else { return n.TypeError(njson.TypeBoolean) }"
-	case types.String:
-		code = "*r = %s(n.Unescaped())"
-	case types.Int, types.Int8, types.Int16, types.Int32, types.Int64:
-		code = "if i, ok := n.ToInt(); ok { *r = %s(i) } else { return n.TypeError(njson.TypeNumber) }"
-	case types.Uint, types.Uint8, types.Uint16, types.Uint32, types.Uint64, types.Uintptr:
-		code = ("if u, ok := n.ToUint(); ok { *r = %s(u) } else { return n.TypeError(njson.TypeNumber) }")
-	case types.Float32, types.Float64:
-		code = "if f, ok := n.ToFloat(); ok { *r = %s(f) } else { return n.TypeError(njson.TypeNumber) }"
-	default:
-		return "", typeError{t}
-	}
-	return fmt.Sprintf(code, g.TypeName(t)), nil
-}
-
-// EnsurePath generates a code block to ensure the path to an embedded pointer to struct has no nils.
-func (g *Generator) EnsurePath(path FieldPath) (code string) {
-	if last := len(path) - 1; last > 0 {
-		for i := 0; i < last; i++ {
-			f := &path[i]
-			t := meta.Resolve(f.Type)
-			if t == nil {
-				return
-			}
-			if _, ok := t.(*types.Pointer); ok {
-				v := "r" + path[:i+1].String()
-				typeName := g.TypeName(f.Type)
-				code += fmt.Sprintf("if %[1]s == nil { %[1]s = new(%[2]s) }\n", v, typeName)
-			}
-		}
-	}
-	return
-}
-
-// MapUnmarshaler generates the code block to unmarshal a map.
-func (g *Generator) MapUnmarshaler(t types.Type, m *types.Map) (code string, err error) {
-	typK := g.TypeName(m.Key())
-	typV := g.TypeName(m.Elem())
-	bodyK, err := g.TypeUnmarshaler(m.Key())
-	if err != nil {
-		return
-	}
-	bodyV, err := g.TypeUnmarshaler(m.Elem())
-	if err != nil {
-		return
-	}
-	code = fmt.Sprintf(`
-switch {
-case n.IsNull():
-	*r = nil
-case !n.IsObject():
-	return n.TypeError(njson.TypeObject|njson.TypeNull)
-case *r == nil:
-	*r = make(map[%[1]s]%[2]s, n.Len())
-	fallthrough
-default:
-	m := *r
-	for n := n.Value(); n != nil; n = n.Next() {
-		var k %[1]s
-		{
-			r := &k
-			%[3]s
-		}
-		var v %[2]s
-		{
-			r := &v
-			%[4]s
-		}
-		m[k] = v
-	}
-}
-`, typK, typV, bodyK, bodyV)
-	return
-}
-
-// StructUnmarshaler generates the code block to unmarshal a struct.
-func (g *Generator) StructUnmarshaler(t *types.Struct) (code string, err error) {
-	fields, err := g.StructFields(t, nil)
-	if err != nil {
-		return "", err
-	}
-	code = fmt.Sprintf(`
-if !n.IsObject() {
-	return n.TypeError(njson.TypeObject)
-}
-for k := n.Value(); k != nil; k = k.Next() {
-	n := k.Value()
-	switch k.Escaped() {
-`)
-	for name, field := range fields {
-		body, err := g.TypeUnmarshaler(field.Type())
-		if err != nil {
-			return "", err
-		}
-		code += fmt.Sprintf(`
-	case %s:
-		%s{
-			r := &r%s
-			%s
-		}
-		`, fmt.Sprintf("`%s`", name), g.EnsurePath(field.Path), field.Path, body)
-	}
-	code += `
-	}
-}`
-
-	return
-
-}
-
-// CanUnmarshal returns if can be unmarshaled
-func CanUnmarshal(t types.Type) bool {
-	tt := meta.Resolve(t)
-	if tt == nil {
-		return false
-	}
-	switch typ := tt.(type) {
-	case *types.Map:
-		return true
-	case *types.Struct:
-		return typ.NumFields() > 0
-	case *types.Slice:
-		return CanUnmarshal(typ.Elem())
-	case *types.Pointer:
-		return CanUnmarshal(typ.Elem())
-	case *types.Basic:
-		switch typ.Kind() {
-		case types.Bool,
-			types.String,
-			types.Int, types.Int8, types.Int16, types.Int32, types.Int64,
-			types.Uint, types.Uint8, types.Uint16, types.Uint32, types.Uint64, types.Uintptr,
-			types.Float32, types.Float64:
-			return true
-		default:
-			return false
-		}
-	case *types.Interface:
-		return typ.Empty()
-	case *types.Chan, *types.Tuple, *types.Signature:
-		return false
-	default:
-		println("Unknown type: ", typ)
-		return false
-	}
-
-}
-
 type typeError struct {
 	typ types.Type
 }
@@ -407,134 +47,19 @@ func (e typeError) Error() string {
 	return fmt.Sprintf("Unsupported type %s %#v", e.typ, e.typ)
 }
 
-// TypeUnmarshaler returns the code block for unmarshaling a type.
-func (g *Generator) TypeUnmarshaler(t types.Type) (code string, err error) {
-	typ := meta.Resolve(t)
-	switch typ := typ.(type) {
-	case *types.Map:
-		return g.MapUnmarshaler(t, typ)
-	case *types.Struct:
-		return g.StructUnmarshaler(typ)
-	case *types.Slice:
-		return g.SliceUnmarshaler(t, typ)
-	case *types.Pointer:
-		return g.PointerUnmarshaler(t, typ)
-	case *types.Basic:
-		return g.BasicUnmarshaler(t, typ)
-	case *types.Interface:
-		if typ.Empty() {
-			return g.InterfaceUnmarshaler(t, typ)
-		}
-		return "", typeError{t}
-	default:
-		return "", typeError{t}
-	}
-}
-
 // AllStructs returns all structs from the package.
 func (g *Generator) AllStructs() (all []string) {
 	types := g.Package.DefinedTypes(meta.IsStruct)
 	for _, typ := range types {
-		if _, name, _ := meta.QName(typ); name != "" {
-			all = append(all, name)
-		}
+		all = append(all, g.TypeString(typ))
 	}
-	return
-}
-
-var (
-	unmarshalMethodName = reflect.TypeOf((*njson.Unmarshaler)(nil)).Elem().Method(0).Name
-)
-
-// UnmarshalMethodName is the default name for the unmarshal function
-func UnmarshalMethodName() string {
-	return unmarshalMethodName
-
-}
-
-// UnmarshalMethodName returns the name for the unmarshal method.
-func (g *Generator) UnmarshalMethodName() (m string) {
-	return njsonutil.TaggedMethodName(unmarshalMethodName, g.TagKey())
-}
-
-// WriteUnmarshaler writes an unmarshaler method for a type in the generator's buffer.
-func (g *Generator) WriteUnmarshaler(typeName string) (err error) {
-	_, code, err := g.Unmarshaler(typeName)
-	if err != nil {
-		return
-	}
-	g.Import(njsonPkg)
-	_, err = g.buffer.Write(code)
-	return
-}
-
-// UnmarshalerTest generates an unmarshaler method for a type
-func (g *Generator) UnmarshalerTest(typeName string) (typ *types.Named, code string, err error) {
-	typ, _ = g.LookupType(typeName)
-	if typ == nil {
-		return nil, "", fmt.Errorf("Type %s not found", typeName)
-	}
-
-	vars := g.DefinedVars(meta.AssignableTo(typ))
-	sliceVars := g.DefinedVars(meta.AssignableTo(types.NewSlice(typ)))
-	if len(vars) == 0 && len(sliceVars) == 0 {
-		return
-	}
-	method := g.UnmarshalMethodName()
-	names := []string{}
-	for _, v := range vars {
-		names = append(names, v.Name)
-	}
-	appends := ""
-	for _, v := range sliceVars {
-		appends += fmt.Sprintf("t_ = append(t_, []%s(%s)...)\n", typeName, v.Name)
-	}
-
-	code += fmt.Sprintf(`
-func Test%[1]s_%[2]s(t *testing.T) {
-	t_ := []%[1]s{%[3]s}
-	%[4]s
-	for _, v := range t_ {
-		t.Run("%[1]s.%[2]s", njsonutil.UnmarshalTest(v))
-	}
-}`, typeName, method, strings.Join(names, ","), appends)
-
-	return
-}
-
-// Unmarshaler generates an unmarshaler method for a type
-func (g *Generator) Unmarshaler(typeName string) (typ *types.Named, code []byte, err error) {
-	typ, _ = g.LookupType(typeName)
-	if typ == nil {
-		return nil, nil, fmt.Errorf("Type %s not found", typeName)
-	}
-	receiverName := strings.ToLower(typeName[:1])
-	method := g.UnmarshalMethodName()
-	body, err := g.TypeUnmarshaler(typ)
-	if err != nil {
-		return
-	}
-	code = []byte(fmt.Sprintf(`
-		func (%[1]s *%[2]s) %[3]s(n *njson.Node) error {
-			if !n.IsValue() {
-				return n.TypeError(njson.TypeAnyValue)
-			}
-			if n.IsNull() {
-				return nil
-			}
-			r := %[1]s
-			%[4]s
-			return nil
-		}
-	`, receiverName, typeName, method, body))
-	code, err = format.Source(code)
 	return
 }
 
 func newGenerator(path, targetPkg string, filter func(os.FileInfo) bool) (g *Generator, err error) {
 	mode := parser.ParseComments | parser.DeclarationErrors
 	p, err := meta.ParsePackage(targetPkg, path, filter, mode, func(f *ast.File) bool {
-		return !isGeneratedByNJSON(f)
+		return !IsGeneratedByNJSON(f)
 	})
 	if err != nil {
 		return
@@ -561,6 +86,7 @@ func New(path string, targetPkg string, options ...Option) (*Generator, error) {
 	return g, nil
 }
 
+// Filename returns the filename to write output.
 func (g *Generator) Filename() (name string) {
 	name = g.Name()
 	if strings.HasSuffix(name, "_test") {
@@ -588,7 +114,9 @@ func (g *Generator) Import(imports ...*types.Package) {
 		g.imports = make(map[string]*types.Package, len(imports))
 	}
 	for _, pkg := range imports {
-		g.imports[pkg.Path()] = pkg
+		if pkg.Path() != g.Package.Path() {
+			g.imports[pkg.Path()] = pkg
+		}
 	}
 	return
 }
@@ -629,16 +157,17 @@ var (
 	// njsonutilPkg = types.NewPackage(njsonPkgPath+"/njsonutil", "njsonutil")
 	// testingPkg   = types.NewPackage("testing", "testing")
 	// reflectPkg   = types.NewPackage("reflect", "reflect")
-	// jsonPkg      = types.NewPackage("encoding/json", "json")
+	jsonPkg = types.NewPackage("encoding/json", "json")
 	// fmtPkg       = types.NewPackage("fmt", "fmt")
 	// stringsPkg   = types.NewPackage("strings", "strings")
+	strconvPkg = types.NewPackage("strconv", "strconv")
 )
 
 const (
 	headerComment = `// Code generated by njson on %s; DO NOT EDIT.`
 )
 
-func isGeneratedByNJSON(f *ast.File) bool {
+func IsGeneratedByNJSON(f *ast.File) bool {
 	return len(f.Comments) > 0 && strings.HasPrefix(f.Comments[0].Text(), "Code generated by njson")
 }
 
