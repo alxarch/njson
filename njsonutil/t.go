@@ -122,7 +122,8 @@ func UnmarshalTest(x interface{}, options ...TestOption) func(t *testing.T) {
 		if err, hasError := results[0].Interface().(error); hasError && err != nil {
 			t.Errorf("[%s.%s] Unmarshal error: %s", reflect.TypeOf(v), method, err)
 		} else if !reflect.DeepEqual(x, v.Elem().Interface()) {
-			t.Errorf("[%s.%s] Invalid unmarshal:\nexpect: %v\nactual: %v", reflect.TypeOf(v), method, test.value, v.Elem())
+			t.Errorf("[%s.%s] Invalid unmarshal:\nexpect: %v\nactual: %v\ninput: %s",
+				reflect.TypeOf(v), method, test.value, v.Elem(), data)
 		}
 	}
 
