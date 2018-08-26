@@ -313,11 +313,10 @@ func (g *Generator) StructUnmarshaler(t *types.Struct) (code meta.Code) {
 
 // CanUnmarshal returns if can be unmarshaled
 func CanUnmarshal(t types.Type) bool {
-	tt := meta.Resolve(t)
-	if tt == nil {
+	if t == nil {
 		return false
 	}
-	switch typ := tt.(type) {
+	switch typ := t.Underlying().(type) {
 	case *types.Map:
 		return true
 	case *types.Struct:

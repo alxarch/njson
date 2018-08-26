@@ -204,7 +204,7 @@ func (g *Generator) TypeAppender(typ types.Type) (c meta.Code) {
 		case types.String:
 			return c.Println(`
 				out = append(out, '"')
-				out = strjson.AppendEscaped(out, v)
+				out = strjson.Escape(out, v)
 				out = append(out, '"')`).Import(strjsonPkg)
 		default:
 			if info := t.Info(); info&types.IsFloat != 0 {
