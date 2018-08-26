@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/alxarch/njson"
+	"github.com/alxarch/njson/strjson"
 )
 
 type Options struct {
@@ -140,7 +141,7 @@ func (stringCodec) unmarshal(v reflect.Value, n *njson.Node) (err error) {
 
 func (stringCodec) marshal(b []byte, v reflect.Value) ([]byte, error) {
 	b = append(b, delimString)
-	b = njson.AppendEscaped(b, v.String())
+	b = strjson.Escape(b, v.String())
 	b = append(b, delimString)
 	return b, nil
 }

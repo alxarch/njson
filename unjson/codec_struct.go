@@ -4,6 +4,7 @@ import (
 	"reflect"
 
 	"github.com/alxarch/njson"
+	"github.com/alxarch/njson/strjson"
 )
 
 type structCodec struct {
@@ -94,7 +95,7 @@ func (d *structCodec) merge(typ reflect.Type, options Options, depth []int) erro
 			}
 			continue
 		}
-		tag = string(njson.AppendEscaped(nil, tag))
+		tag = string(strjson.Escape(nil, tag))
 		if ff, duplicate := d.fields[tag]; duplicate && cmpIndex(ff.index, index) != -1 {
 			continue
 		}

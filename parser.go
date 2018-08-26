@@ -36,6 +36,35 @@ func (d *Document) Parse(src string) (root *Node, err error) {
 	return
 }
 
+// ParseUnsafe parses JSON from a buffer without copying it into a string.
+// Any modifications to the buffer could mess the document's nodes validity.
+// Use only when the buffer is not modified throughout the lifecycle of the document.
+func (d *Document) ParseUnsafe(buf []byte) (root *Node, err error) {
+	if d == nil {
+		err = errNilDocument
+		return
+	}
+	if d.n == MaxDocumentSize {
+		return nil, errDocumentMaxSize
+	}
+	n := len(buf)
+	if n == 0 {
+		return nil, errEmptyJSON
+	}
+	id, pos, err := d.parse(b2s(buf), n)
+	d.stack = d.stack[:0]
+	switch err {
+	case nil:
+		root = &d.nodes[id]
+	case errInvalidToken:
+		err = ParseError(pos, buf[pos])
+		fallthrough
+	default:
+		d.nodes = d.nodes[:id]
+	}
+	return
+}
+
 const (
 	delimString         = '"'
 	delimEscape         = '\\'
@@ -410,3 +439,15 @@ var (
 		info: ValueInfo(TypeArray),
 	}
 )
+
+//go:generate go run njsonutil/cmd/genmask/genmask.go -pkg njson -w masks.go "IsNumberEnd:}], \t\r\n" "IsSpace: \t\r\n" IsDigit
+
+func IsDigit(c byte) bool {
+	return maskIsDigit[c] == 1
+}
+func IsNumberEnd(c byte) bool {
+	return maskIsNumberEnd[c] == 1
+}
+func IsSpaceASCII(c byte) bool {
+	return maskIsSpace[c] == 1
+}

@@ -153,7 +153,8 @@ const (
 )
 
 var (
-	njsonPkg = types.NewPackage(njsonPkgPath, njsonPkgName)
+	njsonPkg   = types.NewPackage(njsonPkgPath, njsonPkgName)
+	strjsonPkg = types.NewPackage(njsonPkgPath+"/strjson", "strjson")
 	// njsonutilPkg = types.NewPackage(njsonPkgPath+"/njsonutil", "njsonutil")
 	// testingPkg   = types.NewPackage("testing", "testing")
 	// reflectPkg   = types.NewPackage("reflect", "reflect")

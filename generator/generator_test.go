@@ -1,6 +1,7 @@
 package generator_test
 
 import (
+	"net/url"
 	"testing"
 
 	"github.com/alxarch/njson/njsonutil"
@@ -34,5 +35,21 @@ func TestNamedCoords(t *testing.T) {
 	test := njsonutil.UnmarshalTest
 	t.Run("Empty", test(NamedCoords_{}))
 	t.Run("All fields", test(NamedCoords_{Coords{1.2, 1.3}, "Foo"}))
+
+}
+
+type Params_ struct {
+	Values url.Values
+	OK     bool
+}
+
+func TestParams_(t *testing.T) {
+	test := njsonutil.UnmarshalTest
+	t.Run("Empty", test(Params_{}))
+	t.Run("All fields", test(Params_{Values: url.Values{
+		"foo": []string{"bar"},
+	},
+		OK: false,
+	}))
 
 }

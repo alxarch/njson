@@ -1,8 +1,11 @@
 package njson
 
 import (
+	"encoding/json"
 	"io"
 	"sync"
+
+	"github.com/alxarch/njson/strjson"
 )
 
 // Node is a document node.
@@ -233,10 +236,28 @@ type Appender interface {
 	AppendJSON([]byte) ([]byte, error)
 }
 
+const minBufferSize = 512
+
 var bufferpool = &sync.Pool{
 	New: func() interface{} {
-		return make([]byte, 0, 4096)
+		return make([]byte, 0, minBufferSize)
 	},
+}
+
+func blankBuffer(size int) []byte {
+	if b := bufferpool.Get().([]byte); cap(b) >= size {
+		return b[:size]
+	}
+	if size < minBufferSize {
+		size = minBufferSize
+	}
+	return make([]byte, size)
+}
+
+func PutBuffer(b []byte) {
+	if b != nil && cap(b) >= minBufferSize {
+		bufferpool.Put(b)
+	}
 }
 
 // PrintJSON is a helper to write an Appender to an io.Writer
@@ -281,22 +302,23 @@ func (n *Node) UnescapedBytes() []byte {
 			return s2b(n.doc.nodes[n.extra].src)
 		}
 		b := make([]byte, len(n.src))
-		b = b[:Unescape(b, n.src)]
+		b = b[:strjson.UnescapeTo(b, n.src)]
 		n.extra = n.doc.add(Token{
 			src: string(b),
 		})
 		return b
 	}
-	return AppendEscaped(nil, n.src)
+	return strjson.Escape(nil, n.src)
 }
 
 func (n *Node) unescaped() string {
 	if 0 < n.extra && n.extra < n.doc.n {
 		return n.doc.nodes[n.extra].src
 	}
-	b := make([]byte, len(n.src))
-	b = b[:Unescape(b, n.src)]
+	b := blankBuffer(strjson.MaxUnescapedLen(n.src))
+	b = b[:strjson.UnescapeTo(b, n.src)]
 	s := string(b)
+	PutBuffer(b)
 	n.extra = n.doc.add(Token{
 		src: s,
 	})
@@ -314,5 +336,27 @@ func (n *Node) Unescaped() string {
 	if n.doc != nil {
 		return n.unescaped()
 	}
-	return string(AppendUnescaped(nil, n.src))
+	return string(strjson.Unescape(nil, n.src))
+}
+
+func (n *Node) WrapUnmarshalJSON(u json.Unmarshaler) (err error) {
+	switch n.Type() {
+	case TypeArray:
+		if n.value == 0 {
+			return u.UnmarshalJSON([]byte{delimBeginArray, delimEndArray})
+		}
+	case TypeObject:
+		if n.value == 0 {
+			return u.UnmarshalJSON([]byte{delimBeginObject, delimEndObject})
+		}
+	case TypeInvalid:
+		return n.TypeError(TypeAnyValue)
+	default:
+		return u.UnmarshalJSON(s2b(n.src))
+	}
+	data := bufferpool.Get().([]byte)
+	data, _ = n.AppendJSON(data[:0])
+	err = u.UnmarshalJSON(data)
+	bufferpool.Put(data)
+	return
 }

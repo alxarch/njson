@@ -68,8 +68,16 @@ func (g *Generator) WriteUnmarshaler(typeName string) (err error) {
 
 // TypeUnmarshaler returns the code block for unmarshaling a type.
 func (g *Generator) TypeUnmarshaler(t types.Type) (code meta.Code) {
-	typ := meta.Resolve(t)
-	switch typ := typ.(type) {
+	if t == nil {
+		return code.Error(typeError{t})
+	}
+	switch {
+	case types.Implements(t, typJSONUnmarshaler):
+		return g.JSONUnmarshaler(t)
+	case types.Implements(t, typTextUnmarshaler):
+		return g.TextUnmarshaler(t)
+	}
+	switch typ := t.Underlying().(type) {
 	case *types.Map:
 		return g.MapUnmarshaler(t, typ)
 	case *types.Struct:
@@ -173,11 +181,55 @@ func (g *Generator) EnsurePath(path meta.FieldPath) (code meta.Code) {
 	return
 }
 
+var (
+	typError = meta.MakeInterface("Error", []types.Type{}, []types.Type{
+		types.Typ[types.String],
+	}, false)
+	typTextUnmarshaler = meta.MakeInterface("UnmarshalText", []types.Type{
+		types.NewSlice(types.Typ[types.Byte]),
+	}, []types.Type{
+		typError,
+	}, false)
+	typJSONUnmarshaler = meta.MakeInterface("UnmarshalJSON", []types.Type{
+		types.NewSlice(types.Typ[types.Byte]),
+	}, []types.Type{
+		typError,
+	}, false)
+)
+
+func (g *Generator) JSONUnmarshaler(t types.Type) (code meta.Code) {
+	return g.Code(`
+	if err := n.WrapUnmarshalJSON(r); err != nil {
+		return nil
+	}
+	`)
+}
+
+func (g *Generator) TextUnmarshaler(t types.Type) (code meta.Code) {
+	return g.Code(`
+	if !n.IsString() {
+		return n.TypeError(njson.TypeString)
+	}
+	if err := n.UnmarshalText(n.Unescaped()); err != nil {
+		return err
+	}
+	`)
+}
+
 // MapUnmarshaler generates the code block to unmarshal a map.
 func (g *Generator) MapUnmarshaler(t types.Type, m *types.Map) (code meta.Code) {
+	// TODO: Enforce string, TextUnmarshaler key type
 	typK := m.Key()
+	var codeK meta.Code
+	switch {
+	case meta.IsString(typK):
+		codeK = g.TypeUnmarshaler(typK)
+	case types.Implements(typK, typTextUnmarshaler):
+		codeK = g.TypeUnmarshaler(typK)
+	default:
+		return code.Errorf("Invalid key type %s", typK)
+	}
 	typV := m.Elem()
-	codeK := g.TypeUnmarshaler(typK)
 	codeV := g.TypeUnmarshaler(typV)
 	return g.Code(`
 switch {
@@ -199,6 +251,7 @@ default:
 		var v %[2]s
 		{
 			r := &v
+			n := n.Value()
 			%[4]s
 		}
 		m[k] = v

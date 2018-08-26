@@ -39,7 +39,6 @@ func (g *Generator) Appender(typName string) (c meta.Code) {
 			return out, nil
 		}
 	`, receiverName, typ, method, g.TypeAppender(typ))
-	return
 
 }
 
@@ -153,9 +152,7 @@ func (g *Generator) StructAppender(fields meta.Fields) (c meta.Code) {
 		}
 	}
 	c = c.Println(`
-	if more == 1 {
-		out = append(out, '}')
-	}`)
+	out = append(out, "{}"[more:]...)`)
 	return
 }
 func (g *Generator) TypeAppender(typ types.Type) (c meta.Code) {
@@ -170,22 +167,21 @@ func (g *Generator) TypeAppender(typ types.Type) (c meta.Code) {
 		`, g.TypeAppender(t.Elem()))
 	case *types.Map:
 		return g.Code(`
-			out = append(out, '{')
 			{
-				first := true
+				more := 0
 				for k, v := range v {
-					if first {
-						first := false
-					} else {
-						out = append(out, ',')
-					}
+					out = append(out, "{,"[more])
+					more = 1
 					out = append(out, '"')
-					%s
+					{
+						v := k
+						%s
+					}
 					out = append(out, '"', ':')
 					%s
 				}
+				out = append(out, "{}"[more:]...)
 			}
-			out = append(out, '}')
 		`, g.TypeAppender(t.Key()), g.TypeAppender(t.Elem()))
 	case *types.Slice:
 		return g.Code(`
@@ -204,12 +200,12 @@ func (g *Generator) TypeAppender(typ types.Type) (c meta.Code) {
 	case *types.Basic:
 		switch t.Kind() {
 		case types.Bool:
-			return c.Println(`if v { out = append(out, "true"...) } else { out = append(out, "false") }`)
+			return c.Println(`if v { out = append(out, "true"...) } else { out = append(out, "false"...) }`)
 		case types.String:
 			return c.Println(`
 				out = append(out, '"')
-				out = njson.AppendEscaped(out, v)
-				out = append(out, '"')`).Import(njsonPkg)
+				out = strjson.AppendEscaped(out, v)
+				out = append(out, '"')`).Import(strjsonPkg)
 		default:
 			if info := t.Info(); info&types.IsFloat != 0 {
 				return c.Println(`out = strconv.AppendFloat(out, float64(v), 'f', 6, 10)`).Import(strconvPkg)
@@ -222,8 +218,9 @@ func (g *Generator) TypeAppender(typ types.Type) (c meta.Code) {
 			}
 		}
 	case *types.Interface:
-		if t.NumMethods() == 0 {
+		if t.Empty() {
 			return c.Println(`
+				// Fallback to json.Marshal for empty interface
 				if data, err := json.Marshal(v); err == nil {
 					out = append(out, data)
 				} else {
