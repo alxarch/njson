@@ -15,8 +15,10 @@ type Token struct {
 	num   uint64
 }
 
+// Type is the token type.
 type Type byte
 
+// Token types and type masks
 const (
 	TypeInvalid Type = iota
 	TypeString  Type = 1 << iota
@@ -31,6 +33,7 @@ const (
 	// typeSourceOK = TypeString | TypeNumber | TypeBoolean | TypeNull
 )
 
+// Types returns all types of a typemask
 func (t Type) Types() (types []Type) {
 	if t == 0 {
 		return []Type{}
@@ -90,6 +93,7 @@ func (t *Token) parseFloat() (float64, bool) {
 	return f, true
 }
 
+// ToUint returns the uint value of a token and whether the conversion is lossless
 func (t *Token) ToUint() (uint64, bool) {
 	switch t.info {
 	case ValuePositiveInteger:
@@ -105,6 +109,8 @@ func (t *Token) ToUint() (uint64, bool) {
 		return 0, false
 	}
 }
+
+// ToBool returns the boolean value of a token and whether the conversion is lossless
 func (t *Token) ToBool() (bool, bool) {
 	switch t.info {
 	case ValueTrue:
@@ -119,6 +125,7 @@ func negative(u uint64) uint64 {
 	return ^(u - 1)
 }
 
+// ToInt returns the integer value of a token and whether the conversion is lossless
 func (t *Token) ToInt() (int64, bool) {
 	switch t.info {
 	case ValueNegativeInteger:
@@ -137,6 +144,7 @@ func (t *Token) ToInt() (int64, bool) {
 	}
 }
 
+// ToFloat returns the float value of a token and whether the conversion is lossless
 func (t *Token) ToFloat() (float64, bool) {
 	switch t.info {
 	case ValueNumberFloat:
@@ -165,42 +173,16 @@ var (
 func (t *Token) Escaped() string {
 	return t.src
 }
+
+// Bytes returns the raw bytes of the JSON values.
 func (t *Token) Bytes() []byte {
 	return s2b(t.src)
 }
 
-// func hexByte(b []byte, pos int) (c byte) {
-// 	return ToHexDigit(b[pos])<<4 | ToHexDigit(b[pos])
-// }
-
-// func hexDigit(c byte) (byte, bool) {
-// 	switch {
-// 	case '0' <= c && c <= '9':
-// 		return (c - '0'), true
-// 	case 'a' <= c && c <= 'f':
-// 		return (c - 'a'), true
-// 	case 'A' <= c && c <= 'F':
-// 		return (c - 'A'), true
-// 	default:
-// 		return c, false
-// 	}
-// }
-
-// func equalStrBytes(s string, b []byte) bool {
-// 	if len(s) == len(b) {
-// 		for i := 0; i < len(s); i++ {
-// 			if s[i] != b[i] {
-// 				return false
-// 			}
-// 		}
-// 		return true
-// 	}
-// 	return false
-// }
-
+// Type returns the token type.
 func (t *Token) Type() Type {
 	if t == nil {
-		return 0
+		return TypeInvalid
 	}
 	return t.info.Type()
 }
@@ -233,19 +215,24 @@ const (
 	ValueFalse ValueInfo = ValueInfo(TypeBoolean)
 )
 
+// HasError reports if there was a number parse error.
 func (i ValueInfo) HasError() bool {
 	return i&ValueError == ValueError
 }
+
+// HasZeroDecimal reports if a number value has zero decimal part
 func (i ValueInfo) HasZeroDecimal() bool {
 	return i&ValueZeroDecimal == ValueZeroDecimal
 }
 
+// Type returns the token Type part of the info.
 func (i ValueInfo) Type() Type {
 	return Type(i)
 }
 
 const needsEscape = ValueUnescaped | ValueInfo(TypeString) | ValueInfo(TypeKey)
 
+// NeedsEscape checks if value needs escaping.
 func (i ValueInfo) NeedsEscape() bool {
 	// This works because type bits are on the right side :)
 	return (i & needsEscape) > ValueUnescaped

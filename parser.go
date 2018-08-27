@@ -28,7 +28,7 @@ func (d *Document) Parse(src string) (root *Node, err error) {
 	case nil:
 		root = &d.nodes[id]
 	case errInvalidToken:
-		err = ParseError(pos, src[pos])
+		err = newParseError(pos, src[pos])
 		fallthrough
 	default:
 		d.nodes = d.nodes[:id]
@@ -57,7 +57,7 @@ func (d *Document) ParseUnsafe(buf []byte) (root *Node, err error) {
 	case nil:
 		root = &d.nodes[id]
 	case errInvalidToken:
-		err = ParseError(pos, buf[pos])
+		err = newParseError(pos, buf[pos])
 		fallthrough
 	default:
 		d.nodes = d.nodes[:id]

@@ -44,7 +44,8 @@ func (p parseError) Error() string {
 	// }
 	return string(buf)
 }
-func ParseError(pos int, c byte) error {
+
+func newParseError(pos int, c byte) error {
 	return parseError{int64(pos), c}
 }
 
@@ -53,9 +54,11 @@ type typeError struct {
 	Want Type
 }
 
-func TypeError(t, want Type) error {
+// newTypeError returns a type mismatch error.
+func newTypeError(t, want Type) error {
 	return typeError{t, want}
 }
+
 func (e typeError) Error() string {
 	if e.Want&e.Type != 0 {
 		return fmt.Sprintf("Invalid value for type %s", e.Type)

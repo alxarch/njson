@@ -212,6 +212,8 @@ func (n *Node) IsNull() bool {
 func (n *Node) IsKey() bool {
 	return n != nil && n.info&(ValueInfo(TypeKey)) != 0
 }
+
+// IsString checks if a node is of type String
 func (n *Node) IsString() bool {
 	return n != nil && n.info&(ValueInfo(TypeString)) != 0
 }
@@ -223,7 +225,7 @@ func (n *Node) IsValue() bool {
 
 // TypeError creates an error for the Node's type.
 func (n *Node) TypeError(want Type) error {
-	return TypeError(n.Type(), want)
+	return newTypeError(n.Type(), want)
 }
 
 // PrintJSON implements the Printer interface
@@ -254,7 +256,7 @@ func blankBuffer(size int) []byte {
 	return make([]byte, size)
 }
 
-func PutBuffer(b []byte) {
+func putBuffer(b []byte) {
 	if b != nil && cap(b) >= minBufferSize {
 		bufferpool.Put(b)
 	}
@@ -318,7 +320,7 @@ func (n *Node) unescaped() string {
 	b := blankBuffer(strjson.MaxUnescapedLen(n.src))
 	b = b[:strjson.UnescapeTo(b, n.src)]
 	s := string(b)
-	PutBuffer(b)
+	putBuffer(b)
 	n.extra = n.doc.add(Token{
 		src: s,
 	})
@@ -339,6 +341,7 @@ func (n *Node) Unescaped() string {
 	return string(strjson.Unescape(nil, n.src))
 }
 
+// WrapUnmarshalJSON wraps a call to the json.Unmarshaler interface
 func (n *Node) WrapUnmarshalJSON(u json.Unmarshaler) (err error) {
 	switch n.Type() {
 	case TypeArray:
