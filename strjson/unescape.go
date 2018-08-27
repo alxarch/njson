@@ -49,34 +49,6 @@ const (
 	delimString = '"'
 )
 
-// go:generate go run ../njsonutil/cmd/genmask/genmask.go -w hex.go -pkg strjson ToHex FromHex
-
-func toHex(c byte) byte {
-	return maskToHex[c]
-	// switch {
-	// case 0 <= c && c <= 9:
-	// 	return c + '0'
-	// case 10 <= c && c <= 15:
-	// 	return c + 'A' - 10
-	// default:
-	// 	return 0xff
-	// }
-}
-
-func fromHex(c byte) byte {
-	return maskFromHex[c]
-	// switch {
-	// case '0' <= c && c <= '9':
-	// 	return c - '0'
-	// case 'a' <= c && c <= 'z':
-	// 	return 10 + c - 'a'
-	// case 'A' <= c && c <= 'Z':
-	// 	return 10 + c - 'A'
-	// default:
-	// 	return 0xff
-	// }
-}
-
 // MaxUnescapedLen returns a safe size for a buffer to fill with unescaped s bytes.
 func MaxUnescapedLen(s string) int {
 	// The only cases that need more characters than the input are:

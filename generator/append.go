@@ -3,12 +3,7 @@ package generator
 import (
 	"fmt"
 	"go/types"
-	"reflect"
 	"strings"
-
-	"github.com/alxarch/njson/unjson"
-
-	"github.com/alxarch/njson"
 
 	"github.com/alxarch/meta"
 )
@@ -29,7 +24,7 @@ func (g *Generator) Appender(typName string) (c meta.Code) {
 		return c.Errorf("Type %s not found", typName)
 	}
 	receiverName := strings.ToLower(typName[:1])
-	method := g.AppenderMethodName()
+	method := g.AppendMethod()
 	return g.Code(`
 		func (%[1]s *%[2]s) %[3]s(out []byte) ([]byte, error) {
 			if v := %[1]s; v != nil {
@@ -43,20 +38,10 @@ func (g *Generator) Appender(typName string) (c meta.Code) {
 
 }
 
-var (
-	typJSONAppender      = reflect.TypeOf((*njson.Appender)(nil)).Elem()
-	typOmiter            = reflect.TypeOf((*unjson.Omiter)(nil)).Elem()
-	methodAppendJSON     = typJSONAppender.Method(0)
-	appendJSONMethodName = methodAppendJSON.Name
-	methodOmit           = typOmiter.Method(0)
-	omitMethodName       = methodOmit.Name
-)
-
-func (g *Generator) AppenderMethodName() string {
-	return appendJSONMethodName
-}
-
 func (g *Generator) OmiterType() (string, *types.Interface) {
+	if g.omiter == nil {
+		g.omiter = typOmiter
+	}
 	return g.omiter.Method(0).Name(), g.omiter
 }
 
@@ -131,7 +116,13 @@ func (g *Generator) StructAppender(fields meta.Fields) (c meta.Code) {
 		for _, field := range fields[name] {
 			field = field.WithTag(g.TagKey())
 			name, tag, ok := g.parseField(field.Var, field.Tag)
-			if !ok || used[name] {
+			if !ok {
+				continue
+			}
+			if tag.Name != "" {
+				name = tag.Name
+			}
+			if used[name] {
 				continue
 			}
 			used[name] = true
@@ -210,7 +201,7 @@ func (g *Generator) TypeAppender(typ types.Type) (c meta.Code) {
 				out = append(out, '"')`).Import(strjsonPkg)
 		default:
 			if info := t.Info(); info&types.IsFloat != 0 {
-				return c.Println(`out = strconv.AppendFloat(out, float64(v), 'f', 6, 10)`).Import(strconvPkg)
+				return c.Println(`out = strconv.AppendFloat(out, float64(v), 'f', -1, 64)`).Import(strconvPkg)
 			} else if info&types.IsUnsigned != 0 {
 				return c.Println(`out = strconv.AppendUint(out, uint64(v), 10)`).Import(strconvPkg)
 			} else if info&types.IsInteger != 0 {

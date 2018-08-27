@@ -19,11 +19,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"time"
-
-	"github.com/alxarch/njson"
 
 	"github.com/alxarch/meta"
 )
@@ -156,20 +153,27 @@ const (
 )
 
 var (
-	njsonPkg               = meta.MustImport(njsonPkgPath)
-	typNodeJSONUnmarshaler = njsonPkg.Scope().Lookup("Unmarshaler").Type().Underlying().(*types.Interface)
-	typNode                = njsonPkg.Scope().Lookup("Node").Type()
-	typNodePtr             = types.NewPointer(typNode)
-	strjsonPkg             = meta.MustImport(njsonPkgPath + "/strjson")
-	jsonPkg                = meta.MustImport("encoding/json")
-	typJSONUnmarshaler     = jsonPkg.Scope().Lookup("Unmarshaler").Type().Underlying().(*types.Interface)
-	encodingPkg            = meta.MustImport("encoding")
-	typTextUnmarshaler     = encodingPkg.Scope().Lookup("TextUnmarshaler").Type().Underlying().(*types.Interface)
-	strconvPkg             = meta.MustImport("strconv")
-	typError               = meta.MakeInterface("Error", []types.Type{}, []types.Type{
-		types.Typ[types.String],
-	}, false)
-	unmarshalMethodName = reflect.TypeOf((*njson.Unmarshaler)(nil)).Elem().Method(0).Name
+	njsonPkg                = meta.MustImport(njsonPkgPath)
+	typNodeJSONUnmarshaler  = njsonPkg.Scope().Lookup("Unmarshaler").Type().Underlying().(*types.Interface)
+	methodNodeUnmarshalJSON = typNodeJSONUnmarshaler.Method(0)
+	typJSONAppender         = njsonPkg.Scope().Lookup("Appender").Type().Underlying().(*types.Interface)
+	methodAppendJSON        = typJSONAppender.Method(0)
+	typNode                 = njsonPkg.Scope().Lookup("Node").Type()
+	typNodePtr              = types.NewPointer(typNode)
+
+	unjsonPkg  = meta.MustImport(njsonPkgPath + "/unjson")
+	typOmiter  = unjsonPkg.Scope().Lookup("Omiter").Type().Underlying().(*types.Interface)
+	methodOmit = typOmiter.Method(0)
+
+	strjsonPkg = meta.MustImport(njsonPkgPath + "/strjson")
+
+	jsonPkg            = meta.MustImport("encoding/json")
+	typJSONUnmarshaler = jsonPkg.Scope().Lookup("Unmarshaler").Type().Underlying().(*types.Interface)
+
+	encodingPkg        = meta.MustImport("encoding")
+	typTextUnmarshaler = encodingPkg.Scope().Lookup("TextUnmarshaler").Type().Underlying().(*types.Interface)
+
+	strconvPkg = meta.MustImport("strconv")
 )
 
 const (

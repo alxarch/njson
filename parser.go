@@ -131,7 +131,7 @@ func (d *Document) parse(src string, n int) (root uint16, pos int, err error) {
 
 scanToken:
 	for ; pos < n; pos++ {
-		if c = src[pos]; IsSpaceASCII(c) {
+		if c = src[pos]; isSpace(c) {
 			continue
 		}
 		switch c {
@@ -242,7 +242,7 @@ scanToken:
 			info = ValueInfo(TypeNumber) | ValueNegative
 			goto scanNumber
 		default:
-			if IsDigit(c) {
+			if isDigit(c) {
 				start = pos
 				info = ValueInfo(TypeNumber)
 				goto scanNumber
@@ -264,7 +264,7 @@ wtf:
 	return
 scanKey:
 	for pos++; pos < n; pos++ {
-		if c = src[pos]; IsSpaceASCII(c) {
+		if c = src[pos]; isSpace(c) {
 			continue
 		}
 		switch c {
@@ -296,7 +296,7 @@ scanKey:
 	goto eof
 scanKeyEnd:
 	for ; pos < n; pos++ {
-		if c = src[pos]; IsSpaceASCII(c) {
+		if c = src[pos]; isSpace(c) {
 			continue
 		}
 		if c != delimNameSeparator {
@@ -336,7 +336,7 @@ scanNumber:
 		goto scanNumberIntegralEnd
 	}
 	for ; pos < n; pos++ {
-		if c = src[pos]; IsDigit(c) {
+		if c = src[pos]; isDigit(c) {
 			num = num*10 + uint64(c-'0')
 		} else {
 			break
@@ -344,7 +344,7 @@ scanNumber:
 	}
 	goto scanNumberIntegralEnd
 scanNumberIntegralEnd:
-	if pos == n || IsNumberEnd(c) {
+	if pos == n || isNumberEnd(c) {
 		if info == ValueNegativeInteger {
 			num = negative(num)
 		}
@@ -362,11 +362,11 @@ scanNumberIntegralEnd:
 		goto abort
 	}
 	for ; pos < n; pos++ {
-		if c = src[pos]; !IsDigit(c) {
+		if c = src[pos]; !isDigit(c) {
 			break
 		}
 	}
-	if pos == n || IsNumberEnd(c) {
+	if pos == n || isNumberEnd(c) {
 		goto scanNumberEnd
 	}
 	switch c {
@@ -377,10 +377,10 @@ scanNumberIntegralEnd:
 	}
 scanNumberScientific:
 	for pos++; pos < n; pos++ {
-		if c = src[pos]; IsDigit(c) {
+		if c = src[pos]; isDigit(c) {
 			continue
 		}
-		if IsNumberEnd(c) {
+		if isNumberEnd(c) {
 			break
 		}
 		switch c {
@@ -394,7 +394,7 @@ scanNumberScientific:
 	}
 scanNumberEnd:
 	// check last part has at least 1 digit
-	if c = src[pos-1]; IsDigit(c) {
+	if c = src[pos-1]; isDigit(c) {
 		end = pos
 		goto value
 	}
@@ -439,15 +439,3 @@ var (
 		info: ValueInfo(TypeArray),
 	}
 )
-
-//go:generate go run njsonutil/cmd/genmask/genmask.go -pkg njson -w masks.go "IsNumberEnd:}], \t\r\n" "IsSpace: \t\r\n" IsDigit
-
-func IsDigit(c byte) bool {
-	return maskIsDigit[c] == 1
-}
-func IsNumberEnd(c byte) bool {
-	return maskIsNumberEnd[c] == 1
-}
-func IsSpaceASCII(c byte) bool {
-	return maskIsSpace[c] == 1
-}

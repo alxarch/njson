@@ -33,7 +33,7 @@ func (g *Generator) Unmarshaler(typeName string) (code meta.Code) {
 			}
 			return nil
 		}
-	`, receiverName, typ, unmarshalMethodName, g.TypeUnmarshaler(typ)).Import(njsonPkg)
+	`, receiverName, typ, g.UnmarshalMethod(), g.TypeUnmarshaler(typ)).Import(njsonPkg)
 }
 
 // WriteUnmarshaler writes an unmarshaler method for a type in the generator's buffer.
@@ -174,7 +174,7 @@ func (g *Generator) NodeJSONUnmarshaler(t types.Type) (code meta.Code) {
 	if err := v.%s(n); err != nil {
 		return err
 	}
-	`, unmarshalMethodName)
+	`, methodNodeUnmarshalJSON.Name())
 }
 
 func (g *Generator) JSONUnmarshaler(t types.Type) (code meta.Code) {

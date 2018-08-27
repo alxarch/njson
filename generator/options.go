@@ -14,14 +14,16 @@ import (
 )
 
 type options struct {
-	tagKey         string
-	omiter         *types.Interface
-	onlyExported   bool
-	onlyTagged     bool
-	forceOmitEmpty bool
-	matchField     func(string) bool
-	fieldName      func(string) string
-	logger         *log.Logger
+	tagKey          string
+	appendMethod    string
+	unmarshalMethod string
+	omiter          *types.Interface
+	onlyExported    bool
+	onlyTagged      bool
+	forceOmitEmpty  bool
+	matchField      func(string) bool
+	fieldName       func(string) string
+	logger          *log.Logger
 }
 
 // Option is a generator option
@@ -32,6 +34,21 @@ func (o *options) JSONFieldName(name string) string {
 		return name
 	}
 	return o.fieldName(name)
+}
+
+func (o *options) UnmarshalMethod() string {
+	if o.unmarshalMethod == "" {
+		return methodNodeUnmarshalJSON.Name()
+	}
+	return o.unmarshalMethod
+
+}
+func (o *options) AppendMethod() string {
+	if o.appendMethod == "" {
+		return methodAppendJSON.Name()
+	}
+	return o.appendMethod
+
 }
 
 // TransformFieldCase sets a case transformation mode for field names when no tag based name is found.
@@ -137,10 +154,35 @@ func TagKey(key string) Option {
 
 // OmitMethod sets the tag key to use when parsing struct fields
 func OmitMethod(methodName string) Option {
+	if methodName == "" {
+		methodName = methodOmit.Name()
+	}
 	return func(g *Generator) {
 		g.omiter = meta.MakeInterface(methodName, nil, []types.Type{
 			types.Typ[types.Bool],
 		}, false)
+	}
+}
+
+var ()
+
+// AppendMethod sets the tag key to use when parsing struct fields
+func AppendMethod(methodName string) Option {
+	if methodName == "" {
+		methodName = methodAppendJSON.Name()
+	}
+	return func(g *Generator) {
+		g.appendMethod = methodName
+	}
+}
+
+// UnmarshalMethod sets the tag key to use when parsing struct fields
+func UnmarshalMethod(methodName string) Option {
+	if methodName == "" {
+		methodName = methodNodeUnmarshalJSON.Name()
+	}
+	return func(g *Generator) {
+		g.unmarshalMethod = methodName
 	}
 }
 

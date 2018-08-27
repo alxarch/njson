@@ -4,7 +4,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/alxarch/njson/njsonutil"
+	"github.com/alxarch/njson/njsontest"
 )
 
 //go:generate go run ../cmd/njson/njson.go -w generator_test "_$"
@@ -14,10 +14,10 @@ type Foo_ struct {
 }
 
 func TestFooUnmarshal(t *testing.T) {
-	test := njsonutil.UnmarshalTest
+	test := njsontest.Unmarshal
 	t.Run("Bar Foo", test(Foo_{}))
 	t.Run("Blank Foo", test(Foo_{"Bar"}))
-	t.Run("Foo null input", test(Foo_{}, njsonutil.Input([]byte(`null`))))
+	t.Run("Foo null input", test(Foo_{}, njsontest.JSON([]byte(`null`))))
 
 }
 
@@ -32,9 +32,12 @@ type NamedCoords_ struct {
 }
 
 func TestNamedCoords(t *testing.T) {
-	test := njsonutil.UnmarshalTest
-	t.Run("Empty", test(NamedCoords_{}))
-	t.Run("All fields", test(NamedCoords_{Coords{1.2, 1.3}, "Foo"}))
+	test := njsontest.Unmarshal
+	t.Run("Empty", test(&NamedCoords_{}))
+	t.Run("All fields", test(&NamedCoords_{Coords{1.2, 1.3}, "Foo"}))
+	test = njsontest.AppendJSON
+	t.Run("Empty", test(&NamedCoords_{}))
+	t.Run("All fields", test(&NamedCoords_{Coords{1.2, 1.3}, "Foo"}))
 
 }
 
@@ -44,7 +47,7 @@ type Params_ struct {
 }
 
 func TestParams_(t *testing.T) {
-	test := njsonutil.UnmarshalTest
+	test := njsontest.Unmarshal
 	t.Run("Empty", test(Params_{}))
 	t.Run("All fields", test(Params_{Values: url.Values{
 		"foo": []string{"bar"},
