@@ -6,21 +6,48 @@
 // Performance is better than "encoding/json" but for best results use njson command to generate UnmarshalNodeJSON methods.
 package unjson
 
-import "reflect"
+import (
+	"reflect"
+
+	"github.com/alxarch/njson"
+)
 
 func Unmarshal(data []byte, x interface{}) error {
 	return UnmarshalFromString(string(data), x)
 }
 
-func UnmarshalFromString(s string, x interface{}) error {
+func UnmarshalUnsafe(data []byte, x interface{}) (err error) {
 	if x == nil {
 		return errInvalidValueType
 	}
 	u, err := cachedUnmarshaler(reflect.TypeOf(x), defaultOptions)
 	if err != nil {
-		return err
+		return
 	}
-	return u.UnmarshalFromString(x, s)
+	d := njson.BlankDocument()
+	n, err := d.ParseUnsafe(data)
+	if err == nil {
+		err = u.Unmarshal(x, n)
+	}
+	d.Close()
+	return
+}
+
+func UnmarshalFromString(s string, x interface{}) (err error) {
+	if x == nil {
+		return errInvalidValueType
+	}
+	u, err := cachedUnmarshaler(reflect.TypeOf(x), defaultOptions)
+	if err != nil {
+		return
+	}
+	d := njson.BlankDocument()
+	n, err := d.Parse(s)
+	if err == nil {
+		err = u.Unmarshal(x, n)
+	}
+	d.Close()
+	return
 }
 
 func Marshal(x interface{}) ([]byte, error) {

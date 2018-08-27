@@ -15,6 +15,7 @@ import (
 
 type options struct {
 	tagKey         string
+	omiter         *types.Interface
 	onlyExported   bool
 	onlyTagged     bool
 	forceOmitEmpty bool
@@ -131,6 +132,15 @@ func (o *options) MatchField(name string) bool {
 func TagKey(key string) Option {
 	return func(g *Generator) {
 		g.tagKey = key
+	}
+}
+
+// OmitMethod sets the tag key to use when parsing struct fields
+func OmitMethod(methodName string) Option {
+	return func(g *Generator) {
+		g.omiter = meta.MakeInterface(methodName, nil, []types.Type{
+			types.Typ[types.Bool],
+		}, false)
 	}
 }
 

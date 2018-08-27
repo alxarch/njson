@@ -5,23 +5,20 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
-	"sync"
 
 	"github.com/alxarch/njson"
 )
 
 var (
-	typNodeUnmarshaler       = reflect.TypeOf((*njson.Unmarshaler)(nil)).Elem()
-	typNodeUnmarshalerMethod = typNodeUnmarshaler.Method(0).Type
-	njsonUnmarshalMethod     = typNodeUnmarshalerMethod.Name
-	typJSONUnmarshaler       = reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()
-	typTextUnmarshaler       = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
+	typNodeUnmarshaler = reflect.TypeOf((*njson.Unmarshaler)(nil)).Elem()
+	typJSONUnmarshaler = reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()
+	typTextUnmarshaler = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 )
 
 // Unmarshaler is a type specific decoder
 type Unmarshaler interface {
 	Unmarshal(x interface{}, n *njson.Node) error
-	UnmarshalFromString(x interface{}, src string) error
+	// UnmarshalFromString(x interface{}, src string) error
 	unmarshaler // disallow external implementations
 }
 
@@ -53,16 +50,15 @@ func (c *typeUnmarshaler) Unmarshal(x interface{}, n *njson.Node) error {
 	return c.unmarshal(v.Elem(), n)
 }
 
-func (c *typeUnmarshaler) UnmarshalFromString(x interface{}, src string) (err error) {
-	d := njson.BlankDocument()
-	d.Reset()
-	root, err := d.Parse(src)
-	if err == nil {
-		err = c.Unmarshal(x, root)
-	}
-	d.Close()
-	return
-}
+// func (c *typeUnmarshaler) UnmarshalFromString(x interface{}, src string) (err error) {
+// 	d := njson.BlankDocument()
+// 	root, err := d.Parse(src)
+// 	if err == nil {
+// 		err = c.Unmarshal(x, root)
+// 	}
+// 	d.Close()
+// 	return
+// }
 
 var (
 	errInvalidValueType = errors.New("Invalid value type")
@@ -70,8 +66,10 @@ var (
 	errInvalidType = errors.New("Invalid type")
 )
 
-// njsonUnmarshaler implements the Decoder interface for types implementing Unmarshaller
+// njsonUnmarshaler implements the Unmarshaler interface for types implementing njson.Unmarshaler
 type njsonUnmarshaler struct{}
+
+var _ Unmarshaler = njsonUnmarshaler{}
 
 func (njsonUnmarshaler) Unmarshal(x interface{}, n *njson.Node) error {
 	if x, ok := x.(njson.Unmarshaler); ok {
@@ -80,20 +78,19 @@ func (njsonUnmarshaler) Unmarshal(x interface{}, n *njson.Node) error {
 	return errInvalidValueType
 }
 
-func (njsonUnmarshaler) UnmarshalString(x interface{}, src string) (err error) {
-	u, ok := x.(njson.Unmarshaler)
-	if !ok {
-		return errInvalidValueType
-	}
-	d := njson.BlankDocument()
-	d.Reset()
-	root, err := d.Parse(src)
-	if err == nil {
-		err = u.UnmarshalNodeJSON(root)
-	}
-	d.Close()
-	return
-}
+// func (njsonUnmarshaler) UnmarshalFromString(x interface{}, src string) (err error) {
+// 	u, ok := x.(njson.Unmarshaler)
+// 	if !ok {
+// 		return errInvalidValueType
+// 	}
+// 	d := njson.BlankDocument()
+// 	root, err := d.Parse(src)
+// 	if err == nil {
+// 		err = u.UnmarshalNodeJSON(root)
+// 	}
+// 	d.Close()
+// 	return
+// }
 
 func (njsonUnmarshaler) unmarshal(v reflect.Value, tok *njson.Node) error {
 	return v.Interface().(njson.Unmarshaler).UnmarshalNodeJSON(tok)
@@ -101,6 +98,8 @@ func (njsonUnmarshaler) unmarshal(v reflect.Value, tok *njson.Node) error {
 
 // jsonUnmarshaler implements the Decoder interface for types implementing json.Unmarshaller
 type jsonUnmarshaler struct{}
+
+var _ Unmarshaler = jsonUnmarshaler{}
 
 func (jsonUnmarshaler) Unmarshal(x interface{}, n *njson.Node) (err error) {
 	if u, ok := x.(json.Unmarshaler); ok {
@@ -116,12 +115,12 @@ func (jsonUnmarshaler) Unmarshal(x interface{}, n *njson.Node) (err error) {
 	return errInvalidValueType
 }
 
-func (jsonUnmarshaler) UnmarshalString(x interface{}, src string) error {
-	if x, ok := x.(json.Unmarshaler); ok {
-		return x.UnmarshalJSON([]byte(src))
-	}
-	return errInvalidValueType
-}
+// func (jsonUnmarshaler) UnmarshalFromString(x interface{}, src string) error {
+// 	if x, ok := x.(json.Unmarshaler); ok {
+// 		return x.UnmarshalJSON([]byte(src))
+// 	}
+// 	return errInvalidValueType
+// }
 
 func (jsonUnmarshaler) unmarshal(v reflect.Value, n *njson.Node) (err error) {
 	if n.Escaped() != "" {
@@ -155,6 +154,8 @@ func newTypeUnmarshaler(typ reflect.Type, options Options) (*typeUnmarshaler, er
 		c.unmarshaler = njsonUnmarshaler{}
 	case typ.Implements(typJSONUnmarshaler):
 		c.unmarshaler = jsonUnmarshaler{}
+	case typ.Implements(typTextUnmarshaler):
+		c.unmarshaler = textCodec{}
 	default:
 		typ = typ.Elem()
 		d, err := newUnmarshaler(typ, options)
@@ -179,34 +180,4 @@ func newUnmarshaler(typ reflect.Type, options Options) (unmarshaler, error) {
 		return textCodec{}, nil
 	}
 	return newCodec(typ, options)
-}
-
-type cacheKey struct {
-	reflect.Type
-	Options
-}
-
-var (
-	unmarshalCacheLock sync.RWMutex
-	unmarshalCache     = map[cacheKey]Unmarshaler{}
-)
-
-func cachedUnmarshaler(typ reflect.Type, options Options) (d Unmarshaler, err error) {
-	if typ == nil {
-		return interfaceCodec{options}, nil
-	}
-	key := cacheKey{typ, options}
-	unmarshalCacheLock.RLock()
-	d, ok := unmarshalCache[key]
-	unmarshalCacheLock.RUnlock()
-	if ok {
-		return
-	}
-	if d, err = newTypeUnmarshaler(typ, options); err != nil {
-		return
-	}
-	unmarshalCacheLock.Lock()
-	unmarshalCache[key] = d
-	unmarshalCacheLock.Unlock()
-	return
 }

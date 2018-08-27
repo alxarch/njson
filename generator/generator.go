@@ -19,8 +19,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
+
+	"github.com/alxarch/njson"
 
 	"github.com/alxarch/meta"
 )
@@ -153,15 +156,20 @@ const (
 )
 
 var (
-	njsonPkg   = types.NewPackage(njsonPkgPath, njsonPkgName)
-	strjsonPkg = types.NewPackage(njsonPkgPath+"/strjson", "strjson")
-	// njsonutilPkg = types.NewPackage(njsonPkgPath+"/njsonutil", "njsonutil")
-	// testingPkg   = types.NewPackage("testing", "testing")
-	// reflectPkg   = types.NewPackage("reflect", "reflect")
-	jsonPkg = types.NewPackage("encoding/json", "json")
-	// fmtPkg       = types.NewPackage("fmt", "fmt")
-	// stringsPkg   = types.NewPackage("strings", "strings")
-	strconvPkg = types.NewPackage("strconv", "strconv")
+	njsonPkg               = meta.MustImport(njsonPkgPath)
+	typNodeJSONUnmarshaler = njsonPkg.Scope().Lookup("Unmarshaler").Type().Underlying().(*types.Interface)
+	typNode                = njsonPkg.Scope().Lookup("Node").Type()
+	typNodePtr             = types.NewPointer(typNode)
+	strjsonPkg             = meta.MustImport(njsonPkgPath + "/strjson")
+	jsonPkg                = meta.MustImport("encoding/json")
+	typJSONUnmarshaler     = jsonPkg.Scope().Lookup("Unmarshaler").Type().Underlying().(*types.Interface)
+	encodingPkg            = meta.MustImport("encoding")
+	typTextUnmarshaler     = encodingPkg.Scope().Lookup("TextUnmarshaler").Type().Underlying().(*types.Interface)
+	strconvPkg             = meta.MustImport("strconv")
+	typError               = meta.MakeInterface("Error", []types.Type{}, []types.Type{
+		types.Typ[types.String],
+	}, false)
+	unmarshalMethodName = reflect.TypeOf((*njson.Unmarshaler)(nil)).Elem().Method(0).Name
 )
 
 const (

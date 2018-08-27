@@ -11,10 +11,7 @@ import (
 )
 
 var (
-	// typErr                 = reflect.TypeOf((*error)(nil)).Elem()
-	// typNodePtr             = reflect.TypeOf((*Node)(nil)).Elem()
-	typUnmarshaler       = reflect.TypeOf((*njson.Unmarshaler)(nil)).Elem()
-	typUnmarshalerMethod = typUnmarshaler.Method(0)
+	typUnmarshaler = reflect.TypeOf((*njson.Unmarshaler)(nil)).Elem()
 )
 
 type T struct {
@@ -89,12 +86,12 @@ func UnmarshalTest(x interface{}, options ...TestOption) func(t *testing.T) {
 		}
 	}
 	typ := test.value.Type()
-	method, err := CheckImplementsTagged(reflect.PtrTo(typ), typUnmarshalerMethod, test.tag)
-	if err != nil {
+	if !typ.Implements(typUnmarshaler) {
 		return func(t *testing.T) {
-			t.Error(err)
+			t.Errorf("Type %s does not implement %s", typ, typUnmarshaler)
 		}
 	}
+	method := typUnmarshaler.Method(0).Name
 
 	return func(t *testing.T) {
 		var (

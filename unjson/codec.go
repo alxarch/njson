@@ -4,50 +4,10 @@ import (
 	"encoding"
 	"reflect"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/alxarch/njson"
 	"github.com/alxarch/njson/strjson"
-)
-
-type Options struct {
-	FieldParser        // If nil DefaultFieldParser is used
-	FloatPrecision int // strconv.FormatFloat precision for encoder
-	OmitMethod     string
-}
-
-func (o Options) parseField(f reflect.StructField) (name string, omiempty, ok bool) {
-	if o.FieldParser == nil {
-		return defaultFieldParser.ParseField(f)
-	}
-	return o.FieldParser.ParseField(f)
-}
-
-func (o Options) normalize() Options {
-	if o.FieldParser == nil {
-		o.FieldParser = defaultFieldParser
-	}
-	if o.FloatPrecision <= 0 {
-		o.FloatPrecision = defaultOptions.FloatPrecision
-	}
-	if o.OmitMethod == "" {
-		o.OmitMethod = defaultOmitMethod
-	}
-	return o
-}
-
-const (
-	defaultTag        = "json"
-	defaultOmitMethod = "Omit"
-)
-
-var (
-	defaultOptions = Options{
-		FieldParser:    fieldParser{defaultTag, false},
-		FloatPrecision: 6,
-		OmitMethod:     defaultOmitMethod,
-	}
 )
 
 type codec interface {
@@ -87,46 +47,6 @@ func newCodec(typ reflect.Type, options Options) (codec, error) {
 		return nil, errInvalidType
 	}
 
-}
-
-var defaultFieldParser = NewFieldParser(defaultTag, false)
-
-func DefaultFieldParser() FieldParser {
-	return defaultFieldParser
-}
-func DefaultOptions() Options {
-	return defaultOptions
-}
-
-type FieldParser interface {
-	ParseField(f reflect.StructField) (name string, omitempty, ok bool)
-}
-
-type fieldParser struct {
-	Key       string // Tag key to use for encoder/decoder
-	OmitEmpty bool   // Force omitempty on all fields
-}
-
-func NewFieldParser(key string, omitempty bool) FieldParser {
-	if key == "" {
-		key = defaultTag
-	}
-	return fieldParser{key, omitempty}
-}
-
-func (o fieldParser) ParseField(field reflect.StructField) (tag string, omitempty bool, ok bool) {
-	omitempty = o.OmitEmpty
-	if tag, ok = field.Tag.Lookup(o.Key); ok {
-		if i := strings.IndexByte(tag, ','); i != -1 {
-			if !omitempty {
-				omitempty = strings.Index(tag[i:], "omitempty") > 0
-			}
-			tag = tag[:i]
-		}
-	} else {
-		tag = field.Name
-	}
-	return
 }
 
 type stringCodec struct{}
@@ -245,16 +165,16 @@ func (c interfaceCodec) marshal(b []byte, v reflect.Value) ([]byte, error) {
 	return MarshalTo(b, v.Interface())
 }
 
-func (d interfaceCodec) UnmarshalFromString(x interface{}, src string) (err error) {
-	p := njson.BlankDocument()
-	p.Reset()
-	root, err := p.Parse(src)
-	if err == nil {
-		err = d.Unmarshal(x, root)
-	}
-	p.Close()
-	return
-}
+// func (d interfaceCodec) UnmarshalFromString(x interface{}, src string) (err error) {
+// 	p := njson.BlankDocument()
+// 	p.Reset()
+// 	root, err := p.Parse(src)
+// 	if err == nil {
+// 		err = d.Unmarshal(x, root)
+// 	}
+// 	p.Close()
+// 	return
+// }
 
 func (interfaceCodec) Unmarshal(x interface{}, n *njson.Node) error {
 	if x, ok := x.(*interface{}); ok {
@@ -280,7 +200,9 @@ func (textCodec) unmarshal(v reflect.Value, n *njson.Node) error {
 func (textCodec) marshal(out []byte, v reflect.Value) (text []byte, err error) {
 	text, err = v.Interface().(encoding.TextMarshaler).MarshalText()
 	if err == nil {
+		out = append(out, delimString)
 		out = append(out, text...)
+		out = append(out, delimString)
 	}
 	return out, err
 }

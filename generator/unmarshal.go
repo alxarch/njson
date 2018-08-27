@@ -3,12 +3,9 @@ package generator
 import (
 	"fmt"
 	"go/types"
-	"reflect"
 	"strings"
 
 	"github.com/alxarch/meta"
-	"github.com/alxarch/njson"
-	"github.com/alxarch/njson/njsonutil"
 )
 
 // Unmarshaler generates an unmarshaler method for a type
@@ -18,7 +15,6 @@ func (g *Generator) Unmarshaler(typeName string) (code meta.Code) {
 		return code.Errorf("Type %s not found", typeName)
 	}
 	receiverName := strings.ToLower(typeName[:1])
-	method := g.UnmarshalMethodName()
 	return g.Code(`
 		func (%[1]s *%[2]s) %[3]s(node *njson.Node) error {
 			if !node.IsValue() {
@@ -37,21 +33,7 @@ func (g *Generator) Unmarshaler(typeName string) (code meta.Code) {
 			}
 			return nil
 		}
-	`, receiverName, typ, method, g.TypeUnmarshaler(typ)).Import(njsonPkg)
-}
-
-var (
-	unmarshalMethodName = reflect.TypeOf((*njson.Unmarshaler)(nil)).Elem().Method(0).Name
-)
-
-// UnmarshalMethodName is the default name for the unmarshal function
-func UnmarshalMethodName() string {
-	return unmarshalMethodName
-}
-
-// UnmarshalMethodName returns the name for the unmarshal method.
-func (g *Generator) UnmarshalMethodName() (m string) {
-	return njsonutil.TaggedMethodName(unmarshalMethodName, g.TagKey())
+	`, receiverName, typ, unmarshalMethodName, g.TypeUnmarshaler(typ)).Import(njsonPkg)
 }
 
 // WriteUnmarshaler writes an unmarshaler method for a type in the generator's buffer.
@@ -71,13 +53,19 @@ func (g *Generator) TypeUnmarshaler(t types.Type) (code meta.Code) {
 	if t == nil {
 		return code.Error(typeError{t})
 	}
+
 	switch {
+	case types.Implements(t, typNodeJSONUnmarshaler):
+		return g.NodeJSONUnmarshaler(t)
 	case types.Implements(t, typJSONUnmarshaler):
 		return g.JSONUnmarshaler(t)
 	case types.Implements(t, typTextUnmarshaler):
 		return g.TextUnmarshaler(t)
 	}
-	switch typ := t.Underlying().(type) {
+
+	switch typ := t.(type) {
+	case *types.Named:
+		return g.TypeUnmarshaler(typ.Underlying())
 	case *types.Map:
 		return g.MapUnmarshaler(t, typ)
 	case *types.Struct:
@@ -181,21 +169,13 @@ func (g *Generator) EnsurePath(path meta.FieldPath) (code meta.Code) {
 	return
 }
 
-var (
-	typError = meta.MakeInterface("Error", []types.Type{}, []types.Type{
-		types.Typ[types.String],
-	}, false)
-	typTextUnmarshaler = meta.MakeInterface("UnmarshalText", []types.Type{
-		types.NewSlice(types.Typ[types.Byte]),
-	}, []types.Type{
-		typError,
-	}, false)
-	typJSONUnmarshaler = meta.MakeInterface("UnmarshalJSON", []types.Type{
-		types.NewSlice(types.Typ[types.Byte]),
-	}, []types.Type{
-		typError,
-	}, false)
-)
+func (g *Generator) NodeJSONUnmarshaler(t types.Type) (code meta.Code) {
+	return g.Code(`
+	if err := v.%s(n); err != nil {
+		return err
+	}
+	`, unmarshalMethodName)
+}
 
 func (g *Generator) JSONUnmarshaler(t types.Type) (code meta.Code) {
 	return g.Code(`
@@ -268,11 +248,10 @@ func (g *Generator) StructUnmarshaler(t *types.Struct) (code meta.Code) {
 		used := make(map[string]bool)
 		for _, field := range fields[name] {
 			field = field.WithTag(tagKey)
-
-			if !CanUnmarshal(field.Type()) {
+			if field.Name() == "_" {
 				continue
 			}
-			if field.Name() == "_" {
+			if !CanUnmarshal(field.Type()) {
 				continue
 			}
 			name, tag, ok := g.parseField(field.Var, field.Tag)

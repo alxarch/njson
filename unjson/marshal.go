@@ -4,7 +4,6 @@ import (
 	"encoding"
 	"encoding/json"
 	"reflect"
-	"sync"
 
 	"github.com/alxarch/njson"
 )
@@ -13,10 +12,6 @@ import (
 type Marshaler interface {
 	MarshalTo(out []byte, x interface{}) ([]byte, error)
 	marshaler // disallow external implementations
-}
-
-type Omiter interface {
-	Omit() bool
 }
 
 type marshaler interface {
@@ -30,7 +25,6 @@ type typeMarshaler struct {
 
 var (
 	typNodeMarshaler = reflect.TypeOf((*njson.Appender)(nil)).Elem()
-	typOmiter        = reflect.TypeOf((*Omiter)(nil)).Elem()
 	typJSONMarshaler = reflect.TypeOf((*json.Marshaler)(nil)).Elem()
 	typTextMarshaler = reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem()
 )
@@ -98,31 +92,6 @@ func newMarshaler(typ reflect.Type, options Options) (marshaler, error) {
 	}
 
 	return newCodec(typ, options)
-}
-
-var (
-	marshalCacheLock sync.RWMutex
-	marhsalCache     = map[cacheKey]Marshaler{}
-)
-
-func cachedMarshaler(typ reflect.Type, options Options) (m Marshaler, err error) {
-	if typ == nil {
-		return interfaceCodec{options}, nil
-	}
-	key := cacheKey{typ, options}
-	marshalCacheLock.RLock()
-	m, ok := marhsalCache[key]
-	marshalCacheLock.RUnlock()
-	if ok {
-		return
-	}
-	if m, err = newTypeMarshaler(typ, DefaultOptions()); err != nil {
-		return
-	}
-	marshalCacheLock.Lock()
-	marhsalCache[key] = m
-	marshalCacheLock.Unlock()
-	return
 }
 
 type njsonMarshaler struct{}

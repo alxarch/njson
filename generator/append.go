@@ -6,8 +6,9 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/alxarch/njson/unjson"
+
 	"github.com/alxarch/njson"
-	"github.com/alxarch/njson/njsonutil"
 
 	"github.com/alxarch/meta"
 )
@@ -43,21 +44,22 @@ func (g *Generator) Appender(typName string) (c meta.Code) {
 }
 
 var (
-	typJSONAppender    = reflect.TypeOf((*njson.Appender)(nil)).Elem()
-	methodAppendJSON   = typJSONAppender.Method(0)
-	appenderMethodName = methodAppendJSON.Name
+	typJSONAppender      = reflect.TypeOf((*njson.Appender)(nil)).Elem()
+	typOmiter            = reflect.TypeOf((*unjson.Omiter)(nil)).Elem()
+	methodAppendJSON     = typJSONAppender.Method(0)
+	appendJSONMethodName = methodAppendJSON.Name
+	methodOmit           = typOmiter.Method(0)
+	omitMethodName       = methodOmit.Name
 )
 
 func (g *Generator) AppenderMethodName() string {
-	return njsonutil.TaggedMethodName(appenderMethodName, g.TagKey())
+	return appendJSONMethodName
 }
 
 func (g *Generator) OmiterType() (string, *types.Interface) {
-	name := njsonutil.TaggedMethodName("Omit", g.TagKey())
-	results := []types.Type{types.Typ[types.Bool]}
-	return name, meta.MakeInterface(name, nil, results, false)
-
+	return g.omiter.Method(0).Name(), g.omiter
 }
+
 func (g *Generator) TypeOmiter(typ types.Type, block meta.Code) meta.Code {
 	cond := ""
 	if method, omiter := g.OmiterType(); types.Implements(typ, omiter) {
