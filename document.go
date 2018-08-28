@@ -52,7 +52,7 @@ func (d *Document) add(t Token) (id uint16) {
 			doc:    d,
 			id:     d.n,
 			parent: MaxDocumentSize,
-			Token:  t,
+			token:  t,
 		})
 		d.n++
 	}

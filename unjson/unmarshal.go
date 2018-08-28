@@ -18,7 +18,6 @@ var (
 // Unmarshaler is a type specific decoder
 type Unmarshaler interface {
 	Unmarshal(x interface{}, n *njson.Node) error
-	// UnmarshalFromString(x interface{}, src string) error
 	unmarshaler // disallow external implementations
 }
 
@@ -50,20 +49,9 @@ func (c *typeUnmarshaler) Unmarshal(x interface{}, n *njson.Node) error {
 	return c.unmarshal(v.Elem(), n)
 }
 
-// func (c *typeUnmarshaler) UnmarshalFromString(x interface{}, src string) (err error) {
-// 	d := njson.BlankDocument()
-// 	root, err := d.Parse(src)
-// 	if err == nil {
-// 		err = c.Unmarshal(x, root)
-// 	}
-// 	d.Close()
-// 	return
-// }
-
 var (
 	errInvalidValueType = errors.New("Invalid value type")
-	// errInvalidNodeType  = errors.New("Invalid node type")
-	errInvalidType = errors.New("Invalid type")
+	errInvalidType      = errors.New("Invalid type")
 )
 
 // njsonUnmarshaler implements the Unmarshaler interface for types implementing njson.Unmarshaler
@@ -78,20 +66,6 @@ func (njsonUnmarshaler) Unmarshal(x interface{}, n *njson.Node) error {
 	return errInvalidValueType
 }
 
-// func (njsonUnmarshaler) UnmarshalFromString(x interface{}, src string) (err error) {
-// 	u, ok := x.(njson.Unmarshaler)
-// 	if !ok {
-// 		return errInvalidValueType
-// 	}
-// 	d := njson.BlankDocument()
-// 	root, err := d.Parse(src)
-// 	if err == nil {
-// 		err = u.UnmarshalNodeJSON(root)
-// 	}
-// 	d.Close()
-// 	return
-// }
-
 func (njsonUnmarshaler) unmarshal(v reflect.Value, tok *njson.Node) error {
 	return v.Interface().(njson.Unmarshaler).UnmarshalNodeJSON(tok)
 }
@@ -103,34 +77,13 @@ var _ Unmarshaler = jsonUnmarshaler{}
 
 func (jsonUnmarshaler) Unmarshal(x interface{}, n *njson.Node) (err error) {
 	if u, ok := x.(json.Unmarshaler); ok {
-		if n.Escaped() != "" {
-			return u.UnmarshalJSON(n.Bytes())
-		}
-		b := bufferpool.Get().([]byte)
-		b, _ = n.AppendJSON(b[:0])
-		err = u.UnmarshalJSON(b)
-		bufferpool.Put(b)
-		return
+		return n.WrapUnmarshalJSON(u)
 	}
 	return errInvalidValueType
 }
 
-// func (jsonUnmarshaler) UnmarshalFromString(x interface{}, src string) error {
-// 	if x, ok := x.(json.Unmarshaler); ok {
-// 		return x.UnmarshalJSON([]byte(src))
-// 	}
-// 	return errInvalidValueType
-// }
-
 func (jsonUnmarshaler) unmarshal(v reflect.Value, n *njson.Node) (err error) {
-	if n.Escaped() != "" {
-		return v.Interface().(json.Unmarshaler).UnmarshalJSON(n.Bytes())
-	}
-	b := bufferpool.Get().([]byte)
-	b, _ = n.AppendJSON(b[:0])
-	err = v.Interface().(json.Unmarshaler).UnmarshalJSON(b)
-	bufferpool.Put(b)
-	return
+	return n.WrapUnmarshalJSON(v.Interface().(json.Unmarshaler))
 }
 
 func TypeUnmarshaler(typ reflect.Type, options Options) (Unmarshaler, error) {

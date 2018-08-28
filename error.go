@@ -22,31 +22,35 @@ var (
 	errEOF             = errors.New("Unexpected end of input")
 	errEmptyJSON       = errors.New("Empty JSON source")
 	errInvalidToken    = errors.New("Invalid token")
+	errInvalidNode     = errors.New("Invalid node")
 )
 
 type parseError struct {
-	pos int64
-	c   byte
+	pos  int
+	c    byte
+	info ValueInfo
 	// str  string
 	// want string
 	// typ Type
 }
 
-func (p parseError) Error() string {
-	buf := make([]byte, 0, 64)
-	buf = append(buf, "Invalid token '"...)
+func (p parseError) Error() (msg string) {
+	buf := blankBuffer(minBufferSize)
+	buf = append(buf[:0], "Invalid token '"...)
 	buf = append(buf, p.c)
 	buf = append(buf, "' at position "...)
-	buf = strconv.AppendInt(buf, p.pos, 10)
-	// if p.typ != 0 {
-	// 	buf = append(buf, " while scanning "...)
-	// 	buf = append(buf, p.typ.String()...)
-	// }
-	return string(buf)
+	buf = strconv.AppendInt(buf, int64(p.pos), 10)
+	if p.info != 0 {
+		buf = append(buf, " while scanning for "...)
+		buf = append(buf, p.info.Type().String()...)
+	}
+	msg = string(buf)
+	putBuffer(buf)
+	return
 }
 
-func newParseError(pos int, c byte) error {
-	return parseError{int64(pos), c}
+func newParseError(pos int, c byte, i ValueInfo) error {
+	return parseError{pos, c, i}
 }
 
 type typeError struct {

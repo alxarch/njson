@@ -4,7 +4,6 @@ import (
 	"encoding"
 	"reflect"
 	"strconv"
-	"sync"
 
 	"github.com/alxarch/njson"
 	"github.com/alxarch/njson/strjson"
@@ -416,12 +415,6 @@ func (d sliceCodec) unmarshal(v reflect.Value, n *njson.Node) (err error) {
 
 	}
 	return nil
-}
-
-var bufferpool = sync.Pool{
-	New: func() interface{} {
-		return make([]byte, 4096)
-	},
 }
 
 const (

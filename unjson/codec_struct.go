@@ -166,7 +166,7 @@ func (d *structCodec) unmarshal(v reflect.Value, n *njson.Node) (err error) {
 			i, j  int
 		)
 		for n = n.Value(); n != nil; n = n.Next() {
-			switch fc = d.fields[n.Escaped()]; fc.n {
+			switch fc = d.fields[n.Source()]; fc.n {
 			case 0:
 				continue
 			case 1:

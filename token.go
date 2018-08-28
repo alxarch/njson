@@ -2,6 +2,7 @@ package njson
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"math/bits"
 	"strconv"
@@ -60,6 +61,8 @@ const (
 
 func (t Type) String() string {
 	switch t {
+	case TypeInvalid:
+		return "InvalidToken"
 	case TypeKey:
 		return "Key"
 	case TypeString:
@@ -74,7 +77,12 @@ func (t Type) String() string {
 		return "Null"
 	case TypeBoolean:
 		return "Boolean"
+	case TypeAnyValue:
+		return "AnyValue"
 	default:
+		if bits.OnesCount(uint(t)) > 1 {
+			return fmt.Sprint(t.Types())
+		}
 		return "InvalidToken"
 	}
 }
@@ -93,69 +101,59 @@ func (t *Token) parseFloat() (float64, bool) {
 	return f, true
 }
 
-// ToUint returns the uint value of a token and whether the conversion is lossless
-func (t *Token) ToUint() (uint64, bool) {
-	switch t.info {
-	case ValuePositiveInteger:
-		return t.num, true
-	case ValueIntegerFloat:
-		return uint64(math.Float64frombits(t.num)), true
-	case ValueNumberFloatUnparsed:
-		if f, ok := t.parseFloat(); ok && f >= 0 && t.info.HasZeroDecimal() {
-			return uint64(f), true
-		}
-		fallthrough
-	default:
-		return 0, false
-	}
-}
-
 // ToBool returns the boolean value of a token and whether the conversion is lossless
-func (t *Token) ToBool() (bool, bool) {
-	switch t.info {
-	case ValueTrue:
-		return true, true
-	case ValueFalse:
-		return false, true
-	default:
-		return false, false
-	}
+func (i ValueInfo) ToBool() (bool, bool) {
+	return i == ValueTrue, i&ValueInfo(TypeBoolean) != 0
 }
 func negative(u uint64) uint64 {
 	return ^(u - 1)
 }
 
-// ToInt returns the integer value of a token and whether the conversion is lossless
-func (t *Token) ToInt() (int64, bool) {
+func (t Token) ToUint() (uint64, bool) {
+	switch t.info {
+	case ValueNegativeInteger:
+		return t.num, false
+	case ValuePositiveInteger:
+		return t.num, true
+	case ValuePositiveFloatZeroDecimal:
+		f := math.Float64frombits(t.num)
+		return uint64(f), true
+	case ValueNegativeFloatZeroDecimal:
+		// f := math.Float64frombits(t.num)
+		return 0, false
+	default:
+		return 0, false
+	}
+}
+
+func (t Token) ToInt() (int64, bool) {
 	switch t.info {
 	case ValueNegativeInteger:
 		return int64(t.num), negative(t.num) <= math.MaxInt64
 	case ValuePositiveInteger:
 		return int64(t.num), t.num <= math.MaxInt64
-	case ValueIntegerFloat:
-		return int64(math.Float64frombits(t.num)), true
-	case ValueNumberFloatUnparsed:
-		if f, ok := t.parseFloat(); ok && t.info.HasZeroDecimal() {
-			return int64(f), true
-		}
-		fallthrough
+	case ValuePositiveFloatZeroDecimal:
+		f := math.Float64frombits(t.num)
+		return int64(f), f <= math.MaxInt64
+	case ValueNegativeFloatZeroDecimal:
+		f := math.Float64frombits(t.num)
+		return int64(f), f >= math.MinInt64
 	default:
 		return 0, false
 	}
 }
 
 // ToFloat returns the float value of a token and whether the conversion is lossless
-func (t *Token) ToFloat() (float64, bool) {
+func (t Token) ToFloat() (float64, bool) {
 	switch t.info {
-	case ValueNumberFloat:
-		return math.Float64frombits(t.num), true
+	case ValueNegativeInteger:
+		return -float64(negative(t.num)), true
 	case ValuePositiveInteger:
 		return float64(t.num), true
-	case ValueNegativeInteger:
-		return float64(int64(t.num)), true
-	case ValueNumberFloatUnparsed:
-		return t.parseFloat()
 	default:
+		if t.info.IsFloat() {
+			return math.Float64frombits(t.num), true
+		}
 		return 0, false
 	}
 }
@@ -170,20 +168,22 @@ var (
 )
 
 // Escaped return the JSON escaped string form.
-func (t *Token) Escaped() string {
+func (t Token) Escaped() string {
 	return t.src
 }
 
 // Bytes returns the raw bytes of the JSON values.
-func (t *Token) Bytes() []byte {
+func (t Token) Bytes() []byte {
+	return []byte(t.src)
+}
+
+// UnsafeBytes returns the bytes of the JSON value without copying.
+func (t Token) UnsafeBytes() []byte {
 	return s2b(t.src)
 }
 
 // Type returns the token type.
-func (t *Token) Type() Type {
-	if t == nil {
-		return TypeInvalid
-	}
+func (t Token) Type() Type {
 	return t.info.Type()
 }
 
@@ -197,11 +197,11 @@ const (
 	ValueNegative
 	ValueZeroDecimal
 	ValueError
-	ValueNumberFloatUnparsed = ValueInfo(TypeNumber) | ValueFloat
-	ValueNumberFloat         = ValueInfo(TypeNumber) | ValueFloat | ValueReady
-	ValueIntegerFloat        = ValueNumberFloat | ValueZeroDecimal
-	ValueNegativeInteger     = ValueInfo(TypeNumber) | ValueNegative
-	ValuePositiveInteger     = ValueInfo(TypeNumber)
+	ValueNumberFloatReady         = ValueInfo(TypeNumber) | ValueFloat | ValueReady
+	ValuePositiveFloatZeroDecimal = ValueNumberFloatReady | ValueZeroDecimal
+	ValueNegativeFloatZeroDecimal = ValueNumberFloatReady | ValueZeroDecimal | ValueNegative
+	ValueNegativeInteger          = ValueInfo(TypeNumber) | ValueNegative
+	ValuePositiveInteger          = ValueInfo(TypeNumber)
 )
 
 // String flags
@@ -236,4 +236,13 @@ const needsEscape = ValueUnescaped | ValueInfo(TypeString) | ValueInfo(TypeKey)
 func (i ValueInfo) NeedsEscape() bool {
 	// This works because type bits are on the right side :)
 	return (i & needsEscape) > ValueUnescaped
+}
+
+const unparsedFloat = ValueInfo(TypeNumber) | ValueFloat
+
+func (i ValueInfo) IsFloat() bool {
+	return i&ValueNumberFloatReady == ValueNumberFloatReady
+}
+func (i ValueInfo) IsUnparsedFloat() bool {
+	return i&ValueNumberFloatReady == unparsedFloat
 }

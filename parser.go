@@ -22,17 +22,13 @@ func (d *Document) Parse(src string) (root *Node, err error) {
 	if n == 0 {
 		return nil, errEmptyJSON
 	}
-	id, pos, err := d.parse(src, n)
-	d.stack = d.stack[:0]
-	switch err {
-	case nil:
-		root = &d.nodes[id]
-	case errInvalidToken:
-		err = newParseError(pos, src[pos])
-		fallthrough
-	default:
+	id, err := d.parse(src, n)
+	if err != nil {
 		d.nodes = d.nodes[:id]
+	} else {
+		root = &d.nodes[id]
 	}
+	d.stack = d.stack[:0]
 	return
 }
 
@@ -51,17 +47,13 @@ func (d *Document) ParseUnsafe(buf []byte) (root *Node, err error) {
 	if n == 0 {
 		return nil, errEmptyJSON
 	}
-	id, pos, err := d.parse(b2s(buf), n)
-	d.stack = d.stack[:0]
-	switch err {
-	case nil:
-		root = &d.nodes[id]
-	case errInvalidToken:
-		err = newParseError(pos, buf[pos])
-		fallthrough
-	default:
+	id, err := d.parse(b2s(buf), n)
+	if err != nil {
 		d.nodes = d.nodes[:id]
+	} else {
+		root = &d.nodes[id]
 	}
+	d.stack = d.stack[:0]
 	return
 }
 
@@ -93,20 +85,26 @@ func (p *parser) push(typ Type, n uint16) {
 }
 
 func (p *parser) link(id uint16) {
-	p.nodes[id].parent = p.parent
-	switch p.mode {
-	case TypeArray:
-		if p.prev == p.parent {
-			p.nodes[p.prev].value = id
-		} else {
-			p.nodes[p.prev].next = id
-		}
-	case TypeKey:
-		p.nodes[p.parent].value = id
-	default:
-		return
+	if p.prev == p.parent {
+		p.nodes[p.prev].value = id
+	} else {
+		p.nodes[p.prev].next = id
 	}
 	p.prev = id
+}
+
+// add adds a Node for Token returning the new node's id
+func (p *parser) add(t Token) (id uint16) {
+	p.nodes = append(p.nodes, Node{
+		doc:    p.Document,
+		id:     p.Document.n,
+		parent: p.parent,
+		token:  t,
+	})
+	id = p.Document.n
+	p.Document.n++
+	return
+
 }
 
 func (p *parser) pop() {
@@ -118,70 +116,25 @@ func (p *parser) pop() {
 }
 
 // Parse parses a JSON string into a Document.
-func (d *Document) parse(src string, n int) (root uint16, pos int, err error) {
+func (d *Document) parse(src string, n int) (root uint16, err error) {
 	var (
 		p          = d.parser()
-		info       ValueInfo
 		next       uint16
 		start, end int // token start, end
 		num        uint64
+		pos        = 0
+		info       ValueInfo
 		c          byte
 	)
 	root = d.n
 
-scanToken:
+scanValue:
+	info = ValueInfo(TypeAnyValue)
 	for ; pos < n; pos++ {
 		if c = src[pos]; isSpace(c) {
 			continue
 		}
 		switch c {
-		case delimBeginObject:
-			switch next = d.add(tokenObject); next {
-			case MaxDocumentSize:
-				goto max
-			case root:
-				p.prev = next
-			default:
-				p.link(next)
-			}
-			p.push(TypeObject, next)
-			goto scanKey
-		case delimEndObject:
-			switch p.mode {
-			case TypeKey:
-				p.pop()
-				fallthrough
-			case TypeObject:
-				if p.n == 0 {
-					return
-				}
-				p.pop()
-			default:
-				goto abort
-			}
-		case delimBeginArray:
-			switch next = d.add(tokenArray); next {
-			case MaxDocumentSize:
-				goto max
-			case root:
-				p.prev = next
-			default:
-				p.link(next)
-			}
-			p.push(TypeArray, next)
-		case delimEndArray:
-			if p.n == 0 {
-				return
-			}
-			p.pop()
-		case delimValueSeparator:
-			switch p.mode {
-			case TypeObject, TypeKey:
-				goto scanKey
-			case TypeArray:
-			default:
-				goto abort
-			}
 		case delimString:
 			info, num = ValueInfo(TypeString), 0
 			pos++
@@ -191,60 +144,103 @@ scanToken:
 				case delimString:
 					end = pos
 					pos++
-					goto value
+					goto scanEndValue
 				case delimEscape:
 					info |= ValueUnescaped
 					pos++
 				}
 			}
-			// will go to eof
+			goto eof
+		case delimBeginObject:
+			info = ValueInfo(TypeObject)
+			switch next = p.add(tokenObject); next {
+			case MaxDocumentSize:
+				goto max
+			case root:
+				p.prev = next
+			default:
+				p.link(next)
+			}
+			p.push(TypeObject, next)
+			for pos++; pos < n; pos++ {
+				if c = src[pos]; isSpace(c) {
+					continue
+				} else if c == delimEndObject {
+					goto scanEndParent
+				}
+				goto scanKey
+			}
+		case delimBeginArray:
+			info = ValueInfo(TypeArray)
+			switch next = p.add(tokenArray); next {
+			case MaxDocumentSize:
+				goto max
+			case root:
+				p.prev = next
+			default:
+				p.link(next)
+			}
+			p.push(TypeArray, next)
+			for pos++; pos < n; pos++ {
+				if c = src[pos]; isSpace(c) {
+					continue
+				} else if c == delimEndArray {
+					goto scanEndParent
+				}
+				goto scanValue
+			}
 		case 'n':
+			info = ValueInfo(TypeNull)
 			if start, end = pos, pos+4; end > n {
 				goto eof
 			}
 			if !checkUllString(src[start:end]) {
 				goto abort
 			}
-			pos, num, info = end, 0, ValueInfo(TypeNull)
-			goto value
+			pos, num = end, 0
+			goto scanEndValue
 		case 'f':
+			info = ValueFalse
 			if start, end = pos, pos+5; end > n {
 				goto eof
 			}
 			if !checkAlseString(src[start:end]) {
 				goto abort
 			}
-			pos, num, info = end, 0, ValueInfo(TypeBoolean)
-			goto value
+			pos, num = end, 0
+			goto scanEndValue
 		case 't':
+			info = ValueTrue
 			if start, end = pos, pos+4; end > n {
 				goto eof
 			}
 			if !checkRueString(src[start:end]) {
 				goto abort
 			}
-			pos, num, info = end, 0, ValueInfo(TypeBoolean)
-			goto value
+			pos, num = end, 0
+			goto scanEndValue
 		case 'N':
+			info = ValueNumberFloatReady
 			if start, end = pos, pos+3; end > n {
 				goto eof
 			}
 			if !checkAnString(src[start:end]) {
 				goto abort
 			}
-			pos, num, info = end, uNaN, ValueNumberFloat
-			goto value
+			pos, num = end, uNaN
+			goto scanEndValue
 		case '-':
 			start = pos
+			info = ValueInfo(TypeNumber) | ValueNegative
 			if pos++; pos >= n {
 				goto eof
 			}
-			info = ValueInfo(TypeNumber) | ValueNegative
+			c = src[pos]
 			goto scanNumber
 		default:
 			if isDigit(c) {
-				start = pos
 				info = ValueInfo(TypeNumber)
+				start = pos
 				goto scanNumber
 			}
 			goto abort
@@ -254,25 +250,29 @@ eof:
 	err = errEOF
 	return
 abort:
-	err = errInvalidToken
+	err = newParseError(pos, c, info)
 	return
 max:
+	p.Document.n = MaxDocumentSize
+	p.nodes = p.nodes[:MaxDocumentSize]
 	err = errDocumentMaxSize
 	return
 wtf:
 	err = errPanic
 	return
+scanEndParent:
+	pos++
+	if p.n == 0 {
+		goto done
+	}
+	p.pop()
+	goto scanMore
 scanKey:
-	for pos++; pos < n; pos++ {
+	for ; pos < n; pos++ {
 		if c = src[pos]; isSpace(c) {
 			continue
 		}
 		switch c {
-		case delimEndObject:
-			if p.mode == TypeObject {
-				goto scanToken
-			}
-			goto abort
 		case delimString:
 			info = ValueInfo(TypeKey)
 			pos++
@@ -281,8 +281,36 @@ scanKey:
 				switch c = src[pos]; c {
 				case delimString:
 					end = pos
-					pos++
-					goto scanKeyEnd
+					for pos++; pos < n; pos++ {
+						if c = src[pos]; isSpace(c) {
+							continue
+						}
+						if c != delimNameSeparator {
+							goto abort
+						}
+						next = p.add(Token{info: info, src: src[start:end]})
+						if root < next && next < MaxDocumentSize {
+							if p.prev == p.parent {
+								// First object key
+								d.nodes[p.parent].value = next
+							} else {
+								d.nodes[p.parent].next = next
+								// Pop last key
+								p.pop()
+							}
+							p.prev = next
+							p.push(TypeKey, next)
+							pos++
+							goto scanValue
+						}
+						switch next {
+						case MaxDocumentSize:
+							goto max
+						default:
+							goto wtf
+						}
+					}
+					goto eof
 				case delimEscape:
 					info |= ValueUnescaped
 					pos++
@@ -294,56 +322,21 @@ scanKey:
 		}
 	}
 	goto eof
-scanKeyEnd:
-	for ; pos < n; pos++ {
-		if c = src[pos]; isSpace(c) {
-			continue
-		}
-		if c != delimNameSeparator {
-			goto abort
-		}
-		next = d.add(Token{info: info, src: src[start:end]})
-		if root < next && next < MaxDocumentSize {
-			switch p.mode {
-			case TypeObject:
-				d.nodes[p.parent].value = next
-			case TypeKey:
-				d.nodes[p.parent].next = next
-				p.pop()
-			default:
-				goto wtf
-			}
-			p.prev = next
-			p.push(TypeKey, next)
-			pos++
-			goto scanToken
-		}
-		switch next {
-		case MaxDocumentSize:
-			goto max
-		default:
-			goto wtf
-		}
-	}
-	goto eof
-
 scanNumber:
 	num = 0
 	if c == '0' {
 		if pos++; pos < n {
 			c = src[pos]
 		}
-		goto scanNumberIntegralEnd
-	}
-	for ; pos < n; pos++ {
-		if c = src[pos]; isDigit(c) {
-			num = num*10 + uint64(c-'0')
-		} else {
-			break
+	} else {
+		for ; pos < n; pos++ {
+			if c = src[pos]; isDigit(c) {
+				num = num*10 + uint64(c-'0')
+			} else {
+				break
+			}
 		}
 	}
-	goto scanNumberIntegralEnd
-scanNumberIntegralEnd:
 	if pos == n || isNumberEnd(c) {
 		if info == ValueNegativeInteger {
 			num = negative(num)
@@ -351,66 +344,96 @@ scanNumberIntegralEnd:
 		goto scanNumberEnd
 	}
 	num = uNaN
-	switch c {
-	case 'E', 'e':
+	if c == '.' {
 		info |= ValueFloat
-		goto scanNumberScientific
-	case '.':
-		info |= ValueFloat
-		pos++
-	default:
-		goto abort
-	}
-	for ; pos < n; pos++ {
-		if c = src[pos]; !isDigit(c) {
-			break
-		}
-	}
-	if pos == n || isNumberEnd(c) {
-		goto scanNumberEnd
-	}
-	switch c {
-	case 'e', 'E':
-		goto scanNumberScientific
-	default:
-		goto abort
-	}
-scanNumberScientific:
-	for pos++; pos < n; pos++ {
-		if c = src[pos]; isDigit(c) {
-			continue
-		}
-		if isNumberEnd(c) {
-			break
-		}
-		switch c {
-		case '-', '+':
-			switch c = src[pos-1]; c {
-			case 'e', 'E':
-				continue scanNumberScientific
+		for pos++; pos < n; pos++ {
+			if c = src[pos]; !isDigit(c) {
+				break
 			}
 		}
-		goto abort
+		if pos == n || isNumberEnd(c) {
+			goto scanNumberEnd
+		}
 	}
+scanNumberScientific:
+	switch c {
+	case 'e', 'E':
+		info |= ValueFloat
+		for pos++; pos < n; pos++ {
+			if c = src[pos]; isDigit(c) {
+				continue
+			}
+			switch c {
+			case '-', '+':
+				c = src[pos-1]
+				goto scanNumberScientific
+			default:
+				break
+			}
+		}
+		if pos == n || isNumberEnd(c) {
+			goto scanNumberEnd
+		}
+	}
+	goto abort
 scanNumberEnd:
 	// check last part has at least 1 digit
 	if c = src[pos-1]; isDigit(c) {
 		end = pos
-		goto value
+	} else {
+		goto abort
 	}
-	goto abort
-value:
-	next = d.add(Token{info: info, src: src[start:end], num: num})
+scanEndValue:
+	next = p.add(Token{info: info, src: src[start:end], num: num})
 	switch next {
 	case root:
-		return
+		goto done
 	case MaxDocumentSize:
 		goto max
 	default:
 		p.link(next)
-		goto scanToken
 	}
-
+scanMore:
+	for ; pos < n; pos++ {
+		if c = src[pos]; isSpace(c) {
+			continue
+		}
+		switch c {
+		case delimValueSeparator:
+			switch p.mode {
+			case TypeKey:
+				pos++
+				goto scanKey
+			case TypeArray:
+				pos++
+				goto scanValue
+			}
+		case delimEndObject:
+			switch p.mode {
+			case TypeKey:
+				p.pop()
+				fallthrough
+			case TypeObject:
+				goto scanEndParent
+			}
+		case delimEndArray:
+			if p.mode == TypeArray {
+				goto scanEndParent
+			}
+		}
+		goto abort
+	}
+	goto eof
+done:
+	// Check only space left in source
+	for ; pos < n; pos++ {
+		if c = src[pos]; isSpace(c) {
+			continue
+		}
+		info = 0
+		goto abort
+	}
+	return
 }
 
 func checkUllString(data string) bool {

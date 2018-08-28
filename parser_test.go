@@ -12,14 +12,15 @@ func TestDocumentParse(t *testing.T) {
 	for _, src := range []string{
 		`[]`,
 		`{}`,
-		`[{"foo":"bar"},2,3]`,
+		`42`,
+		// `[{"foo":"bar"},2,3]`,
 		`{"answer":42}`,
 		`{"answer":"42"}`,
 		`{"answer":true}`,
 		`{"answer":null}`,
 		`{"answer":false}`,
 		`{"results":[]}`,
-		`{"results":[42],"error":null}`,
+		`{"results":[42,{"foo":NaN}],"error":null}`,
 
 		`{"baz":{"foo":"bar"}}`,
 		`{"foo":"bar","bar":23,"baz":{"foo":21.2}}`,
@@ -31,7 +32,7 @@ func TestDocumentParse(t *testing.T) {
 		doc.Reset()
 		root, err := doc.Parse(src)
 		if err != nil {
-			t.Errorf("Parse error: %s", err)
+			t.Errorf("`%s` Parse error: %s", src, err)
 		} else if root == nil {
 			t.Errorf("Nil root")
 		} else if out, _ := root.AppendJSON(nil); string(out) != src {
@@ -113,6 +114,11 @@ func TestParser_Parse(t *testing.T) {
 		{`{"answer":false}`, false},
 		{`{"results":[]}`, false},
 		{`{"results":[42],"error":null}`, false},
+		{`{"results"}`, true},
+		{`[,]`, true},
+		{`{:}`, true},
+		{`{,}`, true},
+		{`"foo`, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.src, func(t *testing.T) {
@@ -134,5 +140,45 @@ func TestParser_Parse(t *testing.T) {
 				t.Errorf("Parser.Parse() invalid node:\nactual: %s\nexpect: %s", out, tt.src)
 			}
 		})
+	}
+}
+
+func Test_ParseErrArray(t *testing.T) {
+	d := njson.BlankDocument()
+	defer d.Close()
+	if n, err := d.Parse(`[42,]`); err == nil {
+		t.Errorf("Expected error")
+	} else if err.Error() != "Invalid token ']' at position 4 while scanning for AnyValue" {
+		t.Errorf("Invalid error msg: %s", err)
+	} else if n != nil {
+		t.Errorf("Invalid root node")
+	}
+	if n, err := d.Parse(`42s`); err == nil {
+		t.Errorf("Expected error")
+	} else if err.Error() != "Invalid token 's' at position 2 while scanning for Number" {
+		t.Errorf("Invalid error msg: %s", err)
+	} else if n != nil {
+		t.Errorf("Invalid root node")
+	}
+	if n, err := d.Parse(`{:}`); err == nil {
+		t.Errorf("Expected error")
+	} else if err.Error() != "Invalid token ':' at position 1 while scanning for Object" {
+		t.Errorf("Invalid error msg: %s", err)
+	} else if n != nil {
+		t.Errorf("Invalid root node")
+	}
+	if n, err := d.Parse(`42,`); err == nil {
+		t.Errorf("Expected error")
+	} else if err.Error() != "Invalid token ',' at position 2" {
+		t.Errorf("Invalid error msg: %s", err)
+	} else if n != nil {
+		t.Errorf("Invalid root node")
+	}
+	if n, err := d.Parse(`{},`); err == nil {
+		t.Errorf("Expected error")
+	} else if err.Error() != "Invalid token ',' at position 2" {
+		t.Errorf("Invalid error msg: %s", err)
+	} else if n != nil {
+		t.Errorf("Invalid root node")
 	}
 }
