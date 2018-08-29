@@ -45,14 +45,13 @@ func TestDocumentParse(t *testing.T) {
 func benchmark(src string) func(b *testing.B) {
 	doc := njson.BlankDocument()
 	defer doc.Close()
-	out := []byte{}
 
 	return func(b *testing.B) {
-		// b.SetBytes(int64(len(src)))
-		if root, err := doc.Parse(src); err != nil {
-			b.Errorf("Parse error: %s", err)
-		} else if out, _ := root.AppendJSON(out[:0]); string(out) != src {
-			b.Errorf("Invalid parse")
+		for i := 0; i < b.N; i++ {
+			doc.Reset()
+			if _, err := doc.Parse(src); err != nil {
+				b.Errorf("Parse error: %s", err)
+			}
 		}
 	}
 }

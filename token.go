@@ -109,6 +109,7 @@ func negative(u uint64) uint64 {
 	return ^(u - 1)
 }
 
+// ToUint returns the int value of a token and whether the conversion is lossless
 func (t Token) ToUint() (uint64, bool) {
 	switch t.info {
 	case ValueNegativeInteger:
@@ -119,13 +120,13 @@ func (t Token) ToUint() (uint64, bool) {
 		f := math.Float64frombits(t.num)
 		return uint64(f), true
 	case ValueNegativeFloatZeroDecimal:
-		// f := math.Float64frombits(t.num)
 		return 0, false
 	default:
 		return 0, false
 	}
 }
 
+// ToInt returns the int value of a token and whether the conversion is lossless
 func (t Token) ToInt() (int64, bool) {
 	switch t.info {
 	case ValueNegativeInteger:
@@ -238,11 +239,14 @@ func (i ValueInfo) NeedsEscape() bool {
 	return (i & needsEscape) > ValueUnescaped
 }
 
-const unparsedFloat = ValueInfo(TypeNumber) | ValueFloat
-
+// IsFloat checks if the value is a number that needs float to represent.
 func (i ValueInfo) IsFloat() bool {
 	return i&ValueNumberFloatReady == ValueNumberFloatReady
 }
+
+const unparsedFloat = ValueInfo(TypeNumber) | ValueFloat
+
+// IsUnparsedFloat checks if the value is a number that needs float to represent and it needs parsing.
 func (i ValueInfo) IsUnparsedFloat() bool {
 	return i&ValueNumberFloatReady == unparsedFloat
 }

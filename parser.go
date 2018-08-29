@@ -23,12 +23,10 @@ func (d *Document) Parse(src string) (root *Node, err error) {
 		return nil, errEmptyJSON
 	}
 	id, err := d.parse(src, n)
-	if err != nil {
-		d.nodes = d.nodes[:id]
-	} else {
+	// d.stack = d.stack[:0]
+	if err == nil {
 		root = &d.nodes[id]
 	}
-	d.stack = d.stack[:0]
 	return
 }
 
@@ -130,7 +128,7 @@ func (d *Document) parse(src string, n int) (root uint16, err error) {
 
 scanValue:
 	info = ValueInfo(TypeAnyValue)
-	for ; pos < n; pos++ {
+	for ; 0 <= pos && pos < len(src); pos++ {
 		if c = src[pos]; isSpace(c) {
 			continue
 		}
@@ -139,7 +137,7 @@ scanValue:
 			info, num = ValueInfo(TypeString), 0
 			pos++
 			start = pos
-			for ; pos < n; pos++ {
+			for ; 0 <= pos && pos < len(src); pos++ {
 				switch c = src[pos]; c {
 				case delimString:
 					end = pos
@@ -162,10 +160,11 @@ scanValue:
 				p.link(next)
 			}
 			p.push(TypeObject, next)
-			for pos++; pos < n; pos++ {
+			for pos++; 0 <= pos && pos < len(src); pos++ {
 				if c = src[pos]; isSpace(c) {
 					continue
-				} else if c == delimEndObject {
+				}
+				if c == delimEndObject {
 					goto scanEndParent
 				}
 				goto scanKey
@@ -181,7 +180,7 @@ scanValue:
 				p.link(next)
 			}
 			p.push(TypeArray, next)
-			for pos++; pos < n; pos++ {
+			for pos++; 0 <= pos && pos < len(src); pos++ {
 				if c = src[pos]; isSpace(c) {
 					continue
 				} else if c == delimEndArray {
@@ -191,52 +190,45 @@ scanValue:
 			}
 		case 'n':
 			info = ValueInfo(TypeNull)
-			if start, end = pos, pos+4; end > n {
-				goto eof
+			if checkUllString(src[pos:]) {
+				start, end, num = pos, pos+4, 0
+				pos = end
+				goto scanEndValue
 			}
-			if !checkUllString(src[start:end]) {
-				goto abort
-			}
-			pos, num = end, 0
-			goto scanEndValue
+			goto abort
 		case 'f':
 			info = ValueFalse
-			if start, end = pos, pos+5; end > n {
-				goto eof
+			if checkAlseString(src[pos:]) {
+				start, end, num = pos, pos+5, 0
+				pos = end
+				goto scanEndValue
 			}
-			if !checkAlseString(src[start:end]) {
-				goto abort
-			}
-			pos, num = end, 0
-			goto scanEndValue
+			goto abort
 		case 't':
 			info = ValueTrue
-			if start, end = pos, pos+4; end > n {
-				goto eof
+			if checkRueString(src[pos:]) {
+				start, end, num = pos, pos+4, 0
+				pos = end
+				goto scanEndValue
 			}
-			if !checkRueString(src[start:end]) {
-				goto abort
-			}
-			pos, num = end, 0
-			goto scanEndValue
+			goto abort
 		case 'N':
 			info = ValueNumberFloatReady
-			if start, end = pos, pos+3; end > n {
-				goto eof
+			if checkAnString(src[pos:]) {
+				start, end = pos, pos+3
+				pos = end
+				num = uNaN
+				goto scanEndValue
 			}
-			if !checkAnString(src[start:end]) {
-				goto abort
-			}
-			pos, num = end, uNaN
-			goto scanEndValue
+			goto abort
 		case '-':
 			start = pos
 			info = ValueInfo(TypeNumber) | ValueNegative
-			if pos++; pos >= n {
-				goto eof
+			if pos++; 0 <= pos && pos < len(src) {
+				c = src[pos]
+				goto scanNumber
 			}
-			c = src[pos]
-			goto scanNumber
+			goto eof
 		default:
 			if isDigit(c) {
 				info = ValueInfo(TypeNumber)
@@ -254,7 +246,7 @@ abort:
 	return
 max:
 	p.Document.n = MaxDocumentSize
-	p.nodes = p.nodes[:MaxDocumentSize]
+	p.nodes = p.nodes[:MaxDocumentSize+1]
 	err = errDocumentMaxSize
 	return
 wtf:
@@ -268,7 +260,7 @@ scanEndParent:
 	p.pop()
 	goto scanMore
 scanKey:
-	for ; pos < n; pos++ {
+	for ; 0 <= pos && pos < len(src); pos++ {
 		if c = src[pos]; isSpace(c) {
 			continue
 		}
@@ -277,11 +269,11 @@ scanKey:
 			info = ValueInfo(TypeKey)
 			pos++
 			start = pos
-			for ; pos < n; pos++ {
+			for ; 0 <= pos && pos < len(src); pos++ {
 				switch c = src[pos]; c {
 				case delimString:
 					end = pos
-					for pos++; pos < n; pos++ {
+					for pos++; 0 <= pos && pos < len(src); pos++ {
 						if c = src[pos]; isSpace(c) {
 							continue
 						}
@@ -291,15 +283,14 @@ scanKey:
 						next = p.add(Token{info: info, src: src[start:end]})
 						if root < next && next < MaxDocumentSize {
 							if p.prev == p.parent {
-								// First object key
-								d.nodes[p.parent].value = next
+								p.nodes[p.parent].value = next
+								p.push(TypeKey, next)
 							} else {
-								d.nodes[p.parent].next = next
-								// Pop last key
-								p.pop()
+								p.nodes[p.parent].next = next
+								p.parent = next
+								p.stack[p.n] = next
 							}
 							p.prev = next
-							p.push(TypeKey, next)
 							pos++
 							goto scanValue
 						}
@@ -325,11 +316,11 @@ scanKey:
 scanNumber:
 	num = 0
 	if c == '0' {
-		if pos++; pos < n {
+		if pos++; 0 <= pos && pos < len(src) {
 			c = src[pos]
 		}
 	} else {
-		for ; pos < n; pos++ {
+		for ; 0 <= pos && pos < len(src); pos++ {
 			if c = src[pos]; isDigit(c) {
 				num = num*10 + uint64(c-'0')
 			} else {
@@ -346,7 +337,7 @@ scanNumber:
 	num = uNaN
 	if c == '.' {
 		info |= ValueFloat
-		for pos++; pos < n; pos++ {
+		for pos++; 0 <= pos && pos < len(src); pos++ {
 			if c = src[pos]; !isDigit(c) {
 				break
 			}
@@ -359,7 +350,7 @@ scanNumberScientific:
 	switch c {
 	case 'e', 'E':
 		info |= ValueFloat
-		for pos++; pos < n; pos++ {
+		for pos++; 0 <= pos && pos < len(src); pos++ {
 			if c = src[pos]; isDigit(c) {
 				continue
 			}
@@ -394,7 +385,7 @@ scanEndValue:
 		p.link(next)
 	}
 scanMore:
-	for ; pos < n; pos++ {
+	for ; 0 <= pos && pos < len(src); pos++ {
 		if c = src[pos]; isSpace(c) {
 			continue
 		}
@@ -426,7 +417,7 @@ scanMore:
 	goto eof
 done:
 	// Check only space left in source
-	for ; pos < n; pos++ {
+	for ; 0 <= pos && pos < len(src); pos++ {
 		if c = src[pos]; isSpace(c) {
 			continue
 		}
@@ -434,24 +425,6 @@ done:
 		goto abort
 	}
 	return
-}
-
-func checkUllString(data string) bool {
-	_ = data[3]
-	return data[1] == 'u' && data[2] == 'l' && data[3] == 'l'
-}
-
-func checkRueString(data string) bool {
-	_ = data[3]
-	return data[1] == 'r' && data[2] == 'u' && data[3] == 'e'
-}
-func checkAnString(data string) bool {
-	_ = data[2]
-	return data[1] == 'a' && data[2] == 'N'
-}
-func checkAlseString(data string) bool {
-	_ = data[4]
-	return data[1] == 'a' && data[2] == 'l' && data[3] == 's' && data[4] == 'e'
 }
 
 var (
