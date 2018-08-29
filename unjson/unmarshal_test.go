@@ -175,9 +175,14 @@ func BenchmarkUnmarshal(b *testing.B) {
 			}
 		}
 	})
-	dec, err := unjson.TypeUnmarshaler(reflect.TypeOf(medium{}), unjson.DefaultOptions())
+	dec, err := unjson.TypeUnmarshaler(reflect.TypeOf(&medium{}), unjson.DefaultOptions())
 	if err != nil {
 		b.Errorf("UnexpectedError: %s", err)
+		return
+	}
+	if dec == nil {
+		b.Errorf("Nil decoder")
+		return
 	}
 	b.Run("njson", func(b *testing.B) {
 		m := medium{}
