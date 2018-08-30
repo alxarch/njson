@@ -1,6 +1,7 @@
 package strjson_test
 
 import (
+	"bytes"
 	"testing"
 	"unicode/utf8"
 
@@ -10,7 +11,7 @@ import (
 func TestUnescape(t *testing.T) {
 	b := make([]byte, 64)
 	test := func(u, s string) {
-		if b = b[:strjson.UnescapeTo(b[:cap(b)], u)]; string(b) != s {
+		if b = strjson.Unescape(b[:0], u); string(b) != s {
 			t.Errorf("Invalid unescape:\nexpect: %q %d\nactual: %q %d", s, utf8.RuneCountInString(s), b, utf8.RuneCount((b)))
 		}
 	}
@@ -71,4 +72,22 @@ func TestEscapeRune(t *testing.T) {
 	// Zero width space
 	testRune(string([]byte{0xe2, 0x80, 0x8b}), `\u200B`)
 
+}
+
+func BenchmarkUnescape(b *testing.B) {
+	s := `Lorem ipsum \n dolor.\uD834\uDD1E\uD834\uDD1E`
+	unescaped := []byte("Lorem ipsum \n dolor.𝄞𝄞")
+	b.ReportAllocs()
+
+	b.Run("unescape", func(b *testing.B) {
+		buf := make([]byte, 0, 512)
+		buf = strjson.Unescape(buf[:0], s)
+		if !bytes.Equal(buf, unescaped) {
+			b.Errorf("Invalid unescape: %s", buf)
+		}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			buf = strjson.Unescape(buf[:0], s)
+		}
+	})
 }

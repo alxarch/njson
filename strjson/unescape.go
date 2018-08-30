@@ -2,39 +2,33 @@ package strjson
 
 import (
 	"strings"
-	"unicode"
 	"unicode/utf16"
 	"unicode/utf8"
 )
 
-func readHex(s string, b []byte) (ok bool) {
-	_ = s[1]
-	_ = b[2]
-	b[1] = fromHex(s[0])
-	b[2] = fromHex(s[1])
-	b[0] = (b[1] << 4) | b[2]
-	ok = b[1] != 0xff && b[2] != 0xff
-	return
-}
+// func readHex2(s string, buf []byte, i int) bool {
+// 	if 0 <= i && i < len(s) && len(buf) > 2 {
+// 		if s = s[i:]; len(s) > 1 {
+// 			buf[1] = toHex(s[0])
+// 			buf[2] = toHex(s[1])
+// 			buf[0] |= buf[1]<<4 | buf[2]
+// 			return buf[1] != 0xff && buf[2] != 0xff
+// 		}
+// 	}
+// 	return false
+// }
 
-func readRune(b []byte) rune {
-	_ = b[1]
-	return rune(uint16(b[0])<<8 | uint16(b[1]))
-}
+// func readHex(s string, b []byte) byte {
+// 	b[2] = fromHex(s[1])
+// 	b[1] = fromHex(s[0])
+// 	b[0] = b[1]<<4 | b[2]
+// 	return b[2] & b[1]
+// }
 
-// Unescape appends unescaped s to b
-func Unescape(b []byte, s string) []byte {
-	// Ensure b has enough space to unescape s
-	offset := len(b)
-	n := offset + len(s)
-	if cap(b) < n {
-		b = append(b, s...)
-	} else {
-		b = b[:n]
-	}
-	n = offset + UnescapeTo(b[:offset], s)
-	return b[:n]
-}
+// func readRune(b []byte) rune {
+// 	_ = b[1]
+// 	return rune(uint16(b[0])<<8 | uint16(b[1]))
+// }
 
 // Quoted appends JSON quoted value of s.
 func Quoted(b []byte, s string) []byte {
@@ -60,220 +54,178 @@ func MaxUnescapedLen(s string) int {
 	return 3 * len(s) / 2
 }
 
-func encodeError(buf []byte) int {
-	_ = buf[2]
-	buf[0] = 0xef
-	buf[1] = 0xbf
-	buf[2] = 0xbc
-	return 3
-}
-
-// UnescapeTo unescapes a string inside dst buffer which must have sufficient size (ie 3*len(s)/2).
-func UnescapeTo(dst []byte, s string) (n int) {
-	if n = strings.IndexByte(s, delimEscape); n == -1 {
-		n = len(s)
-	}
-
+// Unescape appends the unescaped form of a string to a buffer.
+func Unescape(dst []byte, s string) []byte {
 	var (
 		c      byte
-		end    = len(s)
 		r1, r2 rune
 		buf    = [utf8.UTFMax]byte{}
-		i      = copy(dst, s[:n])
+		i      = strings.IndexByte(s, '\\')
+		ss     string
 	)
-	for ; i < end; i++ {
+	if 0 <= i && i < len(s) {
+		if cap(dst)-len(dst) < len(s) {
+			// Buffer probably doesn't have enough capacity to store the string
+			tmp := make([]byte, len(dst)+i, len(dst)+MaxUnescapedLen(s))
+			copy(tmp, dst)
+			copy(tmp, s[:i])
+			dst = tmp
+		} else {
+			dst = append(dst, s[:i]...)
+		}
+	} else {
+		dst = append(dst, s...)
+		return dst
+	}
+	for ; 0 <= i && i < len(s); i++ {
 		if c = s[i]; c != '\\' {
-			dst[n] = c
-			n++
+			dst = append(dst, c)
 			continue
 		}
-		if i++; i == end {
-			n += encodeError(dst)
-			return
+		// dst = append(dst, s[:i]...)
+		ss = s[i:]
+		i++
+		// i = -1
+		if len(ss) > 1 {
+			c = ss[1]
+			// s = s[2:]
+		} else {
+			c = '?'
 		}
-		switch c = s[i]; c {
+		switch c {
 		case '"', '/', '\\':
-			dst[n] = c
-			n++
+			// keep c
+		case 'n':
+			c = '\n'
+		case 'r':
+			c = '\r'
+		case 't':
+			c = '\t'
+		case 'b':
+			c = '\b'
+		case 'f':
+			c = '\f'
 		case 'u':
 			r1 = utf8.RuneError
-			if i+4 < end && readHex(s[i+1:], buf[:]) && readHex(s[i+3:], buf[1:]) {
-				r1 = readRune(buf[:])
-				i += 4
+			if len(ss) > 5 {
+				buf[0] = fromHex(ss[2])
+				buf[1] = fromHex(ss[3])
+				buf[2] = fromHex(ss[4])
+				buf[3] = fromHex(ss[5])
+				if buf[0]&buf[1]&buf[2]&buf[3] != 0xff {
+					r1 = rune(uint16(buf[0])<<12 | uint16(buf[1])<<8 | uint16(buf[2])<<4 | uint16(buf[3]))
+					i += 4
+					// s = s[4:]
+				}
 			}
 			switch {
-			case r1 == utf8.RuneError:
-			case utf8.ValidRune(r1):
+			case r1 < utf8.RuneSelf:
+				dst = append(dst, byte(r1))
+				continue
 			case utf16.IsSurrogate(r1):
 				r2 = utf8.RuneError
-				if i+2 < end && s[i+1] == delimEscape && s[i+2] == 'u' {
+				if len(ss) > 11 && ss[6] == delimEscape && ss[7] == 'u' {
 					i += 2
-					if i+4 < end && readHex(s[i+1:], buf[:]) && readHex(s[i+3:], buf[1:]) {
-						r2 = readRune(buf[:])
+					buf[0] = fromHex(ss[8])
+					buf[1] = fromHex(ss[9])
+					buf[2] = fromHex(ss[10])
+					buf[3] = fromHex(ss[11])
+					if buf[0]&buf[1]&buf[2]&buf[3] != 0xff {
+						r2 = rune(uint16(buf[0])<<12 | uint16(buf[1])<<8 | uint16(buf[2])<<4 | uint16(buf[3]))
 						i += 4
+						// s = s[6:]
 					}
 				}
-				// Will be utf8.RuneError if not a valid surrogate pair
 				r1 = utf16.DecodeRune(r1, r2)
+			}
+			switch utf8.EncodeRune(buf[:], r1) {
+			case 1:
+				dst = append(dst, buf[0])
+			case 2:
+				dst = append(dst, buf[0], buf[1])
 			default:
-				r1 = utf8.RuneError
+				fallthrough
+			case 3:
+				dst = append(dst, buf[0], buf[1], buf[2])
+			case 4:
+				dst = append(dst, buf[0], buf[1], buf[2], buf[3])
 			}
-			// Safe to write to dst because if r1 size is 3 if any error occured
-			n += utf8.EncodeRune(dst[n:], r1)
+			continue
 		default:
-			if c, ok := namedEscapes[c]; ok {
-				dst[n] = c
-				n++
-			} else {
-				n += encodeError(dst)
-			}
+			// append rune error
+			dst = append(dst, 0xef, 0xbf, 0xbc)
+			continue
 		}
-	}
-	return
-}
+		// append escaped byte
+		dst = append(dst, c)
 
-// Escape appends escaped string to a buffer.
-func Escape(dst []byte, s string) []byte {
-	for _, r := range s {
-		switch {
-		case r < utf8.RuneSelf:
-			switch r {
-			case '"', '\\', '/':
-				dst = append(dst, '\\', byte(r))
-			case '\n':
-				dst = append(dst, '\\', 'n')
-			case '\r':
-				dst = append(dst, '\\', 'r')
-			case '\t':
-				dst = append(dst, '\\', 't')
-			case '\b':
-				dst = append(dst, '\\', 'b')
-			case '\f':
-				dst = append(dst, '\\', 'f')
-			default:
-				if unicode.IsPrint(r) {
-					dst = append(dst, byte(r))
-				} else {
-					dst = append(dst, '\\', 'u', '0', '0',
-						toHex(byte(r)>>4),
-						toHex(byte(r)),
-					)
-				}
-			}
-		case unicode.IsPrint(r):
-			buf := [utf8.UTFMax]byte{}
-			dst = append(dst, buf[:utf8.EncodeRune(buf[:], r)]...)
-		case r < 0x10000:
-			return append(dst, '\\', 'u',
-				toHex(byte(r>>12)),
-				toHex(byte(r>>8)&0xF),
-				toHex(byte(r)>>4),
-				toHex(byte(r)&0xF),
-			)
-		case utf16.IsSurrogate(r):
-			dst = escapeUTF16(dst, r)
-		default:
-			dst = escapeError(dst)
-		}
 	}
+	// if len(s) > 0 {
+	// 	dst = append(dst, s...)
+	// }
 	return dst
 }
 
-// EscapeBytes appends escaped bytes.
-func EscapeBytes(dst []byte, s []byte) []byte {
-	var (
-		n    = len(s)
-		i, j int
-		c    byte
-		r    rune
-	)
-	for i, j = 0, 1; i < n; i, j = i+j, 1 {
-		if c = s[i]; c < utf8.RuneSelf {
-			switch c {
-			case '"', '\\', '/':
-				dst = append(dst, '\\', c)
-			case '\n':
-				dst = append(dst, '\\', 'n')
-			case '\r':
-				dst = append(dst, '\\', 'r')
-			case '\t':
-				dst = append(dst, '\\', 't')
-			case '\b':
-				dst = append(dst, '\\', 'b')
-			case '\f':
-				dst = append(dst, '\\', 'f')
-			default:
-				if unicode.IsPrint(rune(c)) {
-					dst = append(dst, c)
-				} else {
-					dst = escapeByte(dst, c)
-				}
-			}
-		} else if r, j = utf8.DecodeRune(s[i:]); unicode.IsPrint(r) {
-			dst = append(dst, s[i:i+j]...)
-		} else {
-			dst = EscapeRune(dst, r)
-		}
-	}
-	return dst
-}
+// // UnescapeTo unescapes a string inside dst buffer which must have sufficient size (ie 3*len(s)/2).
+// func UnescapeTo(dst []byte, s string) (n int) {
+// 	if n = strings.IndexByte(s, delimEscape); n == -1 {
+// 		n = len(s)
+// 	}
 
-func escapeByte(dst []byte, c byte) []byte {
-	return append(dst, '\\', 'u', '0', '0',
-		toHex(c>>4),
-		toHex(c),
-	)
-}
-
-func escapeUTF8(dst []byte, r rune) []byte {
-	return append(dst, '\\', 'u',
-		toHex(byte(r>>12)),
-		toHex(byte(r>>8)&0xF),
-		toHex(byte(r)>>4),
-		toHex(byte(r)&0xF),
-	)
-}
-func escapeError(dst []byte) []byte {
-	return append(dst, `\uFFFD`...)
-}
-func escapeUTF16(dst []byte, r rune) []byte {
-	if r1, r2 := utf16.EncodeRune(r); r1 != utf8.RuneError {
-		return append(dst, '\\', 'u',
-			toHex(byte(r1>>12)),
-			toHex(byte(r1>>8)&0xF),
-			toHex(byte(r1)>>4),
-			toHex(byte(r1)&0xF),
-			'\\', 'u',
-			toHex(byte(r2>>12)),
-			toHex(byte(r2>>8)&0xF),
-			toHex(byte(r2)>>4),
-			toHex(byte(r2)&0xF),
-		)
-
-	}
-	return escapeError(dst)
-
-}
-
-// EscapeRune escapes a rune to JSON unicode escape.
-func EscapeRune(dst []byte, r rune) []byte {
-	switch {
-	case r < utf8.RuneSelf:
-		return escapeByte(dst, byte(r))
-	case r > utf8.MaxRune:
-		r = utf8.RuneError
-		fallthrough
-	case r < 0x10000:
-		return escapeUTF8(dst, r)
-	default:
-		return escapeUTF16(dst, r)
-	}
-}
-
-var namedEscapes = map[byte]byte{
-	'n': '\n',
-	'r': '\r',
-	't': '\t',
-	'b': '\b',
-	'f': '\f',
-}
+// 	var (
+// 		c      byte
+// 		r1, r2 rune
+// 		buf    = [utf8.UTFMax]byte{}
+// 		b1, b2 = buf[:], buf[1:]
+// 		i      = copy(dst, s[:n])
+// 	)
+// 	for ; 0 <= i && i < len(s); i++ {
+// 		if c = s[i]; c != '\\' {
+// 			dst[n] = c
+// 			n++
+// 			continue
+// 		}
+// 		if i++; i == len(s) {
+// 			n += encodeError(dst)
+// 			return
+// 		}
+// 		switch c = s[i]; c {
+// 		case '"', '/', '\\':
+// 			dst[n] = c
+// 			n++
+// 		case 'u':
+// 			r1 = utf8.RuneError
+// 			if i+4 < len(s) && readHex(s[i+1:], b1)&readHex(s[i+3:], b2) != 0xff {
+// 				r1 = readRune(b1)
+// 				i += 4
+// 			}
+// 			switch {
+// 			case r1 == utf8.RuneError:
+// 			case utf8.ValidRune(r1):
+// 			case utf16.IsSurrogate(r1):
+// 				r2 = utf8.RuneError
+// 				if i+6 < len(s) && s[i+1] == delimEscape && s[i+2] == 'u' {
+// 					i += 2
+// 					if readHex(s[i+1:], b1)&readHex(s[i+3:], b2) != 0xff {
+// 						r2 = readRune(buf[:])
+// 						i += 4
+// 					}
+// 				}
+// 				// Will be utf8.RuneError if not a valid surrogate pair
+// 				r1 = utf16.DecodeRune(r1, r2)
+// 			default:
+// 				r1 = utf8.RuneError
+// 			}
+// 			// Safe to write to dst because if r1 size is 3 if any error occured
+// 			n += utf8.EncodeRune(dst[n:], r1)
+// 		default:
+// 			if c, ok := namedEscapes[c]; ok {
+// 				dst[n] = c
+// 				n++
+// 			} else {
+// 				n += encodeError(dst)
+// 			}
+// 		}
+// 	}
+// 	return
+// }
