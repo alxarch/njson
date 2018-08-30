@@ -62,7 +62,7 @@ func (d *Document) add(t Token) (id uint16) {
 
 // Get finds a Node by id.
 func (d *Document) Get(id uint16) *Node {
-	if 0 <= id && id < d.n {
+	if int(id) < len(d.nodes) {
 		return &d.nodes[id]
 	}
 	return nil

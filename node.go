@@ -376,8 +376,8 @@ func (n *Node) UnescapedBytes() []byte {
 		if 0 < n.token.extra && n.token.extra < n.doc.n {
 			return s2b(n.doc.nodes[n.token.extra].token.src)
 		}
-		b := make([]byte, len(n.token.src))
-		b = b[:strjson.UnescapeTo(b, n.token.src)]
+		b := make([]byte, 0, len(n.token.src))
+		b = strjson.Unescape(b, n.token.src)
 		n.token.extra = n.doc.add(Token{
 			src: string(b),
 		})
@@ -399,7 +399,7 @@ func (n *Node) Unescaped() string {
 			return n.doc.nodes[n.token.extra].token.src
 		}
 		b := blankBuffer(strjson.MaxUnescapedLen(n.token.src))
-		b = b[:strjson.UnescapeTo(b, n.token.src)]
+		b = strjson.Unescape(b[:0], n.token.src)
 		s := string(b)
 		putBuffer(b)
 		n.token.extra = n.doc.add(Token{
