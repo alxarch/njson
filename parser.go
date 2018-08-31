@@ -3,7 +3,7 @@ package njson
 // parser is a JSON parser.
 type parser struct {
 	*Document
-	depth  uint16
+	depth  int
 	parent uint16
 	prev   uint16
 	mode   Type
@@ -69,14 +69,12 @@ const (
 func (d *Document) parser() parser {
 	return parser{
 		Document: d,
-		depth:    MaxDocumentSize,
 		parent:   MaxDocumentSize,
 	}
 }
 
 func (p *parser) push(typ Type, n uint16) {
-	// p.n initialized to MaxDocumentSize so p.n++ overflows it to 0
-	p.depth++
+	p.depth = len(p.stack)
 	p.stack = append(p.stack, n)
 	p.mode = typ
 	p.parent = n
@@ -107,16 +105,17 @@ func (p *parser) add(t Token) (id uint16) {
 
 }
 
-func (p *parser) pop() {
-	if int(p.depth) < len(p.stack) {
+func (p *parser) pop() int {
+	if 0 <= p.depth && p.depth < len(p.stack) {
 		p.stack = p.stack[:p.depth]
-		if p.depth--; int(p.depth) < len(p.stack) {
+		if p.depth--; 0 <= p.depth && p.depth < len(p.stack) {
 			p.prev, p.parent = p.parent, p.stack[p.depth]
 			if int(p.parent) < len(p.nodes) {
-				p.mode = p.nodes[p.parent].Type()
+				p.mode = Type(p.nodes[p.parent].token.info)
 			}
 		}
 	}
+	return p.depth
 }
 
 // Parse parses a JSON string into a Document.
@@ -153,12 +152,12 @@ scanValue:
 					pos++
 				}
 			}
-			goto eof
+			return errEOF
 		case delimBeginObject:
 			info = ValueInfo(TypeObject)
 			switch next = p.add(tokenObject); next {
 			case MaxDocumentSize:
-				goto max
+				return errDocumentMaxSize
 			case root:
 				p.prev = next
 			default:
@@ -178,7 +177,7 @@ scanValue:
 			info = ValueInfo(TypeArray)
 			switch next = p.add(tokenArray); next {
 			case MaxDocumentSize:
-				goto max
+				return errDocumentMaxSize
 			case root:
 				p.prev = next
 			default:
@@ -188,7 +187,8 @@ scanValue:
 			for pos++; 0 <= pos && pos < len(src); pos++ {
 				if c = src[pos]; isSpace(c) {
 					continue
-				} else if c == delimEndArray {
+				}
+				if c == delimEndArray {
 					goto scanEndParent
 				}
 				goto scanValue
@@ -200,15 +200,15 @@ scanValue:
 				pos = end
 				goto scanEndValue
 			}
-			goto abort
+			return newParseError(pos, c, info)
 		case 'f':
 			info = ValueFalse
-			if checkAlseString(src[pos:]) {
-				start, end, num = pos, pos+5, 0
-				pos = end
-				goto scanEndValue
+			if !checkAlseString(src[pos:]) {
+				return newParseError(pos, c, info)
 			}
-			goto abort
+			start, end, num = pos, pos+5, 0
+			pos = end
+			goto scanEndValue
 		case 't':
 			info = ValueTrue
 			if checkRueString(src[pos:]) {
@@ -216,7 +216,7 @@ scanValue:
 				pos = end
 				goto scanEndValue
 			}
-			goto abort
+			return newParseError(pos, c, info)
 		case 'N':
 			info = ValueNumberFloatReady
 			if checkAnString(src[pos:]) {
@@ -225,7 +225,7 @@ scanValue:
 				num = uNaN
 				goto scanEndValue
 			}
-			goto abort
+			return newParseError(pos, c, info)
 		case '-':
 			start = pos
 			info = ValueInfo(TypeNumber) | ValueNegative
@@ -233,34 +233,21 @@ scanValue:
 				c = src[pos]
 				goto scanNumber
 			}
-			goto eof
+			return errEOF
 		default:
 			if isDigit(c) {
 				info = ValueInfo(TypeNumber)
 				start = pos
 				goto scanNumber
 			}
-			goto abort
 		}
+		return newParseError(pos, c, info)
 	}
-eof:
-	err = errEOF
-	return
-abort:
-	err = newParseError(pos, c, info)
-	return
-max:
-	err = errDocumentMaxSize
-	return
-wtf:
-	err = errPanic
-	return
 scanEndParent:
 	pos++
-	if p.depth == 0 {
+	if p.pop() < 0 {
 		goto done
 	}
-	p.pop()
 	goto scanMore
 scanKey:
 	for ; 0 <= pos && pos < len(src); pos++ {
@@ -281,7 +268,7 @@ scanKey:
 							continue
 						}
 						if c != delimNameSeparator {
-							goto abort
+							return newParseError(pos, c, info)
 						}
 						next = p.add(Token{info: info, src: src[start:end]})
 						if root < next && next < MaxDocumentSize {
@@ -304,23 +291,23 @@ scanKey:
 						}
 						switch next {
 						case MaxDocumentSize:
-							goto max
+							return errDocumentMaxSize
 						default:
-							goto wtf
+							return errPanic
 						}
 					}
-					goto eof
+					return errEOF
 				case delimEscape:
 					info |= ValueUnescaped
 					pos++
 				}
 			}
-			goto eof
+			return errEOF
 		default:
-			goto abort
+			return newParseError(pos, c, info)
 		}
 	}
-	goto eof
+	return errEOF
 scanNumber:
 	num = 0
 	if c == '0' {
@@ -374,13 +361,13 @@ scanNumberScientific:
 			goto scanNumberEnd
 		}
 	}
-	goto abort
+	return newParseError(pos, c, info)
 scanNumberEnd:
 	// check last part has at least 1 digit
 	if c = src[pos-1]; isDigit(c) {
 		end = pos
 	} else {
-		goto abort
+		return newParseError(pos-1, c, info)
 	}
 scanEndValue:
 	next = p.add(Token{info: info, src: src[start:end], num: num})
@@ -388,7 +375,7 @@ scanEndValue:
 	case root:
 		goto done
 	case MaxDocumentSize:
-		goto max
+		return errDocumentMaxSize
 	default:
 		p.link(next)
 	}
@@ -420,17 +407,16 @@ scanMore:
 				goto scanEndParent
 			}
 		}
-		goto abort
+		return newParseError(pos, c, info)
 	}
-	goto eof
+	return errEOF
 done:
 	// Check only space left in source
 	for ; 0 <= pos && pos < len(src); pos++ {
 		if c = src[pos]; isSpace(c) {
 			continue
 		}
-		info = 0
-		goto abort
+		return newParseError(pos, c, 0)
 	}
 	return
 }
