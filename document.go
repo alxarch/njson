@@ -9,7 +9,6 @@ import (
 type Document struct {
 	nodes []Node   // All node offsets are indexes to this slice
 	stack []uint16 // Parser stack
-	n     uint16   // len(nodes)
 
 	noCopy // protect from passing by value
 }
@@ -21,15 +20,13 @@ const MaxDocumentSize = math.MaxUint16
 func (d *Document) CopyTo(c *Document) {
 	*c = Document{
 		nodes: append(c.nodes[:0], d.nodes...),
-		n:     d.n,
 	}
 }
 
 // Copy creates a copy of a document.
 func (d *Document) Copy() *Document {
 	c := Document{
-		nodes: make([]Node, d.n),
-		n:     d.n,
+		nodes: make([]Node, len(d.nodes)),
 	}
 	copy(c.nodes, d.nodes)
 	return &c
@@ -39,7 +36,6 @@ func (d *Document) Copy() *Document {
 // This invalidates any Node pointers taken from this document.
 func (d *Document) Reset() {
 	d.nodes = d.nodes[:0]
-	d.n = 0
 	d.stack = d.stack[:0]
 }
 
@@ -47,21 +43,27 @@ func (d *Document) Reset() {
 func (d *Document) add(t Token) (id uint16) {
 	// Be safe and avoid adding of unescape token that doesn't exist
 	t.extra = 0
-	if id = d.n; id < MaxDocumentSize {
+	id = uint16(len(d.nodes))
+	if id < MaxDocumentSize {
 		d.nodes = append(d.nodes, Node{
 			doc:    d,
-			id:     d.n,
+			id:     id,
 			parent: MaxDocumentSize,
 			token:  t,
 		})
-		d.n++
 	}
 	return
 
 }
 
 // Get finds a Node by id.
-func (d *Document) Get(id uint16) *Node {
+func (d *Document) Get(id int) *Node {
+	if 0 <= id && id < len(d.nodes) {
+		return &d.nodes[id]
+	}
+	return nil
+}
+func (d *Document) get(id uint16) *Node {
 	if int(id) < len(d.nodes) {
 		return &d.nodes[id]
 	}

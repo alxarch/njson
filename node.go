@@ -87,7 +87,7 @@ func (n *Node) Parent() *Node {
 	if n.IsRoot() || n.doc == nil {
 		return nil
 	}
-	return n.doc.Get(n.parent)
+	return n.doc.Get(int(n.parent))
 }
 
 // Next returns the next sibling of a Node.
@@ -98,7 +98,7 @@ func (n *Node) Next() *Node {
 		return nil
 	}
 	// Use GetCheck to avoid document mismatch
-	return n.doc.Get(n.next)
+	return n.doc.get(n.next)
 }
 
 // Value returns a Node holding the value of a Node.
@@ -109,7 +109,7 @@ func (n *Node) Value() *Node {
 	if n == nil || n.value == 0 || n.doc == nil {
 		return nil
 	}
-	return n.doc.Get(n.value)
+	return n.doc.get(n.value)
 }
 
 // Index returns the i-th element of an Array node
@@ -165,7 +165,7 @@ func (n *Node) ToInterface() (interface{}, bool) {
 		s := make([]interface{}, n.Len())
 		j := 0
 		ok := false
-		for n = n.Value(); n != nil; n, j = n.Next(), j+1 {
+		for n = n.Value(); n != nil && 0 <= j && j < len(s); n, j = n.Next(), j+1 {
 			if s[j], ok = n.ToInterface(); !ok {
 				return nil, false
 			}
@@ -311,7 +311,7 @@ var bufferpool = &sync.Pool{
 }
 
 func blankBuffer(size int) []byte {
-	if b := bufferpool.Get().([]byte); cap(b) >= size {
+	if b := bufferpool.Get().([]byte); 0 <= size && size <= cap(b) {
 		return b[:size]
 	}
 	if size < minBufferSize {
@@ -373,7 +373,7 @@ func (n *Node) UnescapedBytes() []byte {
 		return s2b(n.token.src)
 	}
 	if n.doc != nil {
-		if 0 < n.token.extra && n.token.extra < n.doc.n {
+		if int(n.token.extra) < len(n.doc.nodes) {
 			return s2b(n.doc.nodes[n.token.extra].token.src)
 		}
 		b := make([]byte, 0, len(n.token.src))
@@ -395,7 +395,7 @@ func (n *Node) Unescaped() string {
 		return n.token.src
 	}
 	if n.doc != nil {
-		if 0 < n.token.extra && n.token.extra < n.doc.n {
+		if int(n.token.extra) < len(n.doc.nodes) {
 			return n.doc.nodes[n.token.extra].token.src
 		}
 		b := blankBuffer(strjson.MaxUnescapedLen(n.token.src))

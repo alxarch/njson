@@ -3,7 +3,7 @@ package njson
 // parser is a JSON parser.
 type parser struct {
 	*Document
-	n      uint16
+	depth  uint16
 	parent uint16
 	prev   uint16
 	mode   Type
@@ -15,17 +15,18 @@ func (d *Document) Parse(src string) (root *Node, err error) {
 		err = errNilDocument
 		return
 	}
-	if d.n == MaxDocumentSize {
+	size := len(d.nodes)
+	if size >= MaxDocumentSize {
 		return nil, errDocumentMaxSize
 	}
 	n := len(src)
 	if n == 0 {
 		return nil, errEmptyJSON
 	}
-	id, err := d.parse(src, n)
-	// d.stack = d.stack[:0]
-	if err == nil {
-		root = &d.nodes[id]
+	if err = d.parse(src, uint16(size)); err != nil {
+		d.nodes = d.nodes[:size]
+	} else {
+		root = d.Get(size)
 	}
 	return
 }
@@ -38,20 +39,19 @@ func (d *Document) ParseUnsafe(buf []byte) (root *Node, err error) {
 		err = errNilDocument
 		return
 	}
-	if d.n == MaxDocumentSize {
+	size := len(d.nodes)
+	if size >= MaxDocumentSize {
 		return nil, errDocumentMaxSize
 	}
 	n := len(buf)
 	if n == 0 {
 		return nil, errEmptyJSON
 	}
-	id, err := d.parse(b2s(buf), n)
-	if err != nil {
-		d.nodes = d.nodes[:id]
+	if err = d.parse(b2s(buf), uint16(size)); err != nil {
+		d.nodes = d.nodes[:size]
 	} else {
-		root = &d.nodes[id]
+		root = d.Get(size)
 	}
-	d.stack = d.stack[:0]
 	return
 }
 
@@ -69,52 +69,58 @@ const (
 func (d *Document) parser() parser {
 	return parser{
 		Document: d,
-		n:        MaxDocumentSize,
+		depth:    MaxDocumentSize,
 		parent:   MaxDocumentSize,
 	}
 }
 
 func (p *parser) push(typ Type, n uint16) {
 	// p.n initialized to MaxDocumentSize so p.n++ overflows it to 0
-	p.n++
+	p.depth++
 	p.stack = append(p.stack, n)
 	p.mode = typ
 	p.parent = n
 }
 
 func (p *parser) link(id uint16) {
-	if p.prev == p.parent {
-		p.nodes[p.prev].value = id
-	} else {
-		p.nodes[p.prev].next = id
+	if int(p.prev) < len(p.nodes) {
+		if p.prev == p.parent {
+			p.nodes[p.prev].value = id
+		} else {
+			p.nodes[p.prev].next = id
+		}
+		p.prev = id
+
 	}
-	p.prev = id
 }
 
 // add adds a Node for Token returning the new node's id
 func (p *parser) add(t Token) (id uint16) {
+	id = uint16(len(p.nodes))
 	p.nodes = append(p.nodes, Node{
 		doc:    p.Document,
-		id:     p.Document.n,
+		id:     id,
 		parent: p.parent,
 		token:  t,
 	})
-	id = p.Document.n
-	p.Document.n++
 	return
 
 }
 
 func (p *parser) pop() {
-	p.stack = p.stack[:p.n]
-	p.n--
-	p.prev = p.parent
-	p.parent = p.stack[p.n]
-	p.mode = p.nodes[p.parent].Type()
+	if int(p.depth) < len(p.stack) {
+		p.stack = p.stack[:p.depth]
+		if p.depth--; int(p.depth) < len(p.stack) {
+			p.prev, p.parent = p.parent, p.stack[p.depth]
+			if int(p.parent) < len(p.nodes) {
+				p.mode = p.nodes[p.parent].Type()
+			}
+		}
+	}
 }
 
 // Parse parses a JSON string into a Document.
-func (d *Document) parse(src string, n int) (root uint16, err error) {
+func (d *Document) parse(src string, root uint16) (err error) {
 	var (
 		p          = d.parser()
 		next       uint16
@@ -124,7 +130,6 @@ func (d *Document) parse(src string, n int) (root uint16, err error) {
 		info       ValueInfo
 		c          byte
 	)
-	root = d.n
 
 scanValue:
 	info = ValueInfo(TypeAnyValue)
@@ -245,8 +250,6 @@ abort:
 	err = newParseError(pos, c, info)
 	return
 max:
-	p.Document.n = MaxDocumentSize
-	p.nodes = p.nodes[:MaxDocumentSize+1]
 	err = errDocumentMaxSize
 	return
 wtf:
@@ -254,7 +257,7 @@ wtf:
 	return
 scanEndParent:
 	pos++
-	if p.n == 0 {
+	if p.depth == 0 {
 		goto done
 	}
 	p.pop()
@@ -282,13 +285,18 @@ scanKey:
 						}
 						next = p.add(Token{info: info, src: src[start:end]})
 						if root < next && next < MaxDocumentSize {
-							if p.prev == p.parent {
-								p.nodes[p.parent].value = next
-								p.push(TypeKey, next)
-							} else {
-								p.nodes[p.parent].next = next
-								p.parent = next
-								p.stack[p.n] = next
+							if int(p.parent) < len(p.nodes) {
+								if p.prev == p.parent {
+									p.nodes[p.parent].value = next
+									p.push(TypeKey, next)
+								} else {
+									p.nodes[p.parent].next = next
+									p.parent = next
+									if int(p.depth) < len(p.stack) {
+										p.stack[p.depth] = next
+									}
+								}
+
 							}
 							p.prev = next
 							pos++
@@ -328,7 +336,7 @@ scanNumber:
 			}
 		}
 	}
-	if pos == n || isNumberEnd(c) {
+	if pos == len(src) || isNumberEnd(c) {
 		if info == ValueNegativeInteger {
 			num = negative(num)
 		}
@@ -342,7 +350,7 @@ scanNumber:
 				break
 			}
 		}
-		if pos == n || isNumberEnd(c) {
+		if pos == len(src) || isNumberEnd(c) {
 			goto scanNumberEnd
 		}
 	}
@@ -362,7 +370,7 @@ scanNumberScientific:
 				break
 			}
 		}
-		if pos == n || isNumberEnd(c) {
+		if pos == len(src) || isNumberEnd(c) {
 			goto scanNumberEnd
 		}
 	}
