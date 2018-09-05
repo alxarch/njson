@@ -68,7 +68,7 @@ func NewFieldParser(key string, omitempty bool) FieldParser {
 func (o fieldParser) parseField(field reflect.StructField) (tag string, omitempty bool, ok bool) {
 	omitempty = o.OmitEmpty
 	if tag, ok = field.Tag.Lookup(o.Key); ok {
-		if i := strings.IndexByte(tag, ','); i != -1 {
+		if i := strings.IndexByte(tag, ','); 0 <= i && i < len(tag) {
 			if !omitempty {
 				omitempty = strings.Index(tag[i:], "omitempty") > 0
 			}

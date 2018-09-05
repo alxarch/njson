@@ -41,10 +41,10 @@ func TestType_Types(t *testing.T) {
 		t.Errorf("Invalid types: %s", ts)
 		return
 	}
-	if ts[0] != njson.TypeNumber {
+	if ts[1] != njson.TypeNumber {
 		t.Errorf("Invalid types: %s", ts[0])
 	}
-	if ts[1] != njson.TypeObject {
+	if ts[0] != njson.TypeObject {
 		t.Errorf("Invalid types: %s", ts[1])
 	}
 	// t.Error(njson.TypeError{njson.TypeString, typ})

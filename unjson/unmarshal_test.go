@@ -1,14 +1,43 @@
 package unjson_test
 
 import (
-	"encoding/json"
-	"io/ioutil"
 	"reflect"
 	"testing"
 
 	"github.com/alxarch/njson"
+
 	"github.com/alxarch/njson/unjson"
 )
+
+func TestUnmarshalBasic(t *testing.T) {
+	src := `{"Foo":1,"Bar":2,"Baz":3}`
+	type A struct{ Foo, Bar, Baz int }
+	a := A{}
+	dec, err := unjson.TypeUnmarshaler(reflect.TypeOf(&a), unjson.DefaultOptions())
+	if err != nil {
+		t.Errorf("Unexpected error: %s", err)
+		return
+	}
+	n, err := njson.Get().Parse(src)
+	if err != nil {
+		t.Errorf("Unexpected error: %s", err)
+		return
+	}
+	err = dec.Unmarshal(&a, n)
+	if err != nil {
+		t.Errorf("Unexpected error: %s", err)
+		return
+	}
+	if a.Foo != 1 {
+		t.Errorf("Invalid unmarshal Foo: %d", a.Foo)
+	}
+	if a.Bar != 2 {
+		t.Errorf("Invalid unmarshal Bar: %d", a.Bar)
+	}
+	if a.Baz != 3 {
+		t.Errorf("Invalid unmarshal Baz: %d", a.Baz)
+	}
+}
 
 func TestDecoderNilPointer(t *testing.T) {
 	src := `{"Foo":1,"Bar":2,"Baz":3}`
@@ -26,15 +55,12 @@ func TestDecoderNilPointer(t *testing.T) {
 	}
 	if a.Foo != 1 {
 		t.Errorf("Invalid unmarshal Foo: %d", a.Foo)
-		return
 	}
 	if a.Bar != 2 {
 		t.Errorf("Invalid unmarshal Bar: %d", a.Bar)
-		return
 	}
 	if a.Baz != 3 {
 		t.Errorf("Invalid unmarshal Baz: %d", a.Baz)
-		return
 	}
 }
 func TestDecoderEmptyPointer(t *testing.T) {
@@ -139,8 +165,8 @@ func TestUnmarshal(t *testing.T) {
 	if len(v.Foo) != 1 || v.Foo[0] != "bar" {
 		t.Errorf("Invalid decode foo: %v", v.Foo)
 	}
-	if *v.Bar != 23 {
-		t.Errorf("Invalid decode bar: %f", *v.Bar)
+	if v.Bar == nil || *v.Bar != 23 {
+		t.Errorf("Invalid decode bar: %#v", v.Bar)
 	}
 	if v.Baz.Foo != 21.2 {
 		t.Errorf("Invalid decode baz: %f", v.Baz.Foo)
@@ -154,51 +180,6 @@ type medium struct {
 	} `json:"person"`
 	Email  string `json:"string"`
 	Gender string `json:"gender"`
-}
-
-var mediumJSON string
-
-func init() {
-	data, err := ioutil.ReadFile("testdata/medium.min.json")
-	if err != nil {
-		panic(err)
-	}
-	mediumJSON = string(data)
-}
-func BenchmarkUnmarshal(b *testing.B) {
-	mediumJSONBytes := []byte(mediumJSON)
-	b.Run("json", func(b *testing.B) {
-		m := medium{}
-		for i := 0; i < b.N; i++ {
-			if err := json.Unmarshal(mediumJSONBytes, &m); err != nil {
-				b.Errorf("UnexpectedError: %s", err)
-			}
-		}
-	})
-	dec, err := unjson.TypeUnmarshaler(reflect.TypeOf(&medium{}), unjson.DefaultOptions())
-	if err != nil {
-		b.Errorf("UnexpectedError: %s", err)
-		return
-	}
-	if dec == nil {
-		b.Errorf("Nil decoder")
-		return
-	}
-	b.Run("njson", func(b *testing.B) {
-		m := medium{}
-		doc := njson.BlankDocument()
-		defer doc.Close()
-		var err error
-		var root *njson.Node
-		for i := 0; i < b.N; i++ {
-			doc.Reset()
-			if root, err = doc.Parse(mediumJSON); err != nil {
-				b.Errorf("UnexpectedError: %s", err)
-			} else if err = dec.Unmarshal(&m, root); err != nil {
-				b.Errorf("UnexpectedError: %s", err)
-			}
-		}
-	})
 }
 
 func TestUnmarshalEmbeddedFields(t *testing.T) {

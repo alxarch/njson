@@ -191,7 +191,7 @@ var _ codec = textCodec{}
 
 func (textCodec) unmarshal(v reflect.Value, n *njson.Node) error {
 	if n.IsString() {
-		return v.Interface().(encoding.TextUnmarshaler).UnmarshalText(n.UnescapedBytes())
+		return v.Interface().(encoding.TextUnmarshaler).UnmarshalText(n.Bytes())
 	}
 	return n.TypeError(njson.TypeString)
 }
@@ -337,7 +337,7 @@ func (d *ptrCodec) unmarshal(v reflect.Value, n *njson.Node) error {
 		return nil
 	default:
 		if v.IsNil() {
-			v.Set(reflect.New(v.Type().Elem()))
+			v.Set(reflect.New(d.typ))
 		}
 		return d.decoder.unmarshal(v.Elem(), n)
 	}

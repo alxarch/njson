@@ -3,303 +3,188 @@ package njson
 import (
 	"encoding/json"
 	"io"
+	"math"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/alxarch/njson/strjson"
 )
 
-// Node is a document node.
 type Node struct {
-	token  Token
-	doc    *Document
-	id     uint16
-	next   uint16
-	parent uint16
-	value  uint16
+	info      Info
+	safe      bool
+	raw       string
+	unescaped string
+	num       uint64
+	value     *Node
+	next      *Node
 }
 
-// IsRoot checks whether a node is a root node.
-func (n *Node) IsRoot() bool {
-	return n != nil && (n.id == 0 || n.parent == MaxDocumentSize)
-}
-
-// IsDocumentRoot checks whether a node is the root of it's document.
-func (n *Node) IsDocumentRoot() bool {
-	return n != nil && n.id == 0
-}
-
-// IsValid checks if a node belongs to it's document
-func (n *Node) IsValid() bool {
-	return n != nil && n.doc != nil
-}
-
-// AppendJSON implements the Appender interface.
-func (n *Node) AppendJSON(data []byte) ([]byte, error) {
-	switch n.Type() {
-	case TypeObject:
-		data = append(data, delimBeginObject)
-		for n = n.Value(); n != nil; n = n.Next() {
-			data, _ = n.AppendJSON(data)
-			if n.next != 0 {
-				data = append(data, delimValueSeparator)
-			}
-		}
-		data = append(data, delimEndObject)
-	case TypeString:
-		data = append(data, delimString)
-		data = append(data, n.token.src...)
-		data = append(data, delimString)
-	case TypeKey:
-		data = append(data, delimString)
-		data = append(data, n.token.src...)
-		data = append(data, delimString)
-		data = append(data, delimNameSeparator)
-		data, _ = n.Value().AppendJSON(data)
-	case TypeArray:
-		data = append(data, delimBeginArray)
-		for n = n.Value(); n != nil; n = n.Next() {
-			data, _ = n.AppendJSON(data)
-			if n.next != 0 {
-				data = append(data, delimValueSeparator)
-			}
-		}
-		data = append(data, delimEndArray)
-	case TypeInvalid:
-		return data, errInvalidToken
-	default:
-		data = append(data, n.token.src...)
-	}
-	return data, nil
-}
-
-// Prev returns the Node's previous sibling.
-func (n *Node) Prev() (p *Node) {
-	if p = n.Parent(); p == nil || p.value == n.id {
-		return nil
-	}
-	for p = p.Value(); p != nil && p.next != n.id; p = p.Next() {
-	}
-	return
-}
-
-// Parent returns the parent node.
-func (n *Node) Parent() *Node {
-	if n.IsRoot() || n.doc == nil {
-		return nil
-	}
-	return n.doc.Get(int(n.parent))
-}
-
-// Next returns the next sibling of a Node.
-// If the Node is an object key it's the next key.
-// If the Node is an array element it's the next element.
 func (n *Node) Next() *Node {
-	if n == nil || n.next == 0 || n.doc == nil {
-		return nil
-	}
-	// Use GetCheck to avoid document mismatch
-	return n.doc.get(n.next)
+	return n.next
 }
-
-// Value returns a Node holding the value of a Node.
-// This is the first key of an object Node, the first element
-// of an array Node or the value of a key Node.
-// For all other types it's nil.
 func (n *Node) Value() *Node {
-	if n == nil || n.value == 0 || n.doc == nil {
-		return nil
-	}
-	return n.doc.get(n.value)
+	return n.value
 }
-
-// Index returns the i-th element of an Array node
-func (n *Node) Index(i int) (v *Node) {
-	if n.IsArray() && i >= 0 {
-		for v = n.Value(); v != nil && i > 0; v, i = v.Next(), i-1 {
-		}
-	}
-	return
+func (n *Node) Raw() string {
+	// if n != nil && n.info.HasRaw() {
+	return n.raw
+	// }
+	// return ""
 }
-
-// IndexKey returns the key Node of an object.
-func (n *Node) IndexKey(key string) (v *Node) {
-	if n.IsObject() {
-		for v = v.Value(); v != nil; v = v.Next() {
-			if v.token.info == ValueInfo(TypeKey) {
-				if v.token.src == key {
-					return
-				}
-			} else if v.Unescaped() == key {
-				return
-			}
-		}
-	}
-	return nil
-}
-
-// // IndexKeyUnescaped returns the key Node of an object without unescaping.
-// func (n *Node) IndexKeyUnescaped(key string) (v *Node) {
-// 	if n.IsObject() {
-// 		for v = n.Value(); v != nil; v = v.Next() {
-// 			if v.src == key {
-// 				return
-// 			}
-// 		}
-// 	}
-// 	return nil
-// }
-
-// ToInterface converts a node to any combatible go value (many allocations on large trees).
-func (n *Node) ToInterface() (interface{}, bool) {
-	switch n.Type() {
-	case TypeObject:
-		m := make(map[string]interface{}, n.Len())
-		ok := false
-		for n = n.Value(); n != nil; n = n.Next() {
-			if m[n.Unescaped()], ok = n.Value().ToInterface(); !ok {
-				return nil, false
-			}
-		}
-		return m, true
-	case TypeArray:
-		s := make([]interface{}, n.Len())
-		j := 0
-		ok := false
-		for n = n.Value(); n != nil && 0 <= j && j < len(s); n, j = n.Next(), j+1 {
-			if s[j], ok = n.ToInterface(); !ok {
-				return nil, false
-			}
-		}
-		return s, true
-	case TypeString, TypeKey:
-		return n.Unescaped(), true
-	case TypeBoolean:
-		switch n.token.info {
-		case ValueTrue:
-			return true, true
-		case ValueFalse:
-			return false, true
-		default:
-			return nil, false
-		}
-	case TypeNull:
-		return nil, true
-	case TypeNumber:
-		return n.token.ToFloat()
-	default:
-		return nil, false
-	}
-
-}
-
-// Info returns the node value info.
-func (n *Node) Info() ValueInfo {
-	if n == nil {
-		return 0
-	}
-	return n.token.info
-}
-
-// Type returns the node type.
-func (n *Node) Type() Type {
-	if n == nil {
-		return TypeInvalid
-	}
-	return n.token.Type()
-}
-func (n *Node) Token() Token {
-	if n == nil {
-		return Token{}
-	}
-	return n.token
-}
-
-// ToUint returns the uint value of a token and whether the conversion is lossless
-func (n *Node) ToUint() (u uint64, ok bool) {
-	if t := n.Token(); t.info.IsUnparsedFloat() {
-		if _, ok = t.parseFloat(); ok {
-			n.token = t
-			u, ok = t.ToUint()
-		}
-	} else {
-		u, ok = t.ToUint()
-	}
-	return
-}
-
-// ToInt returns the integer value of a token and whether the conversion is lossless
-func (n *Node) ToInt() (i int64, ok bool) {
-	if t := n.Token(); t.info.IsUnparsedFloat() {
-		if _, ok = t.parseFloat(); ok {
-			n.token = t
-			i, ok = t.ToInt()
-		}
-	} else {
-		i, ok = t.ToInt()
-	}
-	return
-}
-func (n *Node) ToFloat() (f float64, ok bool) {
-	if t := n.Token(); t.info.IsUnparsedFloat() {
-		if f, ok = t.parseFloat(); ok {
-			n.token = t
-		}
-	} else {
-		f, ok = t.ToFloat()
-	}
-	return
-}
-
-func (n *Node) ToBool() (bool, bool) {
-	if n == nil {
-		return false, false
-	}
-	return n.token.info.ToBool()
-}
-
-// IsObject checks if a Node is a JSON Object
-func (n *Node) IsObject() bool {
-	return n != nil && n.token.info == ValueInfo(TypeObject)
-}
-
-// IsArray checks if a Node is a JSON Array
-func (n *Node) IsArray() bool {
-	return n != nil && n.token.info == ValueInfo(TypeArray)
-}
-
-// IsNull checks if a Node is JSON Null
-func (n *Node) IsNull() bool {
-	return n != nil && n.token.info == ValueInfo(TypeNull)
-}
-
-// IsKey checks if a Node is a JSON Object's key
-func (n *Node) IsKey() bool {
-	return n != nil && n.token.info&(ValueInfo(TypeKey)) != 0
-}
-
-// IsString checks if a node is of type String
-func (n *Node) IsString() bool {
-	return n != nil && n.token.info&(ValueInfo(TypeString)) != 0
-}
-
-// IsValue checks if a Node is any JSON value (ie String, Boolean, Number, Array, Object, Null)
-func (n *Node) IsValue() bool {
-	return n != nil && n.token.info&ValueInfo(TypeAnyValue) != 0
-}
-
-// TypeError creates an error for the Node's type.
-func (n *Node) TypeError(want Type) error {
-	return newTypeError(n.Type(), want)
-}
-
-// PrintJSON implements the Printer interface
-func (n *Node) PrintJSON(w io.Writer) (int, error) {
-	return PrintJSON(w, n)
+func (n *Node) Bytes() []byte {
+	return s2b(n.raw)
 }
 
 // Appender is a Marshaler interface for buffer append workflows.
 type Appender interface {
 	AppendJSON([]byte) ([]byte, error)
+}
+
+func (n *Node) AppendJSON(dst []byte) ([]byte, error) {
+	if n == nil {
+		return dst, nil
+	}
+	switch Type(n.info) {
+	case TypeObject:
+		dst = append(dst, delimBeginObject)
+		for n = n.value; n != nil; n = n.next {
+			dst = append(dst, delimString)
+			dst = append(dst, n.raw...)
+			dst = append(dst, delimString, delimNameSeparator)
+			dst, _ = n.value.AppendJSON(dst)
+			if n.next != nil {
+				dst = append(dst, delimValueSeparator)
+			}
+		}
+		dst = append(dst, delimEndObject)
+	case TypeArray:
+		dst = append(dst, delimBeginArray)
+		for n = n.value; n != nil; n = n.next {
+			dst, _ = n.AppendJSON(dst)
+			if n.next != nil {
+				dst = append(dst, delimValueSeparator)
+			}
+		}
+		dst = append(dst, delimEndArray)
+	case TypeString:
+		dst = append(dst, delimString)
+		dst = append(dst, n.raw...)
+		dst = append(dst, delimString)
+	default:
+		dst = append(dst, n.raw...)
+	}
+	return dst, nil
+
+}
+
+// Len gets the number of children a node has.
+func (n *Node) Len() (i int) {
+	if n != nil && n.info.HasLen() {
+		for n = n.value; n != nil; n, i = n.next, i+1 {
+		}
+	}
+	return
+}
+
+// Unescaped returns the unescaped string form of the Node
+// The returned string is safe to use as a value even if ParseUnsafe was used
+func (n *Node) Unescaped() string {
+	if n == nil {
+		return ""
+	}
+	if n.info.Unescaped() {
+		return n.unescaped
+	}
+	if n.info.Quoted() {
+		if strings.IndexByte(n.raw, delimEscape) == -1 {
+			if n.safe {
+				n.unescaped = n.raw
+			} else {
+				// When input is unsafe we need to copy the string so
+				// any calls to Unescaped() return a safe string to use.
+				n.unescaped = scopy(n.raw)
+			}
+			return n.unescaped
+		}
+		b := blankBuffer(strjson.MaxUnescapedLen(n.raw))
+		b = strjson.Unescape(b[:0], n.raw)
+		n.unescaped = string(b)
+		putBuffer(b)
+		n.info |= Unescaped
+
+		return n.unescaped
+	}
+	return ""
+}
+
+// func (n *Node) unescape() {
+// }
+
+// func (n *Node) UnescapedBytes() []byte {
+// 	if n == nil {
+// 		return nil
+// 	}
+// 	if n.info.Unescaped() {
+// 		return s2b(n.unescaped)
+// 	}
+// 	if n.info.Quoted() {
+// 		n.unescape()
+// 		return s2b(n.unescaped)
+// 	}
+// 	return nil
+// }
+
+// // AppendUnescaped appends the unescaped string form of the Node to dst.
+// func (n *Node) AppendUnescaped(dst []byte) []byte {
+// 	if n == nil {
+// 		return dst
+// 	}
+// 	if n.info.Unescaped() {
+// 		return append(dst, n.unescaped...)
+// 	}
+// 	if n.info.Quoted() {
+// 		n.unescape()
+// 		return append(dst, n.unescaped...)
+// 	}
+// 	return dst
+// }
+
+// Type returns the type of the node
+func (n *Node) Type() Type {
+	if n == nil {
+		return TypeInvalid
+	}
+	return n.info.Type()
+}
+
+var (
+	emptyArrayBytes  = []byte{delimBeginArray, delimEndArray}
+	emptyObjectBytes = []byte{delimBeginObject, delimEndObject}
+)
+
+// WrapUnmarshalJSON wraps a call to the json.Unmarshaler interface
+func (n *Node) WrapUnmarshalJSON(u json.Unmarshaler) (err error) {
+	switch n.Type() {
+	case TypeArray:
+		if n.value == nil {
+			return u.UnmarshalJSON(emptyArrayBytes)
+		}
+	case TypeObject:
+		if n.value == nil {
+			return u.UnmarshalJSON(emptyObjectBytes)
+		}
+	case TypeInvalid:
+		return n.TypeError(TypeAnyValue)
+	default:
+		return u.UnmarshalJSON(s2b(n.raw))
+	}
+	data := bufferpool.Get().([]byte)
+	data, _ = n.AppendJSON(data[:0])
+	err = u.UnmarshalJSON(data)
+	bufferpool.Put(data)
+	return
 }
 
 const minBufferSize = 512
@@ -326,6 +211,16 @@ func putBuffer(b []byte) {
 	}
 }
 
+// Printer is a Marshaler interface for io.Writer workflows.
+type Printer interface {
+	PrintJSON(w io.Writer) (int, error)
+}
+
+// PrintJSON implements the Printer interface
+func (n *Node) PrintJSON(w io.Writer) (int, error) {
+	return PrintJSON(w, n)
+}
+
 // PrintJSON is a helper to write an Appender to an io.Writer
 func PrintJSON(w io.Writer, a Appender) (n int, err error) {
 	b := bufferpool.Get().([]byte)
@@ -336,99 +231,189 @@ func PrintJSON(w io.Writer, a Appender) (n int, err error) {
 	return
 }
 
-// Printer is a Marshaler interface for io.Writer workflows.
-type Printer interface {
-	PrintJSON(w io.Writer) (int, error)
-}
-
 // Unmarshaler unmarshals from a Node
 type Unmarshaler interface {
 	UnmarshalNodeJSON(*Node) error
 }
 
-// Len gets the number of children a node has.
-func (n *Node) Len() (i int) {
-	if n != nil && n.token.info&ValueInfo(TypeSized) != 0 {
-		for n = n.Value(); n != nil; n, i = n.Next(), i+1 {
-		}
-	}
-	return
-}
-
-const valueEscaped = ValueInfo(TypeBoolean | TypeNull | TypeNumber | TypeString | TypeKey)
-
-func (n *Node) Source() string {
-	if n == nil {
-		return ""
-	}
-	return n.token.src
-}
-
-// UnescapedBytes returns a byte slice of the unescaped form of Node
-func (n *Node) UnescapedBytes() []byte {
-	if n == nil {
-		return nil
-	}
-	if !n.token.info.NeedsEscape() {
-		return s2b(n.token.src)
-	}
-	if n.doc != nil {
-		if int(n.token.extra) < len(n.doc.nodes) {
-			return s2b(n.doc.nodes[n.token.extra].token.src)
-		}
-		b := make([]byte, 0, len(n.token.src))
-		b = strjson.Unescape(b, n.token.src)
-		n.token.extra = n.doc.add(Token{
-			src: string(b),
-		})
-		return b
-	}
-	return strjson.Escape(nil, n.token.src)
-}
-
-// Unescaped returns the unescaped string form of the Node
-func (n *Node) Unescaped() string {
-	if n == nil {
-		return ""
-	}
-	if !n.token.info.NeedsEscape() {
-		return n.token.src
-	}
-	if n.doc != nil {
-		if int(n.token.extra) < len(n.doc.nodes) {
-			return n.doc.nodes[n.token.extra].token.src
-		}
-		b := blankBuffer(strjson.MaxUnescapedLen(n.token.src))
-		b = strjson.Unescape(b[:0], n.token.src)
-		s := string(b)
-		putBuffer(b)
-		n.token.extra = n.doc.add(Token{
-			src: s,
-		})
-		return s
-	}
-	return string(strjson.Unescape(nil, n.token.src))
-}
-
-// WrapUnmarshalJSON wraps a call to the json.Unmarshaler interface
-func (n *Node) WrapUnmarshalJSON(u json.Unmarshaler) (err error) {
+// ToInterface converts a node to any combatible go value (many allocations on large trees).
+func (n *Node) ToInterface() (interface{}, bool) {
 	switch n.Type() {
-	case TypeArray:
-		if n.value == 0 {
-			return u.UnmarshalJSON([]byte{delimBeginArray, delimEndArray})
-		}
 	case TypeObject:
-		if n.value == 0 {
-			return u.UnmarshalJSON([]byte{delimBeginObject, delimEndObject})
+		m := make(map[string]interface{}, n.Len())
+		ok := false
+		for n = n.value; n != nil; n = n.next {
+			if m[n.Unescaped()], ok = n.value.ToInterface(); !ok {
+				return nil, false
+			}
 		}
-	case TypeInvalid:
-		return n.TypeError(TypeAnyValue)
+		return m, true
+	case TypeArray:
+		s := make([]interface{}, n.Len())
+		j := 0
+		ok := false
+		for n = n.value; n != nil && 0 <= j && j < len(s); n, j = n.next, j+1 {
+			if s[j], ok = n.ToInterface(); !ok {
+				return nil, false
+			}
+		}
+		return s, true
+	case TypeString, TypeKey:
+		return n.Unescaped(), true
+	case TypeBoolean:
+		switch n.info {
+		case vTrue:
+			return true, true
+		case vFalse:
+			return false, true
+		default:
+			return nil, false
+		}
+	case TypeNull:
+		return nil, true
+	case TypeNumber:
+		return n.ToFloat()
 	default:
-		return u.UnmarshalJSON(s2b(n.token.src))
+		return nil, false
 	}
-	data := bufferpool.Get().([]byte)
-	data, _ = n.AppendJSON(data[:0])
-	err = u.UnmarshalJSON(data)
-	bufferpool.Put(data)
+
+}
+
+// TypeError creates an error for the Node's type.
+func (n *Node) TypeError(want Type) error {
+	return newTypeError(n.Type(), want)
+}
+
+const (
+	vNumberFloatParsed = vNumber | NumberFloat | NumberParsed
+)
+
+func (n *Node) parseFloat() (f float64, ok bool) {
+	f, err := strconv.ParseFloat(n.raw, 10)
+	if ok = err == nil; ok {
+		n.num = math.Float64bits(f)
+		n.info |= NumberParsed
+		if math.Trunc(f) == f {
+			n.info |= NumberZeroDecimal
+		}
+		if f < 0 {
+			n.info |= NumberSigned
+		}
+	}
 	return
+
+}
+func (n *Node) parseUint() (i uint64, ok bool) {
+	i, err := strconv.ParseUint(n.raw, 10, 64)
+	if ok = err == nil; ok {
+		n.num = i
+		n.info |= NumberParsed
+	}
+	return
+
+}
+func (n *Node) parseInt() (i int64, ok bool) {
+	i, err := strconv.ParseInt(n.raw, 10, 64)
+	if ok = err == nil; ok {
+		n.num = uint64(i)
+		n.info |= NumberParsed
+	}
+	return
+
+}
+func (n *Node) ToUint() (u uint64, ok bool) {
+	switch n.info {
+	case vNumberUint | NumberParsed:
+		return n.num, true
+	case vNumberUint:
+		return n.parseUint()
+	case vNumberFloat:
+		n.parseFloat()
+		fallthrough
+	default:
+		const convertible = NumberParsed | NumberZeroDecimal
+		if n.info&(convertible|NumberSigned) == convertible {
+			return uint64(math.Float64frombits(n.num)), true
+		}
+		return 0, false
+	}
+
+}
+func (n *Node) ToFloat() (f float64, ok bool) {
+	if n.info&vNumberFloatParsed == vNumberFloatParsed {
+		return math.Float64frombits(n.num), true
+	}
+	switch n.info {
+	case vNumberFloat:
+		return n.parseFloat()
+	case vNumberUint | NumberParsed:
+		return float64(n.num), true
+	case vNumberInt | NumberParsed:
+		return float64(int64(n.num)), true
+	case vNumberInt:
+		_, ok = n.parseInt()
+		return float64(int64(n.num)), ok
+	case vNumberUint:
+		_, ok = n.parseUint()
+		return float64(n.num), ok
+	default:
+		return 0, false
+	}
+}
+
+func (n *Node) ToInt() (i int64, ok bool) {
+	switch n.info {
+	case vNumberInt | NumberParsed:
+		return int64(n.num), true
+	case vNumberInt:
+		return n.parseInt()
+	case vNumberUint:
+		n.parseUint()
+		fallthrough
+	case vNumberUint | NumberParsed:
+		return int64(n.num), n.num < math.MaxInt64
+	case vNumberFloat:
+		n.parseFloat()
+		fallthrough
+	default:
+		const convertible = NumberParsed | NumberZeroDecimal
+		if n.info&(convertible) == convertible {
+			return int64(math.Float64frombits(n.num)), true
+		}
+		return 0, false
+	}
+
+}
+
+func (n *Node) ToString() (string, bool) {
+	return n.Unescaped(), n.info.Quoted()
+}
+
+func (n *Node) ToBool() (bool, bool) {
+	switch n.info {
+	case vTrue:
+		return true, true
+	case vFalse:
+		return false, true
+	default:
+		return false, false
+	}
+
+}
+
+func (n *Node) IsNull() bool {
+	return n != nil && n.info == vNull
+}
+func (n *Node) IsArray() bool {
+	return n != nil && n.info == vArray
+}
+func (n *Node) IsValue() bool {
+	const vAnyValue = Info(TypeAnyValue)
+	return n != nil && n.info&vAnyValue != 0
+}
+func (n *Node) IsString() bool {
+	return n != nil && n.info&vString == vString
+}
+func (n *Node) IsObject() bool {
+	return n != nil && n.info == vObject
 }

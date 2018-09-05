@@ -283,7 +283,7 @@ func (g *Generator) StructUnmarshaler(t *types.Struct) (code meta.Code) {
 		}
 		for k := n.Value(); k != nil; k = k.Next() {
 			n := k.Value()
-			switch k.Source() {
+			switch k.Raw() {
 				%s
 			}
 		}`, code).Import(njsonPkg)

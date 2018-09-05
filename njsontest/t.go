@@ -94,7 +94,7 @@ func Unmarshal(x interface{}, options ...Option) func(t *testing.T) {
 		var (
 			data []byte
 			err  error
-			d    = njson.BlankDocument()
+			d    = njson.Get()
 			n    *njson.Node
 			v    = reflect.New(typ)
 		)

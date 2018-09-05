@@ -166,14 +166,14 @@ func (d *structCodec) unmarshal(v reflect.Value, n *njson.Node) (err error) {
 			i, j  int
 		)
 		for n = n.Value(); n != nil; n = n.Next() {
-			switch fc = d.fields[n.Source()]; fc.n {
+			switch fc = d.fields[n.Raw()]; len(fc.index) {
 			case 0:
 				continue
 			case 1:
 				field = v.Field(fc.index[0])
 			default:
 				field = v.Field(fc.index[0])
-				for i = 1; i < fc.n; i++ {
+				for i = 1; 0 <= i && i < len(fc.index); i++ {
 					switch j = fc.index[i]; j {
 					case -1:
 						if field.IsNil() {
@@ -204,15 +204,17 @@ func cmpIndex(a, b []int) int {
 	if len(a) > len(b) {
 		return -1
 	}
-	if len(a) < len(b) {
-		return 1
-	}
-	for i, j := range a {
-		if jj := b[i]; j > jj {
-			return -1
-		} else if jj > j {
-			return 1
+	if len(a) == len(b) {
+		// Avoid bounds check
+		b = b[:len(a)]
+		for i, j := range a {
+			if jj := b[i]; j > jj {
+				return -1
+			} else if jj > j {
+				return 1
+			}
 		}
+		return 0
 	}
-	return 0
+	return 1
 }

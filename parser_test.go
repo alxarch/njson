@@ -1,183 +1,115 @@
-package njson_test
+package njson
 
 import (
-	"io/ioutil"
+	"reflect"
+	"strconv"
 	"testing"
-
-	"github.com/alxarch/njson"
 )
 
-func TestDocumentParse(t *testing.T) {
-	doc := njson.Document{}
+func TestParse(t *testing.T) {
+	for in, out := range map[string]string{
+		mediumJSONFormatted: mediumJSON,
+	} {
+		testParse(t, in, out)
+	}
 	for _, src := range []string{
+		`{"results":[]}`,
+		`{"answer":42}`,
+		`{"foo":"bar"}`,
+		`{"foo":1,"bar":2,"baz":3}`,
 		`[]`,
+		`["foo","bar"]`,
+		`[42,42]`,
 		`{}`,
 		`42`,
-		// `[{"foo":"bar"},2,3]`,
-		`{"answer":42}`,
+		`{"answer":42.0}`,
 		`{"answer":"42"}`,
+		`{"answer":42,"notanswer":"41"}`,
 		`{"answer":true}`,
 		`{"answer":null}`,
 		`{"answer":false}`,
-		`{"results":[]}`,
-		`{"results":[42,{"foo":NaN}],"error":null}`,
+		`{"results":[42,1],"error":null}`,
+		`[{"foo":"bar"},2,3]`,
 
-		`{"baz":{"foo":"bar"}}`,
+		`{"baz":{"foo":"bar\"baz"}}`,
 		`{"foo":"bar","bar":23,"baz":{"foo":21.2}}`,
 		`{"results":[{"id":42,"name":"answer"},{"id":43,"name":"answerplusone"}],"error":null}`,
 		smallJSON,
 		mediumJSON,
 		largeJSON,
 	} {
-		doc.Reset()
-		root, err := doc.Parse(src)
-		if err != nil {
-			t.Errorf("`%s` Parse error: %s", src, err)
-		} else if root == nil {
-			t.Errorf("Nil root")
-		} else if out, _ := root.AppendJSON(nil); string(out) != src {
-			t.Errorf("Invalid root:\nexpect: %s\nactual: %s", src, out)
-		}
+		testParse(t, src, src)
 	}
 
 }
 
-func benchmark(src string) func(b *testing.B) {
-	doc := njson.BlankDocument()
-	defer doc.Close()
-
-	return func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			doc.Reset()
-			if _, err := doc.Parse(src); err != nil {
-				b.Errorf("Parse error: %s", err)
-			}
-		}
-	}
-}
-func BenchmarkParse(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		b.Run("small.json", benchmark(smallJSON))
-		b.Run("medium.json", benchmark(mediumJSON))
-		b.Run("large.json", benchmark(largeJSON))
-	}
-
-}
-
-var (
-	largeJSON  string
-	mediumJSON string
-	smallJSON  string
-)
-
-func init() {
-	if data, err := ioutil.ReadFile("testdata/large.json"); err != nil {
-		panic(err)
-	} else {
-		largeJSON = string(data)
-	}
-	if data, err := ioutil.ReadFile("testdata/medium.min.json"); err != nil {
-		panic(err)
-	} else {
-		mediumJSON = string(data)
-	}
-	if data, err := ioutil.ReadFile("testdata/small.json"); err != nil {
-		panic(err)
-	} else {
-		smallJSON = string(data)
+func testParse(t *testing.T, input, output string) {
+	t.Helper()
+	p := Parser{}
+	root, err := p.Parse(input)
+	if err != nil {
+		t.Error(input, err)
+	} else if root == nil {
+		t.Errorf("Nil root")
+	} else if out, _ := root.AppendJSON(nil); string(out) != output {
+		t.Errorf("Invalid root:\nexpect: %s\nactual: %s", output, out)
 	}
 }
 
-func TestParser_Parse(t *testing.T) {
+func Test_scanNumberAt(t *testing.T) {
+	type args struct {
+		c   byte
+		s   string
+		pos int
+	}
 	tests := []struct {
-		src     string
-		wantErr bool
+		name    string
+		args    args
+		want    string
+		wantEnd int
+		wantInf Info
 	}{
-		{`{}`, false},
-		{`"foobarbaz"`, false},
-		{`1.2`, false},
-		{`0`, false},
-		{`-1`, false},
-		{`-1.2E-3`, false},
-		{`NaN`, false},
-		{`true`, false},
-		{`false`, false},
-		{`null`, false},
-		{`{"foo\n":"bar"}`, false},
-		{`-a4`, true},
-		{`[{"foo":"bar"},2,3]`, false},
-		{`{"answer":42}`, false},
-		{`{"answer":"42"}`, false},
-		{`{"answer":true}`, false},
-		{`{"answer":null}`, false},
-		{`{"answer":false}`, false},
-		{`{"results":[]}`, false},
-		{`{"results":[42],"error":null}`, false},
-		{`{"results"}`, true},
-		{`[,]`, true},
-		{`{:}`, true},
-		{`{,}`, true},
-		{`"foo`, true},
+		{`42`, args{'4', `42`, 0}, `42`, 2, vNumberUint},
+		{`-42`, args{'-', `-42`, 0}, `-42`, 3, vNumberInt},
+		{`-42.0`, args{'-', `-42.0`, 0}, `-42.0`, 5, vNumberFloat},
+		{`-a42.0`, args{'-', `-a42.0`, 0}, `-a`, 1, HasError},
 	}
 	for _, tt := range tests {
-		t.Run(tt.src, func(t *testing.T) {
-			d := njson.Document{}
-			root, err := d.Parse(tt.src)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Parser.Parse(%q) Unexpected error: %v", tt.src, err)
-				return
+		t.Run(tt.name, func(t *testing.T) {
+			got, gotEnd, gotInf := scanNumberAt(tt.args.c, tt.args.s, tt.args.pos)
+			if got != tt.want {
+				t.Errorf("scanNumberAt() got = %v, want %v", got, tt.want)
 			}
-			if tt.wantErr {
-				return
+			if gotEnd != tt.wantEnd {
+				t.Errorf("scanNumberAt() gotEnd = %v, want %v", gotEnd, tt.wantEnd)
 			}
-			if root == nil {
-				t.Errorf("Parser.Parse() nil root")
-				return
-			}
-			out, _ := root.AppendJSON(nil)
-			if string(out) != tt.src {
-				t.Errorf("Parser.Parse() invalid node:\nactual: %s\nexpect: %s", out, tt.src)
+			if gotInf != tt.wantInf {
+				t.Errorf("scanNumberAt() gotInf = %v, want %v", gotInf, tt.wantInf)
 			}
 		})
 	}
 }
 
-func Test_ParseErrArray(t *testing.T) {
-	d := njson.BlankDocument()
-	defer d.Close()
-	if n, err := d.Parse(`[42,]`); err == nil {
-		t.Errorf("Expected error")
-	} else if err.Error() != "Invalid token ']' at position 4 while scanning for AnyValue" {
-		t.Errorf("Invalid error msg: %s", err)
-	} else if n != nil {
-		t.Errorf("Invalid root node")
+func TestParser_Parse(t *testing.T) {
+	p := Get()
+	defer p.Close()
+	tests := []struct {
+		args    string
+		wantN   *Node
+		wantErr bool
+	}{
+		{`-a7`, nil, true},
 	}
-	if n, err := d.Parse(`42s`); err == nil {
-		t.Errorf("Expected error")
-	} else if err.Error() != "Invalid token 's' at position 2 while scanning for Number" {
-		t.Errorf("Invalid error msg: %s", err)
-	} else if n != nil {
-		t.Errorf("Invalid root node")
-	}
-	if n, err := d.Parse(`{:}`); err == nil {
-		t.Errorf("Expected error")
-	} else if err.Error() != "Invalid token ':' at position 1 while scanning for Object" {
-		t.Errorf("Invalid error msg: %s", err)
-	} else if n != nil {
-		t.Errorf("Invalid root node")
-	}
-	if n, err := d.Parse(`42,`); err == nil {
-		t.Errorf("Expected error")
-	} else if err.Error() != "Invalid token ',' at position 2" {
-		t.Errorf("Invalid error msg: %s", err)
-	} else if n != nil {
-		t.Errorf("Invalid root node")
-	}
-	if n, err := d.Parse(`{},`); err == nil {
-		t.Errorf("Expected error")
-	} else if err.Error() != "Invalid token ',' at position 2" {
-		t.Errorf("Invalid error msg: %s", err)
-	} else if n != nil {
-		t.Errorf("Invalid root node")
+	for _, tt := range tests {
+		t.Run(strconv.Quote(tt.args), func(t *testing.T) {
+			gotN, err := p.Parse(tt.args)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Parser.Parse() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(gotN, tt.wantN) {
+				t.Errorf("Parser.Parse() = %v, want %v", gotN, tt.wantN)
+			}
+		})
 	}
 }

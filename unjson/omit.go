@@ -42,7 +42,10 @@ func customOmiter(typ reflect.Type, methodName string) omiter {
 		f := method.Func.Type()
 		if f.NumIn() == 1 && f.NumOut() == 1 && f.Out(0).Kind() == reflect.Bool {
 			return omiter(func(v reflect.Value) bool {
-				return v.Method(method.Index).Call(nil)[0].Bool()
+				if results := v.Method(method.Index).Call(nil); len(results) > 0 {
+					return results[0].Bool()
+				}
+				return false
 			})
 		}
 	}

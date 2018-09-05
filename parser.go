@@ -1,58 +1,287 @@
 package njson
 
-// parser is a JSON parser.
-type parser struct {
-	*Document
-	depth  int
-	parent uint16
-	prev   uint16
-	mode   Type
+import (
+	"strings"
+	"sync"
+)
+
+// Parser is a JSON parser.
+type Parser struct {
+	nodes []Node
+	safe  bool
+	n     int
+	err   error
 }
 
-// Parse parses a JSON source string to a Document.
-func (d *Document) Parse(src string) (root *Node, err error) {
-	if d == nil {
-		err = errNilDocument
+// ParseUnsafe parses JSON from a slice of bytes without copying it to a string.
+// The contents of the slice should not be modified while using the result node.
+func (p *Parser) ParseUnsafe(data []byte) (n *Node, err error) {
+	p.reset(false)
+	s := b2s(data)
+	var (
+		c   byte
+		pos int
+	)
+	for ; 0 <= pos && pos < len(s); pos++ {
+		if c = s[pos]; bytemapIsSpace[c] == 0 {
+			break
+		}
+	}
+	n = p.node()
+	n.next, n.value = nil, nil
+	if pos = p.parseValue(c, s, pos, n); p.err != nil {
+		return nil, p.err
+	}
+	for ; 0 <= pos && pos < len(s); pos++ {
+		if c = s[pos]; bytemapIsSpace[c] == 0 {
+			return nil, abort(pos, n.info.Type(), c, []rune{' ', '\t', '\n', '\r'})
+		}
+	}
+	return n, nil
+}
+
+func (p *Parser) Parse(s string) (n *Node, err error) {
+	p.reset(true)
+	var (
+		c   byte
+		pos int
+	)
+	for ; 0 <= pos && pos < len(s); pos++ {
+		if c = s[pos]; bytemapIsSpace[c] == 0 {
+			break
+		}
+	}
+	n = p.node()
+	n.next, n.value = nil, nil
+	if pos = p.parseValue(c, s, pos, n); p.err != nil {
+		return nil, p.err
+	}
+	for ; 0 <= pos && pos < len(s); pos++ {
+		if c = s[pos]; bytemapIsSpace[c] == 0 {
+			return nil, abort(pos, n.info.Type(), c, []rune{' ', '\t', '\n', '\r'})
+		}
+	}
+	return n, nil
+}
+
+const minNumNodes = 64
+
+func (p *Parser) reset(safe bool) {
+	p.err = nil
+	// If we don't use unsafe pkg we're safe anyway
+	p.safe = safe || safebytes
+	p.n = 0
+}
+
+func (p *Parser) node() (n *Node) {
+	if 0 <= p.n && p.n < len(p.nodes) {
+		n = &p.nodes[p.n]
+		// n.safe = p.safe
+		p.n++
 		return
 	}
-	size := len(d.nodes)
-	if size >= MaxDocumentSize {
-		return nil, errDocumentMaxSize
-	}
-	n := len(src)
-	if n == 0 {
-		return nil, errEmptyJSON
-	}
-	if err = d.parse(src, uint16(size)); err != nil {
-		d.nodes = d.nodes[:size]
-	} else {
-		root = d.Get(size)
+
+	p.nodes = make([]Node, len(p.nodes)*3+minNumNodes)
+	if len(p.nodes) > 0 {
+		n = &p.nodes[0]
+		// n.safe = p.safe
+		p.n = 1
 	}
 	return
 }
 
-// ParseUnsafe parses JSON from a buffer without copying it into a string.
-// Any modifications to the buffer could mess the document's nodes validity.
-// Use only when the buffer is not modified throughout the lifecycle of the document.
-func (d *Document) ParseUnsafe(buf []byte) (root *Node, err error) {
-	if d == nil {
-		err = errNilDocument
-		return
+func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
+	switch c {
+	case delimString:
+		n.info, n.value, n.next, n.safe = vString, nil, nil, p.safe
+		if pos++; 0 < pos && pos < len(s) {
+			ss := s[pos:]
+			end := strings.IndexByte(ss, delimString)
+			if end--; 0 <= end && end < len(ss) {
+				if ss[end] == delimEscape {
+					end += 2
+					for ; 0 <= end && end < len(ss); end++ {
+						switch ss[end] {
+						case delimString:
+							n.raw = ss[:end]
+							end++
+							return end + pos
+						case delimEscape:
+							end++
+						}
+					}
+				} else if end++; 0 <= end && end <= len(ss) {
+					n.raw = ss[:end]
+					end++
+					return end + pos
+				}
+			} else if end == -1 {
+				n.raw = ""
+				return pos + 1
+			}
+		}
+		p.err = abort(pos-1, TypeString, nil, delimString)
+		return -1
+	case delimBeginObject:
+		for pos++; 0 <= pos && pos < len(s); pos++ {
+			if bytemapIsSpace[s[pos]] == 0 {
+				c = s[pos]
+				break
+			}
+		}
+		if c == delimEndObject {
+			n.info, n.value, n.next = vObject, nil, nil
+			return pos + 1
+		}
+		n.info, n.value, n.next = vObject, p.node(), nil
+		n = n.value
+
+		for pos++; 0 <= pos && pos < len(s); pos++ {
+			if c != delimString {
+				p.err = abort(pos, TypeKey, c, delimString)
+				return pos
+			}
+			ss := s[pos:]
+		readkey:
+			for end := 0; 0 <= end && end < len(ss); end++ {
+				switch ss[end] {
+				case delimString:
+					n.raw = ss[:end]
+					pos += end + 1
+					break readkey
+				case delimEscape:
+					end++
+				}
+			}
+			for ; 0 <= pos && pos < len(s); pos++ {
+				if c = s[pos]; bytemapIsSpace[c] == 0 {
+					break
+				}
+			}
+			if c != delimNameSeparator {
+				p.err = abort(pos, TypeKey, c, delimNameSeparator)
+				return pos
+			}
+			n.info, n.safe = vKey, p.safe
+			for pos++; 0 <= pos && pos < len(s); pos++ {
+				if c = s[pos]; bytemapIsSpace[c] == 0 {
+					break
+				}
+			}
+			n.value = p.node()
+			if pos = p.parseValue(c, s, pos, n.value); p.err != nil {
+				return pos
+			}
+			for ; 0 <= pos && pos < len(s); pos++ {
+				if c = s[pos]; bytemapIsSpace[c] == 0 {
+					break
+				}
+			}
+			switch c {
+			case delimValueSeparator:
+				n.next = p.node()
+				n = n.next
+				for pos++; 0 <= pos && pos < len(s); pos++ {
+					if c = s[pos]; bytemapIsSpace[c] == 0 {
+						break
+					}
+				}
+			case delimEndObject:
+				n.next = nil
+				return pos + 1
+			default:
+				p.err = abort(pos, TypeObject, c, []rune{delimValueSeparator, delimEndObject})
+				return pos
+			}
+		}
+		p.err = eof(TypeObject)
+		return pos
+	case delimBeginArray:
+		for pos++; 0 <= pos && pos < len(s); pos++ {
+			if bytemapIsSpace[s[pos]] == 0 {
+				c = s[pos]
+				break
+			}
+		}
+		if c == delimEndArray {
+			n.info, n.value, n.next = vArray, nil, nil
+			return pos + 1
+		}
+		n.info, n.next, n.value = vArray, nil, p.node()
+		n = n.value
+		for {
+			if pos = p.parseValue(c, s, pos, n); p.err != nil {
+				return pos
+			}
+			for ; 0 <= pos && pos < len(s); pos++ {
+				if bytemapIsSpace[s[pos]] == 0 {
+					c = s[pos]
+					break
+				}
+			}
+			switch c {
+			case delimValueSeparator:
+				n.next = p.node()
+				n = n.next
+			case delimEndArray:
+				n.next = nil
+				return pos + 1
+			default:
+				p.err = abort(pos, TypeArray, c, []rune{delimValueSeparator, delimEndArray})
+				return pos
+			}
+
+			for pos++; 0 <= pos && pos < len(s); pos++ {
+				if bytemapIsSpace[s[pos]] == 0 {
+					c = s[pos]
+					break
+				}
+			}
+		}
+	case 'n':
+		switch s = sliceAtN(s, pos, 4); s {
+		case strNull:
+			n.info, n.raw, n.value, n.next = vNull, strNull, nil, nil
+			return pos + 4
+		default:
+			p.err = abort(pos, TypeNull, s, strNull)
+			return pos
+		}
+	case 'f':
+		switch s = sliceAtN(s, pos, 5); s {
+		case strFalse:
+			n.info, n.raw, n.value, n.next = vFalse, strFalse, nil, nil
+			return pos + 5
+		default:
+			p.err = abort(pos, TypeBoolean, s, strFalse)
+			return pos
+		}
+	case 't':
+		switch s = sliceAtN(s, pos, 4); s {
+		case strTrue:
+			n.info, n.raw, n.value, n.next = vTrue, strTrue, nil, nil
+			return pos + 4
+		default:
+			return p.abort(pos, TypeBoolean, s, strTrue)
+		}
+	case '-':
+		if n.raw, pos, n.info = scanNumberAt(c, s, pos); n.info == HasError {
+			return p.abort(pos, TypeNumber, n.raw, "valid number token")
+		}
+		return pos
+	default:
+		if bytemapIsDigit[c] == 1 {
+			if n.raw, pos, n.info = scanNumberAt(c, s, pos); n.info == HasError {
+				return p.abort(pos, TypeNumber, n.raw, "valid number token")
+			}
+			return pos
+		}
+		if 0 <= pos && pos < len(s) {
+			return p.abort(pos, TypeAnyValue, c, "any value")
+		}
+		return p.eof(TypeAnyValue)
 	}
-	size := len(d.nodes)
-	if size >= MaxDocumentSize {
-		return nil, errDocumentMaxSize
-	}
-	n := len(buf)
-	if n == 0 {
-		return nil, errEmptyJSON
-	}
-	if err = d.parse(b2s(buf), uint16(size)); err != nil {
-		d.nodes = d.nodes[:size]
-	} else {
-		root = d.Get(size)
-	}
-	return
+
 }
 
 const (
@@ -66,366 +295,115 @@ const (
 	delimValueSeparator = ','
 )
 
-func (d *Document) parser() parser {
-	return parser{
-		Document: d,
-		parent:   MaxDocumentSize,
-	}
+func (p *Parser) abort(pos int, typ Type, got, want interface{}) int {
+	p.err = abort(pos, typ, got, want)
+	return pos
+}
+func (p *Parser) eof(typ Type) int {
+	p.err = eof(typ)
+	return -1
 }
 
-func (p *parser) push(typ Type, n uint16) {
-	p.depth = len(p.stack)
-	p.stack = append(p.stack, n)
-	p.mode = typ
-	p.parent = n
+func sliceAtN(s string, pos, n int) string {
+	if 0 <= pos && pos < len(s) {
+		if s = s[pos:]; 0 <= n && n < len(s) {
+			return s[:n]
+		}
+		return s
+	}
+	return ""
 }
 
-func (p *parser) link(id uint16) {
-	if int(p.prev) < len(p.nodes) {
-		if p.prev == p.parent {
-			p.nodes[p.prev].value = id
-		} else {
-			p.nodes[p.prev].next = id
-		}
-		p.prev = id
-
-	}
-}
-
-// add adds a Node for Token returning the new node's id
-func (p *parser) add(t Token) (id uint16) {
-	id = uint16(len(p.nodes))
-	p.nodes = append(p.nodes, Node{
-		doc:    p.Document,
-		id:     id,
-		parent: p.parent,
-		token:  t,
-	})
-	return
-
-}
-
-func (p *parser) pop() int {
-	if 0 <= p.depth && p.depth < len(p.stack) {
-		p.stack = p.stack[:p.depth]
-		if p.depth--; 0 <= p.depth && p.depth < len(p.stack) {
-			p.prev, p.parent = p.parent, p.stack[p.depth]
-			if int(p.parent) < len(p.nodes) {
-				p.mode = Type(p.nodes[p.parent].token.info)
-			}
-		}
-	}
-	return p.depth
-}
-
-// Parse parses a JSON string into a Document.
-func (d *Document) parse(src string, root uint16) (err error) {
-	var (
-		p          = d.parser()
-		next       uint16
-		start, end int // token start, end
-		num        uint64
-		pos        = 0
-		info       ValueInfo
-		c          byte
-	)
-
-scanValue:
-	info = ValueInfo(TypeAnyValue)
-	for ; 0 <= pos && pos < len(src); pos++ {
-		if c = src[pos]; isSpace(c) {
-			continue
-		}
-		switch c {
-		case delimString:
-			info, num = ValueInfo(TypeString), 0
-			pos++
-			start = pos
-			for ; 0 <= pos && pos < len(src); pos++ {
-				switch c = src[pos]; c {
-				case delimString:
-					end = pos
-					pos++
-					goto scanEndValue
-				case delimEscape:
-					info |= ValueUnescaped
-					pos++
-				}
-			}
-			return errEOF
-		case delimBeginObject:
-			info = ValueInfo(TypeObject)
-			switch next = p.add(tokenObject); next {
-			case MaxDocumentSize:
-				return errDocumentMaxSize
-			case root:
-				p.prev = next
-			default:
-				p.link(next)
-			}
-			p.push(TypeObject, next)
-			for pos++; 0 <= pos && pos < len(src); pos++ {
-				if c = src[pos]; isSpace(c) {
-					continue
-				}
-				if c == delimEndObject {
-					goto scanEndParent
-				}
-				goto scanKey
-			}
-		case delimBeginArray:
-			info = ValueInfo(TypeArray)
-			switch next = p.add(tokenArray); next {
-			case MaxDocumentSize:
-				return errDocumentMaxSize
-			case root:
-				p.prev = next
-			default:
-				p.link(next)
-			}
-			p.push(TypeArray, next)
-			for pos++; 0 <= pos && pos < len(src); pos++ {
-				if c = src[pos]; isSpace(c) {
-					continue
-				}
-				if c == delimEndArray {
-					goto scanEndParent
-				}
-				goto scanValue
-			}
-		case 'n':
-			info = ValueInfo(TypeNull)
-			if checkUllString(src[pos:]) {
-				start, end, num = pos, pos+4, 0
-				pos = end
-				goto scanEndValue
-			}
-			return newParseError(pos, c, info)
-		case 'f':
-			info = ValueFalse
-			if !checkAlseString(src[pos:]) {
-				return newParseError(pos, c, info)
-			}
-			start, end, num = pos, pos+5, 0
-			pos = end
-			goto scanEndValue
-		case 't':
-			info = ValueTrue
-			if checkRueString(src[pos:]) {
-				start, end, num = pos, pos+4, 0
-				pos = end
-				goto scanEndValue
-			}
-			return newParseError(pos, c, info)
-		case 'N':
-			info = ValueNumberFloatReady
-			if checkAnString(src[pos:]) {
-				start, end = pos, pos+3
-				pos = end
-				num = uNaN
-				goto scanEndValue
-			}
-			return newParseError(pos, c, info)
-		case '-':
-			start = pos
-			info = ValueInfo(TypeNumber) | ValueNegative
-			if pos++; 0 <= pos && pos < len(src) {
-				c = src[pos]
-				goto scanNumber
-			}
-			return errEOF
-		default:
-			if isDigit(c) {
-				info = ValueInfo(TypeNumber)
-				start = pos
-				goto scanNumber
-			}
-		}
-		return newParseError(pos, c, info)
-	}
-scanEndParent:
-	pos++
-	if p.pop() < 0 {
-		goto done
-	}
-	goto scanMore
-scanKey:
-	for ; 0 <= pos && pos < len(src); pos++ {
-		if c = src[pos]; isSpace(c) {
-			continue
-		}
-		switch c {
-		case delimString:
-			info = ValueInfo(TypeKey)
-			pos++
-			start = pos
-			for ; 0 <= pos && pos < len(src); pos++ {
-				switch c = src[pos]; c {
-				case delimString:
-					end = pos
-					for pos++; 0 <= pos && pos < len(src); pos++ {
-						if c = src[pos]; isSpace(c) {
-							continue
-						}
-						if c != delimNameSeparator {
-							return newParseError(pos, c, info)
-						}
-						next = p.add(Token{info: info, src: src[start:end]})
-						if root < next && next < MaxDocumentSize {
-							if int(p.parent) < len(p.nodes) {
-								if p.prev == p.parent {
-									p.nodes[p.parent].value = next
-									p.push(TypeKey, next)
-								} else {
-									p.nodes[p.parent].next = next
-									p.parent = next
-									if int(p.depth) < len(p.stack) {
-										p.stack[p.depth] = next
-									}
-								}
-
-							}
-							p.prev = next
-							pos++
-							goto scanValue
-						}
-						switch next {
-						case MaxDocumentSize:
-							return errDocumentMaxSize
-						default:
-							return errPanic
-						}
-					}
-					return errEOF
-				case delimEscape:
-					info |= ValueUnescaped
-					pos++
-				}
-			}
-			return errEOF
-		default:
-			return newParseError(pos, c, info)
-		}
-	}
-	return errEOF
-scanNumber:
-	num = 0
-	if c == '0' {
-		if pos++; 0 <= pos && pos < len(src) {
-			c = src[pos]
-		}
+func scanNumberAt(c byte, s string, pos int) (_ string, end int, inf Info) {
+	if 0 <= pos && pos < len(s) {
+		s = s[pos:]
 	} else {
-		for ; 0 <= pos && pos < len(src); pos++ {
-			if c = src[pos]; isDigit(c) {
-				num = num*10 + uint64(c-'0')
-			} else {
-				break
-			}
-		}
+		return "", -1, HasError
 	}
-	if pos == len(src) || isNumberEnd(c) {
-		if info == ValueNegativeInteger {
-			num = negative(num)
-		}
-		goto scanNumberEnd
-	}
-	num = uNaN
-	if c == '.' {
-		info |= ValueFloat
-		for pos++; 0 <= pos && pos < len(src); pos++ {
-			if c = src[pos]; !isDigit(c) {
-				break
-			}
-		}
-		if pos == len(src) || isNumberEnd(c) {
-			goto scanNumberEnd
-		}
-	}
-scanNumberScientific:
+	inf = vNumberUint
 	switch c {
-	case 'e', 'E':
-		info |= ValueFloat
-		for pos++; 0 <= pos && pos < len(src); pos++ {
-			if c = src[pos]; isDigit(c) {
-				continue
-			}
-			switch c {
-			case '-', '+':
-				c = src[pos-1]
-				goto scanNumberScientific
-			default:
-				break
-			}
+	case '0':
+		if len(s) > 1 && bytemapIsNumberEnd[s[1]] == 0 {
+			end = 1
+			c = s[1]
+			goto decimal
+		} else {
+			return "0", pos + 1, vNumberUint
 		}
-		if pos == len(src) || isNumberEnd(c) {
-			goto scanNumberEnd
-		}
-	}
-	return newParseError(pos, c, info)
-scanNumberEnd:
-	// check last part has at least 1 digit
-	if c = src[pos-1]; isDigit(c) {
-		end = pos
-	} else {
-		return newParseError(pos-1, c, info)
-	}
-scanEndValue:
-	next = p.add(Token{info: info, src: src[start:end], num: num})
-	switch next {
-	case root:
-		goto done
-	case MaxDocumentSize:
-		return errDocumentMaxSize
+	case '-':
+		inf = vNumberInt
+		fallthrough
 	default:
-		p.link(next)
-	}
-scanMore:
-	for ; 0 <= pos && pos < len(src); pos++ {
-		if c = src[pos]; isSpace(c) {
-			continue
-		}
-		switch c {
-		case delimValueSeparator:
-			switch p.mode {
-			case TypeKey:
-				pos++
-				goto scanKey
-			case TypeArray:
-				pos++
-				goto scanValue
-			}
-		case delimEndObject:
-			switch p.mode {
-			case TypeKey:
-				p.pop()
-				fallthrough
-			case TypeObject:
-				goto scanEndParent
-			}
-		case delimEndArray:
-			if p.mode == TypeArray {
-				goto scanEndParent
+		for end = 1; 0 < end && end < len(s); end++ {
+			if c = s[end]; bytemapIsDigit[c] == 0 {
+				if bytemapIsNumberEnd[c] == 1 {
+					return s[:end], pos + end, inf
+				}
+				goto decimal
 			}
 		}
-		return newParseError(pos, c, info)
+		goto done
+
 	}
-	return errEOF
+decimal:
+	if c == '.' {
+		inf = vNumberFloat
+		for end++; 0 < end && end < len(s); end++ {
+			if c = s[end]; bytemapIsDigit[c] == 0 {
+				if bytemapIsNumberEnd[c] == 1 {
+					return s[:end], pos + end, inf
+				}
+				goto scientific
+			}
+		}
+	}
+scientific:
+	if c == 'e' || c == 'E' {
+		inf = vNumberFloat
+		if end++; 0 <= end && end < len(s) {
+			if c = s[end]; c == '+' || c == '-' {
+				end++
+			}
+		}
+		for ; 0 <= end && end < len(s); end++ {
+			if c = s[end]; bytemapIsDigit[c] == 0 {
+				if bytemapIsNumberEnd[c] == 1 {
+					return s[:end], pos + end, inf
+				}
+				end++
+				goto done
+			}
+		}
+	}
 done:
-	// Check only space left in source
-	for ; 0 <= pos && pos < len(src); pos++ {
-		if c = src[pos]; isSpace(c) {
-			continue
-		}
-		return newParseError(pos, c, 0)
+	if 0 <= end && end < len(s) {
+		s = s[:end+1]
 	}
-	return
+	if bytemapIsDigit[c] == 0 {
+		return s, pos + end, HasError
+	}
+	return s, pos + end, inf
+
 }
 
-var (
-	tokenObject = Token{
-		info: ValueInfo(TypeObject),
+var pool = new(sync.Pool)
+
+// Get returns a parser from a a pool.
+// Put it back once you're done with Parser.Close()
+func Get() *Parser {
+	x := pool.Get()
+	if x == nil {
+		return &Parser{
+			nodes: make([]Node, minNumNodes),
+		}
 	}
-	tokenArray = Token{
-		info: ValueInfo(TypeArray),
+	return x.(*Parser)
+}
+
+// Close returns the parser to the pool.
+func (p *Parser) Close() error {
+	if p != nil {
+		pool.Put(p)
 	}
-)
+	return nil
+}
