@@ -3,6 +3,7 @@
 package njson
 
 const safebytes = true
+
 func s2b(s string) []byte {
 	return []byte(s)
 }
@@ -20,4 +21,10 @@ func b2sEqual(b []byte, s string) bool {
 		return true
 	}
 	return false
+}
+
+func scopy(s string) string {
+	b := make([]byte, len(s))
+	copy(b, s)
+	return string(b)
 }

@@ -19,3 +19,10 @@ func TestS2B(t *testing.T) {
 		return
 	}
 }
+
+func Benchmark_scopy(b *testing.B) {
+	s := "Lorem ipsum dolor"
+	for i := 0; i < b.N; i++ {
+		_ = scopy(s)
+	}
+}
