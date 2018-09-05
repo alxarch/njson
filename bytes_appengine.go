@@ -2,6 +2,7 @@
 
 package njson
 
+const safebytes = true
 func s2b(s string) []byte {
 	return []byte(s)
 }

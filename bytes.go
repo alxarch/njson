@@ -7,6 +7,9 @@ import (
 	"unsafe"
 )
 
+// Flag to indicate unsafe byte operations
+const safebytes = false
+
 func b2s(b []byte) string {
 	return *(*string)(unsafe.Pointer(&b))
 }
