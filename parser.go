@@ -15,21 +15,33 @@ type Parser struct {
 
 // ParseUnsafe parses JSON from a slice of bytes without copying it to a string.
 // The contents of the slice should not be modified while using the result node.
-func (p *Parser) ParseUnsafe(data []byte) (*Node, error) {
+func (p *Parser) ParseUnsafe(data []byte) (*Node, []byte, error) {
 	p.reset(false)
 	s := b2s(data)
 	n := p.node()
 	n.next, n.value = nil, nil
 	pos := p.parseValue(' ', s, -1, n)
-	return p.skipSpaceTail(s, pos, n)
+	if p.err != nil {
+		return nil, data, p.err
+	}
+	if 0 <= pos && pos < len(data) {
+		return n, data[pos:], nil
+	}
+	return n, nil, nil
 }
 
-func (p *Parser) Parse(s string) (*Node, error) {
+func (p *Parser) Parse(s string) (*Node, string, error) {
 	p.reset(true)
 	n := p.node()
 	n.next, n.value = nil, nil
 	pos := p.parseValue(' ', s, -1, n)
-	return p.skipSpaceTail(s, pos, n)
+	if p.err != nil {
+		return nil, s, p.err
+	}
+	if 0 <= pos && pos < len(s) {
+		return n, s[pos:], nil
+	}
+	return n, "", nil
 }
 
 const minNumNodes = 64
@@ -99,67 +111,90 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 		}
 		return p.abort(pos-1, TypeString, nil, delimString)
 	case delimBeginObject:
+		n.info = vObject
+		n.next = nil
+		// Skip space after '{'
 		for pos++; 0 <= pos && pos < len(s); pos++ {
 			if bytemapIsSpace[s[pos]] == 0 {
 				c = s[pos]
-				break
+				goto isEmptyObject
 			}
 		}
+		return p.eof(TypeObject)
+	isEmptyObject:
 		if c == delimEndObject {
-			n.info, n.value, n.next = vObject, nil, nil
+			n.value = nil
 			return pos + 1
 		}
-		n.info, n.value, n.next = vObject, p.node(), nil
+		n.value = p.node()
 		n = n.value
+		n.info = vKey
+		n.safe = p.safe
 
-		for pos++; 0 <= pos && pos < len(s); pos++ {
-			if c != delimString {
-				return p.abort(pos, TypeKey, c, delimString)
-			}
+	readObject:
+		for pos++; 0 <= pos && pos < len(s) && c == delimString; pos++ {
+			// This slices the string after the opening quote
 			ss := s[pos:]
-		readkey:
 			for end := 0; 0 <= end && end < len(ss); end++ {
 				switch ss[end] {
 				case delimString:
 					n.raw = ss[:end]
-					pos += end + 1
-					break readkey
+					// Skip space after '"'
+					for pos += end + 1; 0 <= pos && pos < len(s); pos++ {
+						c = s[pos]
+						if bytemapIsSpace[c] == 0 {
+							// goto used to return proper eof error without checks
+							goto isKey
+						}
+					}
+					break
 				case delimEscape:
 					end++
 				}
 			}
-			for ; 0 <= pos && pos < len(s); pos++ {
-				if c = s[pos]; bytemapIsSpace[c] == 0 {
-					break
-				}
-			}
+			return p.eof(TypeKey)
+		isKey:
+			// Check for ':'
 			if c != delimNameSeparator {
 				return p.abort(pos, TypeKey, c, delimNameSeparator)
 			}
-			n.info, n.safe = vKey, p.safe
+
+			// Skip space after ':'
 			for pos++; 0 <= pos && pos < len(s); pos++ {
-				if c = s[pos]; bytemapIsSpace[c] == 0 {
+				c = s[pos]
+				if bytemapIsSpace[c] == 0 {
 					break
 				}
 			}
 			n.value = p.node()
-			if pos = p.parseValue(c, s, pos, n.value); p.err != nil {
+			pos = p.parseValue(c, s, pos, n.value)
+			if p.err != nil {
 				return pos
 			}
+
+			// Skip space after value
 			for ; 0 <= pos && pos < len(s); pos++ {
-				if c = s[pos]; bytemapIsSpace[c] == 0 {
+				c = s[pos]
+				if bytemapIsSpace[c] == 0 {
 					break
 				}
 			}
+
 			switch c {
 			case delimValueSeparator:
-				n.next = p.node()
-				n = n.next
+				// Skip space after ','
 				for pos++; 0 <= pos && pos < len(s); pos++ {
-					if c = s[pos]; bytemapIsSpace[c] == 0 {
-						break
+					c = s[pos]
+					if bytemapIsSpace[c] == 0 {
+						// Set next key
+						n.next = p.node()
+						n = n.next
+						n.safe = p.safe
+						n.info = vKey
+						continue readObject
 					}
 				}
+				return p.eof(TypeObject)
 			case delimEndObject:
 				n.next = nil
 				return pos + 1
@@ -167,47 +202,60 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 				return p.abort(pos, TypeObject, c, []rune{delimValueSeparator, delimEndObject})
 			}
 		}
+
 		return p.eof(TypeObject)
 	case delimBeginArray:
+		n.info = vArray
+		// Skip space after '['
 		for pos++; 0 <= pos && pos < len(s); pos++ {
-			if bytemapIsSpace[s[pos]] == 0 {
-				c = s[pos]
+			c = s[pos]
+			if bytemapIsSpace[c] == 0 {
+				// goto used to return proper eof type without checking pos
+				goto isEmptyArray
+			}
+		}
+		return p.eof(TypeArray)
+	isEmptyArray:
+		if c == delimEndArray {
+			n.value = nil
+			return pos + 1
+		}
+
+		n.value = p.node()
+		n = n.value
+	more:
+		pos = p.parseValue(c, s, pos, n)
+		if p.err != nil {
+			return pos
+		}
+
+		// Skip space after value
+		for ; 0 <= pos && pos < len(s); pos++ {
+			c = s[pos]
+			if bytemapIsSpace[c] == 0 {
 				break
 			}
 		}
-		if c == delimEndArray {
-			n.info, n.value, n.next = vArray, nil, nil
-			return pos + 1
-		}
-		n.info, n.next, n.value = vArray, nil, p.node()
-		n = n.value
-		for {
-			if pos = p.parseValue(c, s, pos, n); p.err != nil {
-				return pos
-			}
-			for ; 0 <= pos && pos < len(s); pos++ {
-				if bytemapIsSpace[s[pos]] == 0 {
-					c = s[pos]
-					break
-				}
-			}
-			switch c {
-			case delimValueSeparator:
-				n.next = p.node()
-				n = n.next
-			case delimEndArray:
-				n.next = nil
-				return pos + 1
-			default:
-				return p.abort(pos, TypeArray, c, []rune{delimValueSeparator, delimEndArray})
-			}
 
+		switch c {
+		case delimValueSeparator:
+			// Skip space after ','
 			for pos++; 0 <= pos && pos < len(s); pos++ {
 				if bytemapIsSpace[s[pos]] == 0 {
 					c = s[pos]
-					break
+					// Set next node
+					n.next = p.node()
+					n = n.next
+					// goto used to return proper eof type without checking pos
+					goto more
 				}
 			}
+			return p.eof(TypeArray)
+		case delimEndArray:
+			n.next = nil
+			return pos + 1
+		default:
+			return p.abort(pos, TypeArray, c, []rune{delimValueSeparator, delimEndArray})
 		}
 	case 'n':
 		switch s = sliceAtN(s, pos, 4); s {
@@ -375,29 +423,4 @@ func (p *Parser) Close() error {
 		pool.Put(p)
 	}
 	return nil
-}
-
-func (p *Parser) skipSpaceTail(s string, i int, n *Node) (*Node, error) {
-	if p.err != nil {
-		return nil, p.err
-	}
-	if i < 0 {
-		p.err = eof(Type(n.info))
-		return nil, p.err
-	}
-	for ; 0 <= i && i < len(s); i++ {
-		if bytemapIsSpace[s[i]] == 0 {
-			p.err = abort(i, Type(n.info), s[i], []rune{' ', '\t', '\n', '\r'})
-			return nil, p.err
-		}
-	}
-	return n, p.err
-}
-func skipSpaceAt(s string, i int) (c byte, _ int) {
-	for ; 0 <= i && i < len(s); i++ {
-		if c = s[i]; bytemapIsSpace[c] == 0 {
-			return c, i
-		}
-	}
-	return 0, -1
 }

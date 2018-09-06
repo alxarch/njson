@@ -46,13 +46,15 @@ func TestParse(t *testing.T) {
 func testParse(t *testing.T, input, output string) {
 	t.Helper()
 	p := Parser{}
-	root, err := p.Parse(input)
+	root, tail, err := p.Parse(input)
 	if err != nil {
 		t.Error(input, err)
 	} else if root == nil {
 		t.Errorf("Nil root")
 	} else if out, _ := root.AppendJSON(nil); string(out) != output {
 		t.Errorf("Invalid root:\nexpect: %s\nactual: %s", output, out)
+	} else if tail != "" {
+		t.Errorf("Tail not empty: %q", tail)
 	}
 }
 
@@ -96,16 +98,20 @@ func TestParser_Parse(t *testing.T) {
 	tests := []struct {
 		args    string
 		wantN   *Node
+		wantS   string
 		wantErr bool
 	}{
-		{`-a7`, nil, true},
+		{`-a7`, nil, `-a7`, true},
 	}
 	for _, tt := range tests {
 		t.Run(strconv.Quote(tt.args), func(t *testing.T) {
-			gotN, err := p.Parse(tt.args)
+			gotN, gotS, err := p.Parse(tt.args)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Parser.Parse() error = %v, wantErr %v", err, tt.wantErr)
 				return
+			}
+			if gotS != tt.wantS {
+				t.Errorf("Parser.Parse() tail = %q, want %q", gotS, tt.wantS)
 			}
 			if !reflect.DeepEqual(gotN, tt.wantN) {
 				t.Errorf("Parser.Parse() = %v, want %v", gotN, tt.wantN)

@@ -18,7 +18,7 @@ func TestUnmarshalBasic(t *testing.T) {
 		t.Errorf("Unexpected error: %s", err)
 		return
 	}
-	n, err := njson.Get().Parse(src)
+	n, _, err := njson.Get().Parse(src)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return

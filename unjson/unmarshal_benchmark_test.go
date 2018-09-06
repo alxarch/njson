@@ -41,7 +41,7 @@ func BenchmarkParseAndUnmarshalFromNode(b *testing.B) {
 	var err error
 	var n *njson.Node
 	for i := 0; i < b.N; i++ {
-		if n, err = p.Parse(mediumJSON); err != nil {
+		if n, _, err = p.Parse(mediumJSON); err != nil {
 			b.Errorf("UnexpectedError: %s", err)
 		}
 		if err = unjson.UnmarshalFromNode(n, &m); err != nil {
@@ -60,7 +60,7 @@ func BenchmarkUnmarshaler_Unmarshal(b *testing.B) {
 		return
 	}
 	doc := njson.Get()
-	root, err := doc.Parse(mediumJSON)
+	root, _, err := doc.Parse(mediumJSON)
 	doc.Close()
 	if err != nil {
 		b.Errorf("UnexpectedError: %s", err)
