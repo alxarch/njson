@@ -16,7 +16,7 @@ type Node struct {
 	safe      bool
 	raw       string
 	unescaped string
-	num       uint64
+	num       float64
 	key       string
 	values    []*Node
 }
@@ -38,7 +38,7 @@ func (n *Node) append(v *Node, i int) {
 		n.values[i] = v
 		return
 	}
-	tmp := make([]*Node, 3*len(n.values)/2+1)
+	tmp := make([]*Node, 2*len(n.values)+1)
 	copy(tmp, n.values)
 	if 0 <= i && i < len(tmp) {
 		tmp[i] = v
@@ -309,104 +309,53 @@ func (n *Node) TypeError(want Type) error {
 }
 
 const (
-	vNumberFloatParsed = vNumber | NumberFloat | NumberParsed
+	vNumberParsed = vNumber | NumberParsed
 )
 
 func (n *Node) parseFloat() (f float64, ok bool) {
 	f, err := strconv.ParseFloat(n.raw, 10)
 	if ok = err == nil; ok {
-		n.num = math.Float64bits(f)
+		n.num = f
 		n.info |= NumberParsed
 		if math.Trunc(f) == f {
 			n.info |= NumberZeroDecimal
 		}
-		if f < 0 {
-			n.info |= NumberSigned
-		}
+		// if f < 0 {
+		// 	n.info |= NumberSigned
+		// }
 	}
 	return
 
 }
-func (n *Node) parseUint() (i uint64, ok bool) {
-	i, err := strconv.ParseUint(n.raw, 10, 64)
-	if ok = err == nil; ok {
-		n.num = i
-		n.info |= NumberParsed
-	}
-	return
-
-}
-func (n *Node) parseInt() (i int64, ok bool) {
-	i, err := strconv.ParseInt(n.raw, 10, 64)
-	if ok = err == nil; ok {
-		n.num = uint64(i)
-		n.info |= NumberParsed
-	}
-	return
-
-}
-func (n *Node) ToUint() (u uint64, ok bool) {
+func (n *Node) ToUint() (uint64, bool) {
 	switch n.info {
-	case vNumberUint | NumberParsed:
+	case vNumberUint:
+		return uint64(n.num), true
+	case vNumber:
+		n.parseFloat()
+		return uint64(n.num), n.info == vNumberUint
+	}
+	return 0, false
+}
+func (n *Node) ToFloat() (float64, bool) {
+	if n.info&vNumberParsed == vNumberParsed {
 		return n.num, true
-	case vNumberUint:
-		return n.parseUint()
-	case vNumberFloat:
-		n.parseFloat()
-		fallthrough
-	default:
-		const convertible = NumberParsed | NumberZeroDecimal
-		if n.info&(convertible|NumberSigned) == convertible {
-			return uint64(math.Float64frombits(n.num)), true
-		}
-		return 0, false
 	}
-
-}
-func (n *Node) ToFloat() (f float64, ok bool) {
-	if n.info&vNumberFloatParsed == vNumberFloatParsed {
-		return math.Float64frombits(n.num), true
-	}
-	switch n.info {
-	case vNumberFloat:
+	if n.info&vNumber == vNumber {
 		return n.parseFloat()
-	case vNumberUint | NumberParsed:
-		return float64(n.num), true
-	case vNumberInt | NumberParsed:
-		return float64(int64(n.num)), true
-	case vNumberInt:
-		_, ok = n.parseInt()
-		return float64(int64(n.num)), ok
-	case vNumberUint:
-		_, ok = n.parseUint()
-		return float64(n.num), ok
-	default:
-		return 0, false
 	}
+	return 0, false
 }
 
-func (n *Node) ToInt() (i int64, ok bool) {
-	switch n.info {
-	case vNumberInt | NumberParsed:
+func (n *Node) ToInt() (int64, bool) {
+	if n.info&vNumberUint == vNumberUint {
 		return int64(n.num), true
-	case vNumberInt:
-		return n.parseInt()
-	case vNumberUint:
-		n.parseUint()
-		fallthrough
-	case vNumberUint | NumberParsed:
-		return int64(n.num), n.num < math.MaxInt64
-	case vNumberFloat:
-		n.parseFloat()
-		fallthrough
-	default:
-		const convertible = NumberParsed | NumberZeroDecimal
-		if n.info&(convertible) == convertible {
-			return int64(math.Float64frombits(n.num)), true
-		}
-		return 0, false
 	}
-
+	if Type(n.info) == TypeNumber {
+		n.parseFloat()
+		return int64(n.num), n.info&vNumberUint == vNumberUint
+	}
+	return 0, false
 }
 
 func (n *Node) ToString() (string, bool) {

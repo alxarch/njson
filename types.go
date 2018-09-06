@@ -76,23 +76,20 @@ func (t Type) String() string {
 type Info uint16
 
 const (
-	vString       = Info(TypeString)
-	vNumber       = Info(TypeNumber)
-	vNull         = Info(TypeNull)
-	vBoolean      = Info(TypeBoolean)
-	vArray        = Info(TypeArray)
-	vObject       = Info(TypeObject)
-	vKey          = Info(TypeKey)
-	vFalse        = vBoolean
-	vTrue         = vBoolean | IsTrue
-	vNumberUint   = vNumber
-	vNumberInt    = vNumber | NumberSigned
-	vNumberFloat  = vNumber | NumberFloat
-	vNumberFloatZ = vNumber | NumberFloat | NumberZeroDecimal
+	vString     = Info(TypeString)
+	vNumber     = Info(TypeNumber)
+	vNull       = Info(TypeNull)
+	vBoolean    = Info(TypeBoolean)
+	vArray      = Info(TypeArray)
+	vObject     = Info(TypeObject)
+	vKey        = Info(TypeKey)
+	vFalse      = vBoolean
+	vTrue       = vBoolean | IsTrue
+	vNumberUint = vNumber | NumberZeroDecimal | NumberParsed
+	vNumberInt  = vNumber | NumberZeroDecimal | NumberSigned | NumberParsed
 )
 const (
 	NumberSigned Info = 1 << (iota + 8)
-	NumberFloat
 	NumberZeroDecimal
 	NumberParsed
 )

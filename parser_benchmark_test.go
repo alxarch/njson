@@ -2,6 +2,7 @@ package njson
 
 import (
 	"io/ioutil"
+	"strings"
 	"testing"
 )
 
@@ -9,12 +10,25 @@ func benchmark(src string) func(b *testing.B) {
 	p := Parser{}
 
 	return func(b *testing.B) {
+		n, tail, err := p.Parse(src)
+		if err != nil {
+			b.Errorf("Parse error: %s", err)
+			return
+		}
+		if strings.TrimSpace(tail) != "" {
+			b.Errorf("Non empty tail: %q", tail)
+			return
+		}
+		if n == nil {
+			b.Errorf("Nil root")
+			return
+		}
 		b.ReportAllocs()
 		b.SetBytes(int64(len(src)))
+		b.ResetTimer()
+
 		for i := 0; i < b.N; i++ {
-			if _, _, err := p.Parse(src); err != nil {
-				b.Errorf("Parse error: %s", err)
-			}
+			p.Parse(src)
 		}
 	}
 }

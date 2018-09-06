@@ -61,7 +61,7 @@ func (p *Parser) node() (n *Node) {
 		return
 	}
 
-	p.nodes = make([]Node, len(p.nodes)*3+minNumNodes)
+	p.nodes = make([]Node, len(p.nodes)*2+1)
 	if len(p.nodes) > 0 {
 		n = &p.nodes[0]
 		// n.safe = p.safe
@@ -85,23 +85,23 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 		n.values = n.values[:0]
 		n.safe = p.safe
 		if pos++; 0 < pos && pos < len(s) {
-			ss := s[pos:]
-			end := strings.IndexByte(ss, delimString)
-			if end--; 0 <= end && end < len(ss) {
-				if ss[end] == delimEscape {
+			n.raw = s[pos:]
+			end := strings.IndexByte(n.raw, delimString)
+			if end--; 0 <= end && end < len(n.raw) {
+				if n.raw[end] == delimEscape {
 					end += 2
-					for ; 0 <= end && end < len(ss); end++ {
-						switch ss[end] {
+					for ; 0 <= end && end < len(n.raw); end++ {
+						switch n.raw[end] {
 						case delimString:
-							n.raw = ss[:end]
+							n.raw = n.raw[:end]
 							end++
 							return end + pos
 						case delimEscape:
 							end++
 						}
 					}
-				} else if end++; 0 <= end && end <= len(ss) {
-					n.raw = ss[:end]
+				} else if end++; 0 <= end && end <= len(n.raw) {
+					n.raw = n.raw[:end]
 					end++
 					return end + pos
 				}
@@ -288,16 +288,40 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 			return p.abort(pos, TypeBoolean, s, strTrue)
 		}
 	case '-':
-		if n.raw, pos, n.info = scanNumberAt(c, s, pos); n.info == HasError {
-			return p.abort(pos, TypeNumber, n.raw, "valid number token")
+		if 0 <= pos && pos < len(s) {
+			n.raw = s[pos:]
+			n.info = vNumber | NumberSigned
+			for i := 1; 0 < i && i < len(n.raw); i++ {
+				if c = n.raw[i]; bytemapIsNumberEnd[c] == 1 {
+					n.raw = n.raw[:i]
+					return pos + i
+				}
+			}
+			return pos + len(n.raw)
 		}
-		return pos
+		return p.eof(TypeNumber)
+		// if n.raw, pos, n.info = scanNumberAt(c, s, pos); n.info == HasError {
+		// 	return p.abort(pos, TypeNumber, n.raw, "valid number token")
+		// }
+		// return pos
 	default:
 		if bytemapIsDigit[c] == 1 {
-			if n.raw, pos, n.info = scanNumberAt(c, s, pos); n.info == HasError {
-				return p.abort(pos, TypeNumber, n.raw, "valid number token")
+			if 0 <= pos && pos < len(s) {
+				n.raw = s[pos:]
+				n.info = vNumber
+				for i := 1; 0 < i && i < len(n.raw); i++ {
+					if c = n.raw[i]; bytemapIsNumberEnd[c] == 1 {
+						n.raw = n.raw[:i]
+						return pos + i
+					}
+				}
+				return pos + len(n.raw)
 			}
-			return pos
+			return p.eof(TypeNumber)
+			// if n.raw, pos, n.info = scanNumberAt(c, s, pos); n.info == HasError {
+			// 	return p.abort(pos, TypeNumber, n.raw, "valid number token")
+			// }
+			// return pos
 		}
 		if 0 <= pos && pos < len(s) {
 			return p.abort(pos, TypeAnyValue, c, "any value")
@@ -337,77 +361,77 @@ func sliceAtN(s string, pos, n int) string {
 	return ""
 }
 
-func scanNumberAt(c byte, s string, pos int) (_ string, end int, inf Info) {
-	if 0 <= pos && pos < len(s) {
-		s = s[pos:]
-	} else {
-		return "", -1, HasError
-	}
-	inf = vNumberUint
-	switch c {
-	case '0':
-		if len(s) > 1 && bytemapIsNumberEnd[s[1]] == 0 {
-			end = 1
-			c = s[1]
-			goto decimal
-		} else {
-			return "0", pos + 1, vNumberUint
-		}
-	case '-':
-		inf = vNumberInt
-		fallthrough
-	default:
-		for end = 1; 0 < end && end < len(s); end++ {
-			if c = s[end]; bytemapIsDigit[c] == 0 {
-				if bytemapIsNumberEnd[c] == 1 {
-					return s[:end], pos + end, inf
-				}
-				goto decimal
-			}
-		}
-		goto done
+// func scanNumberAt(c byte, s string, pos int) (_ string, end int, inf Info) {
+// 	if 0 <= pos && pos < len(s) {
+// 		s = s[pos:]
+// 	} else {
+// 		return "", -1, HasError
+// 	}
+// 	inf = vNumberUint
+// 	switch c {
+// 	case '0':
+// 		if len(s) > 1 && bytemapIsNumberEnd[s[1]] == 0 {
+// 			end = 1
+// 			c = s[1]
+// 			goto decimal
+// 		} else {
+// 			return "0", pos + 1, vNumberUint
+// 		}
+// 	case '-':
+// 		inf = vNumberInt
+// 		fallthrough
+// 	default:
+// 		for end = 1; 0 < end && end < len(s); end++ {
+// 			if c = s[end]; bytemapIsDigit[c] == 0 {
+// 				if bytemapIsNumberEnd[c] == 1 {
+// 					return s[:end], pos + end, inf
+// 				}
+// 				goto decimal
+// 			}
+// 		}
+// 		goto done
 
-	}
-decimal:
-	if c == '.' {
-		inf = vNumberFloat
-		for end++; 0 < end && end < len(s); end++ {
-			if c = s[end]; bytemapIsDigit[c] == 0 {
-				if bytemapIsNumberEnd[c] == 1 {
-					return s[:end], pos + end, inf
-				}
-				goto scientific
-			}
-		}
-	}
-scientific:
-	if c == 'e' || c == 'E' {
-		inf = vNumberFloat
-		if end++; 0 <= end && end < len(s) {
-			if c = s[end]; c == '+' || c == '-' {
-				end++
-			}
-		}
-		for ; 0 <= end && end < len(s); end++ {
-			if c = s[end]; bytemapIsDigit[c] == 0 {
-				if bytemapIsNumberEnd[c] == 1 {
-					return s[:end], pos + end, inf
-				}
-				end++
-				goto done
-			}
-		}
-	}
-done:
-	if 0 <= end && end < len(s) {
-		s = s[:end+1]
-	}
-	if bytemapIsDigit[c] == 0 {
-		return s, pos + end, HasError
-	}
-	return s, pos + end, inf
+// 	}
+// decimal:
+// 	if c == '.' {
+// 		inf = vNumberFloat
+// 		for end++; 0 < end && end < len(s); end++ {
+// 			if c = s[end]; bytemapIsDigit[c] == 0 {
+// 				if bytemapIsNumberEnd[c] == 1 {
+// 					return s[:end], pos + end, inf
+// 				}
+// 				goto scientific
+// 			}
+// 		}
+// 	}
+// scientific:
+// 	if c == 'e' || c == 'E' {
+// 		inf = vNumberFloat
+// 		if end++; 0 <= end && end < len(s) {
+// 			if c = s[end]; c == '+' || c == '-' {
+// 				end++
+// 			}
+// 		}
+// 		for ; 0 <= end && end < len(s); end++ {
+// 			if c = s[end]; bytemapIsDigit[c] == 0 {
+// 				if bytemapIsNumberEnd[c] == 1 {
+// 					return s[:end], pos + end, inf
+// 				}
+// 				end++
+// 				goto done
+// 			}
+// 		}
+// 	}
+// done:
+// 	if 0 <= end && end < len(s) {
+// 		s = s[:end+1]
+// 	}
+// 	if bytemapIsDigit[c] == 0 {
+// 		return s, pos + end, HasError
+// 	}
+// 	return s, pos + end, inf
 
-}
+// }
 
 var pool = new(sync.Pool)
 

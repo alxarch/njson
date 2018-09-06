@@ -32,7 +32,7 @@ func BenchmarkUnmarshalFromString(b *testing.B) {
 		}
 	}
 }
-func BenchmarkParseAndUnmarshalFromNode(b *testing.B) {
+func BenchmarkParseAndUnmarshal(b *testing.B) {
 	p := njson.Get()
 	defer p.Close()
 	b.SetBytes(int64(len(mediumJSON)))
