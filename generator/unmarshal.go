@@ -92,16 +92,22 @@ func (g *Generator) SliceUnmarshaler(T types.Type, t *types.Slice) meta.Code {
 switch {
 case n.IsArray():
 	// Ensure slice is big enough
-	if size := n.Len(); cap(*r) < size {
-		*r = make([]%s, len(*r) + size)
+	values := n.Values()
+	
+	if cap(*r) < len(values) {
+		*r = make([]%s, len(*r) + len(values))
 	} else {
-		*r = (*r)[:size]
+		*r = (*r)[:len(values)]
 	}
-	s := *r
-	for i, n := 0, n.Value(); n != nil; n, i = n.Next(), i+1 {
-		r := &s[i]
-		%s
+	if s := *r; len(s) >= len(values) {
+		// Avoid bounds check
+		s = s[:len(values)]
+		for i, n := range values {
+			r := &s[i]
+			%s
+		}
 	}
+
 case n.IsNull():
 	*r = nil
 default:
@@ -203,15 +209,15 @@ func (g *Generator) TextUnmarshaler(t types.Type) (code meta.Code) {
 func (g *Generator) MapUnmarshaler(t types.Type, m *types.Map) (code meta.Code) {
 	// TODO: Enforce string, TextUnmarshaler key type
 	typK := m.Key()
-	var codeK meta.Code
-	switch {
-	case meta.IsString(typK):
-		codeK = g.TypeUnmarshaler(typK)
-	case types.Implements(typK, typTextUnmarshaler):
-		codeK = g.TypeUnmarshaler(typK)
-	default:
-		return code.Errorf("Invalid key type %s", typK)
-	}
+	// var codeK meta.Code
+	// switch {
+	// case meta.IsString(typK):
+	// 	codeK = g.TypeUnmarshaler(typK)
+	// case types.Implements(typK, typTextUnmarshaler):
+	// 	codeK = g.TypeUnmarshaler(typK)
+	// default:
+	// 	return code.Errorf("Invalid key type %s", typK)
+	// }
 	typV := m.Elem()
 	codeV := g.TypeUnmarshaler(typV)
 	return g.Code(`
@@ -225,22 +231,16 @@ case *r == nil:
 	fallthrough
 default:
 	m := *r
-	for n := n.Value(); n != nil; n = n.Next() {
-		var k %[1]s
-		{
-			r := &k
-			%[3]s
-		}
+	for _, n := range n.Values() {
 		var v %[2]s
 		{
 			r := &v
-			n := n.Value()
-			%[4]s
+			%[3]s
 		}
-		m[k] = v
+		m[n.Key()] = v
 	}
 }
-`, typK, typV, codeK, codeV).Import(njsonPkg)
+`, typK, typV, codeV).Import(njsonPkg)
 }
 
 // StructUnmarshaler generates the code block to unmarshal a struct.
@@ -284,9 +284,8 @@ func (g *Generator) StructUnmarshaler(t *types.Struct) (code meta.Code) {
 		if !n.IsObject() {
 			return n.TypeError(njson.TypeObject)
 		}
-		for k := n.Value(); k != nil; k = k.Next() {
-			n := k.Value()
-			switch k.Raw() {
+		for _, n := range n.Values() {
+			switch n.Key() {
 				%s
 			}
 		}`, code).Import(njsonPkg)
