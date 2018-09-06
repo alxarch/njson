@@ -108,7 +108,7 @@ func Unmarshal(x interface{}, options ...Option) func(t *testing.T) {
 			t.Errorf("Unexpected input error: %s", err)
 			return
 		}
-		if n, err = d.Parse(string(data)); err != nil {
+		if n, _, err = d.Parse(string(data)); err != nil {
 			t.Errorf("Unexpected parse error: %s", err)
 			return
 		}
