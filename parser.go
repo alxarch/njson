@@ -19,7 +19,7 @@ func (p *Parser) ParseUnsafe(data []byte) (*Node, []byte, error) {
 	p.reset(false)
 	s := b2s(data)
 	n := p.node()
-	n.next, n.value = nil, nil
+	n.values = n.values[:0]
 	pos := p.parseValue(' ', s, -1, n)
 	if p.err != nil {
 		return nil, data, p.err
@@ -33,7 +33,7 @@ func (p *Parser) ParseUnsafe(data []byte) (*Node, []byte, error) {
 func (p *Parser) Parse(s string) (*Node, string, error) {
 	p.reset(true)
 	n := p.node()
-	n.next, n.value = nil, nil
+	n.values = n.values[:0]
 	pos := p.parseValue(' ', s, -1, n)
 	if p.err != nil {
 		return nil, s, p.err
@@ -82,7 +82,9 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 	}
 	switch c {
 	case delimString:
-		n.info, n.value, n.next, n.safe = vString, nil, nil, p.safe
+		n.info = vString
+		n.values = n.values[:0]
+		n.safe = p.safe
 		if pos++; 0 < pos && pos < len(s) {
 			ss := s[pos:]
 			end := strings.IndexByte(ss, delimString)
@@ -112,7 +114,7 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 		return p.abort(pos-1, TypeString, nil, delimString)
 	case delimBeginObject:
 		n.info = vObject
-		n.next = nil
+		n.values = n.values[:0]
 		// Skip space after '{'
 		for pos++; 0 <= pos && pos < len(s); pos++ {
 			if bytemapIsSpace[s[pos]] == 0 {
@@ -123,13 +125,11 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 		return p.eof(TypeObject)
 	isEmptyObject:
 		if c == delimEndObject {
-			n.value = nil
 			return pos + 1
 		}
-		n.value = p.node()
-		n = n.value
-		n.info = vKey
-		n.safe = p.safe
+		k, v := p.node(), p.node()
+		k.info = vKey
+		k.safe = p.safe
 
 	readObject:
 		for pos++; 0 <= pos && pos < len(s) && c == delimString; pos++ {
@@ -138,7 +138,7 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 			for end := 0; 0 <= end && end < len(ss); end++ {
 				switch ss[end] {
 				case delimString:
-					n.raw = ss[:end]
+					k.raw = ss[:end]
 					// Skip space after '"'
 					for pos += end + 1; 0 <= pos && pos < len(s); pos++ {
 						c = s[pos]
@@ -166,11 +166,12 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 					break
 				}
 			}
-			n.value = p.node()
-			pos = p.parseValue(c, s, pos, n.value)
+			pos = p.parseValue(c, s, pos, v)
 			if p.err != nil {
 				return pos
 			}
+			k.values = append(k.values[:0], v)
+			n.values = append(n.values, k)
 
 			// Skip space after value
 			for ; 0 <= pos && pos < len(s); pos++ {
@@ -187,16 +188,14 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 					c = s[pos]
 					if bytemapIsSpace[c] == 0 {
 						// Set next key
-						n.next = p.node()
-						n = n.next
-						n.safe = p.safe
-						n.info = vKey
+						k, v = p.node(), p.node()
+						k.safe = p.safe
+						k.info = vKey
 						continue readObject
 					}
 				}
 				return p.eof(TypeObject)
 			case delimEndObject:
-				n.next = nil
 				return pos + 1
 			default:
 				return p.abort(pos, TypeObject, c, []rune{delimValueSeparator, delimEndObject})
@@ -206,6 +205,7 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 		return p.eof(TypeObject)
 	case delimBeginArray:
 		n.info = vArray
+		n.values = n.values[:0]
 		// Skip space after '['
 		for pos++; 0 <= pos && pos < len(s); pos++ {
 			c = s[pos]
@@ -217,17 +217,16 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 		return p.eof(TypeArray)
 	isEmptyArray:
 		if c == delimEndArray {
-			n.value = nil
 			return pos + 1
 		}
 
-		n.value = p.node()
-		n = n.value
+		v := p.node()
 	more:
-		pos = p.parseValue(c, s, pos, n)
+		pos = p.parseValue(c, s, pos, v)
 		if p.err != nil {
 			return pos
 		}
+		n.values = append(n.values, v)
 
 		// Skip space after value
 		for ; 0 <= pos && pos < len(s); pos++ {
@@ -243,16 +242,13 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 			for pos++; 0 <= pos && pos < len(s); pos++ {
 				if bytemapIsSpace[s[pos]] == 0 {
 					c = s[pos]
-					// Set next node
-					n.next = p.node()
-					n = n.next
+					v = p.node()
 					// goto used to return proper eof type without checking pos
 					goto more
 				}
 			}
 			return p.eof(TypeArray)
 		case delimEndArray:
-			n.next = nil
 			return pos + 1
 		default:
 			return p.abort(pos, TypeArray, c, []rune{delimValueSeparator, delimEndArray})
@@ -260,7 +256,7 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 	case 'n':
 		switch s = sliceAtN(s, pos, 4); s {
 		case strNull:
-			n.info, n.raw, n.value, n.next = vNull, strNull, nil, nil
+			n.info, n.raw = vNull, strNull
 			return pos + 4
 		default:
 			return p.abort(pos, TypeNull, s, strNull)
@@ -268,7 +264,7 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 	case 'f':
 		switch s = sliceAtN(s, pos, 5); s {
 		case strFalse:
-			n.info, n.raw, n.value, n.next = vFalse, strFalse, nil, nil
+			n.info, n.raw = vFalse, strFalse
 			return pos + 5
 		default:
 			return p.abort(pos, TypeBoolean, s, strFalse)
@@ -276,7 +272,7 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 	case 't':
 		switch s = sliceAtN(s, pos, 4); s {
 		case strTrue:
-			n.info, n.raw, n.value, n.next = vTrue, strTrue, nil, nil
+			n.info, n.raw = vTrue, strTrue
 			return pos + 4
 		default:
 			return p.abort(pos, TypeBoolean, s, strTrue)

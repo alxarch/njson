@@ -17,15 +17,14 @@ type Node struct {
 	raw       string
 	unescaped string
 	num       uint64
-	value     *Node
-	next      *Node
+	values    []*Node
 }
 
-func (n *Node) Next() *Node {
-	return n.next
-}
 func (n *Node) Value() *Node {
-	return n.value
+	if len(n.values) > 0 {
+		return n.values[0]
+	}
+	return nil
 }
 func (n *Node) Raw() string {
 	// if n != nil && n.info.HasRaw() {
@@ -49,23 +48,27 @@ func (n *Node) AppendJSON(dst []byte) ([]byte, error) {
 	switch Type(n.info) {
 	case TypeObject:
 		dst = append(dst, delimBeginObject)
-		for n = n.value; n != nil; n = n.next {
+		for i, n := range n.values {
+			if i > 0 {
+				dst = append(dst, delimValueSeparator)
+			}
 			dst = append(dst, delimString)
 			dst = append(dst, n.raw...)
 			dst = append(dst, delimString, delimNameSeparator)
-			dst, _ = n.value.AppendJSON(dst)
-			if n.next != nil {
-				dst = append(dst, delimValueSeparator)
+			if len(n.values) > 0 {
+				dst, _ = n.values[0].AppendJSON(dst)
+			} else {
+				return dst, newTypeError(TypeInvalid, TypeAnyValue)
 			}
 		}
 		dst = append(dst, delimEndObject)
 	case TypeArray:
 		dst = append(dst, delimBeginArray)
-		for n = n.value; n != nil; n = n.next {
-			dst, _ = n.AppendJSON(dst)
-			if n.next != nil {
+		for i, n := range n.values {
+			if i > 0 {
 				dst = append(dst, delimValueSeparator)
 			}
+			dst, _ = n.AppendJSON(dst)
 		}
 		dst = append(dst, delimEndArray)
 	case TypeString:
@@ -82,8 +85,7 @@ func (n *Node) AppendJSON(dst []byte) ([]byte, error) {
 // Len gets the number of children a node has.
 func (n *Node) Len() (i int) {
 	if n != nil && n.info.HasLen() {
-		for n = n.value; n != nil; n, i = n.next, i+1 {
-		}
+		return len(n.values)
 	}
 	return
 }
@@ -168,11 +170,11 @@ var (
 func (n *Node) WrapUnmarshalJSON(u json.Unmarshaler) (err error) {
 	switch n.Type() {
 	case TypeArray:
-		if n.value == nil {
+		if len(n.values) == 0 {
 			return u.UnmarshalJSON(emptyArrayBytes)
 		}
 	case TypeObject:
-		if n.value == nil {
+		if len(n.values) == 0 {
 			return u.UnmarshalJSON(emptyObjectBytes)
 		}
 	case TypeInvalid:
@@ -242,20 +244,25 @@ func (n *Node) ToInterface() (interface{}, bool) {
 	case TypeObject:
 		m := make(map[string]interface{}, n.Len())
 		ok := false
-		for n = n.value; n != nil; n = n.next {
-			if m[n.Unescaped()], ok = n.value.ToInterface(); !ok {
+		for _, k := range n.values {
+			if m[k.raw], ok = k.Value().ToInterface(); !ok {
 				return nil, false
 			}
 		}
 		return m, true
 	case TypeArray:
-		s := make([]interface{}, n.Len())
-		j := 0
-		ok := false
-		for n = n.value; n != nil && 0 <= j && j < len(s); n, j = n.next, j+1 {
-			if s[j], ok = n.ToInterface(); !ok {
-				return nil, false
+		s := make([]interface{}, len(n.values))
+		if len(n.values) == len(s) {
+			ok := false
+			// Avoid bounds check
+			s = s[:len(n.values)]
+			for i, n := range n.values {
+				if s[i], ok = n.ToInterface(); !ok {
+					return nil, false
+
+				}
 			}
+
 		}
 		return s, true
 	case TypeString, TypeKey:
