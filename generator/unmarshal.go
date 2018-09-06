@@ -17,7 +17,7 @@ func (g *Generator) Unmarshaler(typeName string) (code meta.Code) {
 	receiverName := strings.ToLower(typeName[:1])
 	return g.Code(`
 		func (%[1]s *%[2]s) %[3]s(node *njson.Node) error {
-			if !node.IsValue() {
+			if node == nil || !node.IsValue() {
 				return node.TypeError(njson.TypeAnyValue)
 			}
 			if node.IsNull() {
@@ -169,6 +169,7 @@ func (g *Generator) EnsurePath(path meta.FieldPath) (code meta.Code) {
 	return
 }
 
+// NodeJSONUnmarshaler generates code to wrap the UnmarshalNodeJSON method of a value.
 func (g *Generator) NodeJSONUnmarshaler(t types.Type) (code meta.Code) {
 	return g.Code(`
 	if err := v.%s(n); err != nil {
@@ -177,6 +178,7 @@ func (g *Generator) NodeJSONUnmarshaler(t types.Type) (code meta.Code) {
 	`, methodNodeUnmarshalJSON.Name())
 }
 
+// JSONUnmarshaler generates code to wrap the UnmarshalJSON method of a value.
 func (g *Generator) JSONUnmarshaler(t types.Type) (code meta.Code) {
 	return g.Code(`
 	if err := n.WrapUnmarshalJSON(r); err != nil {
@@ -185,6 +187,7 @@ func (g *Generator) JSONUnmarshaler(t types.Type) (code meta.Code) {
 	`)
 }
 
+// TextUnmarshaler generates code to wrap the UnmarshalText method of a value.
 func (g *Generator) TextUnmarshaler(t types.Type) (code meta.Code) {
 	return g.Code(`
 	if !n.IsString() {

@@ -402,18 +402,18 @@ func (n *Node) ToBool() (bool, bool) {
 }
 
 func (n *Node) IsNull() bool {
-	return n != nil && n.info == vNull
+	return n.info == vNull
 }
 func (n *Node) IsArray() bool {
-	return n != nil && n.info == vArray
+	return n.info == vArray
 }
 func (n *Node) IsValue() bool {
 	const vAnyValue = Info(TypeAnyValue)
-	return n != nil && n.info&vAnyValue != 0
+	return n.info&vAnyValue != 0
 }
 func (n *Node) IsString() bool {
-	return n != nil && n.info&vString == vString
+	return n.info&vString == vString
 }
 func (n *Node) IsObject() bool {
-	return n != nil && n.info == vObject
+	return n.info == vObject
 }
