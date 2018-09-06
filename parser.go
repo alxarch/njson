@@ -15,53 +15,21 @@ type Parser struct {
 
 // ParseUnsafe parses JSON from a slice of bytes without copying it to a string.
 // The contents of the slice should not be modified while using the result node.
-func (p *Parser) ParseUnsafe(data []byte) (n *Node, err error) {
+func (p *Parser) ParseUnsafe(data []byte) (*Node, error) {
 	p.reset(false)
 	s := b2s(data)
-	var (
-		c   byte
-		pos int
-	)
-	for ; 0 <= pos && pos < len(s); pos++ {
-		if c = s[pos]; bytemapIsSpace[c] == 0 {
-			break
-		}
-	}
-	n = p.node()
+	n := p.node()
 	n.next, n.value = nil, nil
-	if pos = p.parseValue(c, s, pos, n); p.err != nil {
-		return nil, p.err
-	}
-	for ; 0 <= pos && pos < len(s); pos++ {
-		if c = s[pos]; bytemapIsSpace[c] == 0 {
-			return nil, abort(pos, n.info.Type(), c, []rune{' ', '\t', '\n', '\r'})
-		}
-	}
-	return n, nil
+	pos := p.parseValue(' ', s, -1, n)
+	return p.skipSpaceTail(s, pos, n)
 }
 
-func (p *Parser) Parse(s string) (n *Node, err error) {
+func (p *Parser) Parse(s string) (*Node, error) {
 	p.reset(true)
-	var (
-		c   byte
-		pos int
-	)
-	for ; 0 <= pos && pos < len(s); pos++ {
-		if c = s[pos]; bytemapIsSpace[c] == 0 {
-			break
-		}
-	}
-	n = p.node()
+	n := p.node()
 	n.next, n.value = nil, nil
-	if pos = p.parseValue(c, s, pos, n); p.err != nil {
-		return nil, p.err
-	}
-	for ; 0 <= pos && pos < len(s); pos++ {
-		if c = s[pos]; bytemapIsSpace[c] == 0 {
-			return nil, abort(pos, n.info.Type(), c, []rune{' ', '\t', '\n', '\r'})
-		}
-	}
-	return n, nil
+	pos := p.parseValue(' ', s, -1, n)
+	return p.skipSpaceTail(s, pos, n)
 }
 
 const minNumNodes = 64
@@ -91,6 +59,15 @@ func (p *Parser) node() (n *Node) {
 }
 
 func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
+	// Skip space if needed
+	if bytemapIsSpace[c] == 1 {
+		for pos++; 0 <= pos && pos < len(s); pos++ {
+			c = s[pos]
+			if bytemapIsSpace[c] == 0 {
+				break
+			}
+		}
+	}
 	switch c {
 	case delimString:
 		n.info, n.value, n.next, n.safe = vString, nil, nil, p.safe
@@ -120,8 +97,7 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 				return pos + 1
 			}
 		}
-		p.err = abort(pos-1, TypeString, nil, delimString)
-		return -1
+		return p.abort(pos-1, TypeString, nil, delimString)
 	case delimBeginObject:
 		for pos++; 0 <= pos && pos < len(s); pos++ {
 			if bytemapIsSpace[s[pos]] == 0 {
@@ -138,8 +114,7 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 
 		for pos++; 0 <= pos && pos < len(s); pos++ {
 			if c != delimString {
-				p.err = abort(pos, TypeKey, c, delimString)
-				return pos
+				return p.abort(pos, TypeKey, c, delimString)
 			}
 			ss := s[pos:]
 		readkey:
@@ -159,8 +134,7 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 				}
 			}
 			if c != delimNameSeparator {
-				p.err = abort(pos, TypeKey, c, delimNameSeparator)
-				return pos
+				return p.abort(pos, TypeKey, c, delimNameSeparator)
 			}
 			n.info, n.safe = vKey, p.safe
 			for pos++; 0 <= pos && pos < len(s); pos++ {
@@ -190,12 +164,10 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 				n.next = nil
 				return pos + 1
 			default:
-				p.err = abort(pos, TypeObject, c, []rune{delimValueSeparator, delimEndObject})
-				return pos
+				return p.abort(pos, TypeObject, c, []rune{delimValueSeparator, delimEndObject})
 			}
 		}
-		p.err = eof(TypeObject)
-		return pos
+		return p.eof(TypeObject)
 	case delimBeginArray:
 		for pos++; 0 <= pos && pos < len(s); pos++ {
 			if bytemapIsSpace[s[pos]] == 0 {
@@ -227,8 +199,7 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 				n.next = nil
 				return pos + 1
 			default:
-				p.err = abort(pos, TypeArray, c, []rune{delimValueSeparator, delimEndArray})
-				return pos
+				return p.abort(pos, TypeArray, c, []rune{delimValueSeparator, delimEndArray})
 			}
 
 			for pos++; 0 <= pos && pos < len(s); pos++ {
@@ -244,8 +215,7 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 			n.info, n.raw, n.value, n.next = vNull, strNull, nil, nil
 			return pos + 4
 		default:
-			p.err = abort(pos, TypeNull, s, strNull)
-			return pos
+			return p.abort(pos, TypeNull, s, strNull)
 		}
 	case 'f':
 		switch s = sliceAtN(s, pos, 5); s {
@@ -253,8 +223,7 @@ func (p *Parser) parseValue(c byte, s string, pos int, n *Node) int {
 			n.info, n.raw, n.value, n.next = vFalse, strFalse, nil, nil
 			return pos + 5
 		default:
-			p.err = abort(pos, TypeBoolean, s, strFalse)
-			return pos
+			return p.abort(pos, TypeBoolean, s, strFalse)
 		}
 	case 't':
 		switch s = sliceAtN(s, pos, 4); s {
@@ -406,4 +375,29 @@ func (p *Parser) Close() error {
 		pool.Put(p)
 	}
 	return nil
+}
+
+func (p *Parser) skipSpaceTail(s string, i int, n *Node) (*Node, error) {
+	if p.err != nil {
+		return nil, p.err
+	}
+	if i < 0 {
+		p.err = eof(Type(n.info))
+		return nil, p.err
+	}
+	for ; 0 <= i && i < len(s); i++ {
+		if bytemapIsSpace[s[i]] == 0 {
+			p.err = abort(i, Type(n.info), s[i], []rune{' ', '\t', '\n', '\r'})
+			return nil, p.err
+		}
+	}
+	return n, p.err
+}
+func skipSpaceAt(s string, i int) (c byte, _ int) {
+	for ; 0 <= i && i < len(s); i++ {
+		if c = s[i]; bytemapIsSpace[c] == 0 {
+			return c, i
+		}
+	}
+	return 0, -1
 }
