@@ -6,6 +6,9 @@ import (
 	"testing"
 )
 
+func TestParseQuick(t *testing.T) {
+	testParse(t, "[1]", "[1]")
+}
 func TestParse(t *testing.T) {
 	for in, out := range map[string]string{
 		mediumJSONFormatted: mediumJSON,

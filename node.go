@@ -17,15 +17,24 @@ type Node struct {
 	raw       string
 	unescaped string
 	num       uint64
+	key       string
 	values    []*Node
 }
 
-func (n *Node) Value() *Node {
-	if len(n.values) > 0 {
-		return n.values[0]
+func (n *Node) append(v *Node, i int) {
+	if 0 <= i && i < len(n.values) {
+		n.values[i] = v
+		return
 	}
-	return nil
+	tmp := make([]*Node, 3*len(n.values)/2+1)
+	copy(tmp, n.values)
+	if 0 <= i && i < len(tmp) {
+		tmp[i] = v
+	}
+	n.values = tmp
+	return
 }
+
 func (n *Node) Raw() string {
 	// if n != nil && n.info.HasRaw() {
 	return n.raw
@@ -53,13 +62,9 @@ func (n *Node) AppendJSON(dst []byte) ([]byte, error) {
 				dst = append(dst, delimValueSeparator)
 			}
 			dst = append(dst, delimString)
-			dst = append(dst, n.raw...)
+			dst = append(dst, n.key...)
 			dst = append(dst, delimString, delimNameSeparator)
-			if len(n.values) > 0 {
-				dst, _ = n.values[0].AppendJSON(dst)
-			} else {
-				return dst, newTypeError(TypeInvalid, TypeAnyValue)
-			}
+			dst, _ = n.AppendJSON(dst)
 		}
 		dst = append(dst, delimEndObject)
 	case TypeArray:
@@ -245,7 +250,7 @@ func (n *Node) ToInterface() (interface{}, bool) {
 		m := make(map[string]interface{}, n.Len())
 		ok := false
 		for _, k := range n.values {
-			if m[k.raw], ok = k.Value().ToInterface(); !ok {
+			if m[k.key], ok = k.ToInterface(); !ok {
 				return nil, false
 			}
 		}
