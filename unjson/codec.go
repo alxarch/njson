@@ -276,20 +276,21 @@ func (d *mapCodec) unmarshal(v reflect.Value, n *njson.Node) (err error) {
 	case njson.TypeNull:
 		return
 	case njson.TypeObject:
-		key := reflect.New(d.typ.Key()).Elem()
+		// key := reflect.New(d.typ.Key()).Elem()
 		val := reflect.New(d.typ.Elem()).Elem()
-		for n = n.Value(); n != nil; n = n.Next() {
-			key.Set(d.keyZero)
-			err = d.keyDecoder.unmarshal(key, n)
-			if err != nil {
-				return
-			}
+		for _, n := range n.Values() {
+			// key.Set(d.keyZero)
+			// k := njson.Node{raw: n.key}
+			// err = d.keyDecoder.unmarshal(key, &k)
+			// if err != nil {
+			// 	return
+			// }
 			val.Set(d.valZero)
-			err = d.decoder.unmarshal(val, n.Value())
+			err = d.decoder.unmarshal(val, n)
 			if err != nil {
 				return
 			}
-			v.SetMapIndex(key, val)
+			v.SetMapIndex(reflect.ValueOf(n.Key()), val)
 		}
 		return
 	default:
@@ -403,8 +404,8 @@ func (d sliceCodec) unmarshal(v reflect.Value, n *njson.Node) (err error) {
 			v.SetLen(size)
 		}
 
-		for i, next := 0, n.Value(); next != nil && i < size; i, next = i+1, next.Next() {
-			err = d.decoder.unmarshal(v.Index(i), next)
+		for i, n := range n.Values() {
+			err = d.decoder.unmarshal(v.Index(i), n)
 			if err != nil {
 				v.SetLen(i)
 				break

@@ -165,8 +165,8 @@ func (d *structCodec) unmarshal(v reflect.Value, n *njson.Node) (err error) {
 			fc    fieldCodec
 			i, j  int
 		)
-		for n = n.Value(); n != nil; n = n.Next() {
-			switch fc = d.fields[n.Raw()]; len(fc.index) {
+		for _, n := range n.Values() {
+			switch fc = d.fields[n.Key()]; len(fc.index) {
 			case 0:
 				continue
 			case 1:
@@ -185,7 +185,7 @@ func (d *structCodec) unmarshal(v reflect.Value, n *njson.Node) (err error) {
 					}
 				}
 			}
-			if err = fc.unmarshal(field, n.Value()); err != nil {
+			if err = fc.unmarshal(field, n); err != nil {
 				return
 			}
 		}

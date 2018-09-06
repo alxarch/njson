@@ -21,6 +21,18 @@ type Node struct {
 	values    []*Node
 }
 
+func (n *Node) Key() string {
+	return n.key
+}
+
+func (n *Node) Values() []*Node {
+	if n == nil || n.info&(vObject|vArray) == 0 {
+		return nil
+	}
+	return n.values
+
+}
+
 func (n *Node) append(v *Node, i int) {
 	if 0 <= i && i < len(n.values) {
 		n.values[i] = v
