@@ -15,7 +15,6 @@ func TestType_String(t *testing.T) {
 		"Object":        njson.TypeObject,
 		"Null":          njson.TypeNull,
 		"String":        njson.TypeString,
-		"Key":           njson.TypeKey,
 		"AnyValue":      njson.TypeAnyValue,
 		"[Number Null]": njson.TypeNumber | njson.TypeNull,
 	} {

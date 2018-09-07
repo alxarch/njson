@@ -7,7 +7,8 @@ import (
 )
 
 func TestParseQuick(t *testing.T) {
-	testParse(t, "[1]", "[1]")
+	s := `{"answer":42}`
+	testParse(t, s, s)
 }
 func TestParse(t *testing.T) {
 	for in, out := range map[string]string{
@@ -19,6 +20,7 @@ func TestParse(t *testing.T) {
 		`{"results":[]}`,
 		`{"answer":42}`,
 		`{"foo":"bar"}`,
+		`{"empty":""}`,
 		`{"foo":1,"bar":2,"baz":3}`,
 		`[]`,
 		`["foo","bar"]`,

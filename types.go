@@ -16,7 +16,6 @@ const (
 	TypeNumber
 	TypeBoolean
 	TypeNull
-	TypeKey      // = TypeString | TypeObject
 	TypeAnyValue = TypeString | TypeNumber | TypeBoolean | TypeObject | TypeArray | TypeNull
 )
 
@@ -49,8 +48,6 @@ func (t Type) String() string {
 	switch t {
 	case TypeInvalid:
 		return "InvalidToken"
-	case TypeKey:
-		return "Key"
 	case TypeString:
 		return "String"
 	case TypeArray:
@@ -82,7 +79,6 @@ const (
 	vBoolean    = Info(TypeBoolean)
 	vArray      = Info(TypeArray)
 	vObject     = Info(TypeObject)
-	vKey        = Info(TypeKey)
 	vFalse      = vBoolean
 	vTrue       = vBoolean | IsTrue
 	vNumberUint = vNumber | NumberZeroDecimal | NumberParsed
@@ -92,29 +88,18 @@ const (
 	NumberSigned Info = 1 << (iota + 8)
 	NumberZeroDecimal
 	NumberParsed
-)
-const (
-	HasError  Info = 1 << 15
-	Unescaped Info = 1 << (iota + 8)
-)
-const (
-	IsTrue Info = 1 << (iota + 8)
+	Unescaped
+	IsTrue
+	HasError Info = 1 << 15
 )
 
 func (i Info) Unescaped() bool {
-	const unescaped = Unescaped | vQuoted
-	return i&unescaped > Unescaped
+	return i == Unescaped|vString
 }
 
 func (i Info) NumberParsed() bool {
 	const parsed = NumberParsed | vNumber
 	return i&parsed > NumberParsed
-}
-
-const vQuoted = vString | vKey
-
-func (i Info) Quoted() bool {
-	return i&vQuoted != 0
 }
 
 func (i Info) Type() Type {

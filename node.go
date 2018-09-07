@@ -12,13 +12,13 @@ import (
 )
 
 type Node struct {
-	info      Info
-	safe      bool
-	raw       string
-	unescaped string
-	num       float64
-	key       string
-	values    []*Node
+	info   Info
+	safe   bool
+	raw    string // json string
+	str    string // unescaped string
+	num    float64
+	key    string
+	values []*Node
 }
 
 func (n *Node) Key() string {
@@ -33,14 +33,19 @@ func (n *Node) Values() []*Node {
 
 }
 
+const minNumValues = 8
+
 func (n *Node) append(v *Node, i int) {
 	if 0 <= i && i < len(n.values) {
 		n.values[i] = v
 		return
 	}
-	tmp := make([]*Node, 2*len(n.values)+1)
-	copy(tmp, n.values)
-	if 0 <= i && i < len(tmp) {
+	// if cap(n.values) == 0 {
+	// 	n.values = []*Node{v, nil, nil, nil, nil, nil, nil, nil}
+	// 	return
+	// }
+	tmp := make([]*Node, 2*len(n.values)+minNumValues)
+	if i = copy(tmp, n.values); 0 <= i && i < len(tmp) {
 		tmp[i] = v
 	}
 	n.values = tmp
@@ -114,26 +119,26 @@ func (n *Node) Unescaped() string {
 		return ""
 	}
 	if n.info.Unescaped() {
-		return n.unescaped
+		return n.str
 	}
-	if n.info.Quoted() {
+	if n.info == vString {
 		if strings.IndexByte(n.raw, delimEscape) == -1 {
 			if n.safe {
-				n.unescaped = n.raw
+				n.str = n.raw
 			} else {
 				// When input is unsafe we need to copy the string so
 				// any calls to Unescaped() return a safe string to use.
-				n.unescaped = scopy(n.raw)
+				n.str = scopy(n.raw)
 			}
-			return n.unescaped
+			return n.str
 		}
 		b := blankBuffer(strjson.MaxUnescapedLen(n.raw))
 		b = strjson.Unescape(b[:0], n.raw)
-		n.unescaped = string(b)
+		n.str = string(b)
 		putBuffer(b)
 		n.info |= Unescaped
 
-		return n.unescaped
+		return n.str
 	}
 	return ""
 }
@@ -282,7 +287,7 @@ func (n *Node) ToInterface() (interface{}, bool) {
 
 		}
 		return s, true
-	case TypeString, TypeKey:
+	case TypeString:
 		return n.Unescaped(), true
 	case TypeBoolean:
 		switch n.info {
@@ -359,7 +364,7 @@ func (n *Node) ToInt() (int64, bool) {
 }
 
 func (n *Node) ToString() (string, bool) {
-	return n.Unescaped(), n.info.Quoted()
+	return n.Unescaped(), n.info.Unescaped()
 }
 
 func (n *Node) ToBool() (bool, bool) {
