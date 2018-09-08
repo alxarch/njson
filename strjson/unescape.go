@@ -1,7 +1,6 @@
 package strjson
 
 import (
-	"strings"
 	"unicode/utf16"
 	"unicode/utf8"
 )
@@ -19,8 +18,8 @@ import (
 // }
 
 // func readHex(s string, b []byte) byte {
-// 	b[2] = fromHex(s[1])
-// 	b[1] = fromHex(s[0])
+// 	b[2] = FromHex(s[1])
+// 	b[1] = FromHex(s[0])
 // 	b[0] = b[1]<<4 | b[2]
 // 	return b[2] & b[1]
 // }
@@ -33,7 +32,7 @@ import (
 // Quoted appends JSON quoted value of s.
 func Quoted(b []byte, s string) []byte {
 	b = append(b, delimString)
-	b = Escape(b, s)
+	b = Escape(b, s, false)
 	b = append(b, delimString)
 	return b
 }
@@ -54,43 +53,107 @@ func MaxUnescapedLen(s string) int {
 	return 3 * len(s) / 2
 }
 
+func writeStringAt(buf []byte, s string, i int) int {
+	if len(s) > 0 {
+		if 0 <= i && i < len(buf) {
+			if buf = buf[i:]; len(buf) >= len(s) {
+				buf = buf[:len(s)]
+				return copy(buf, s)
+			}
+		}
+	}
+	return 0
+}
+
+func sliceAt(s string, i int) string {
+	if 0 <= i && i <= len(s) {
+		return s[i:]
+	}
+	return ""
+}
+func writeByteAt(buf []byte, c byte, i int) {
+	if 0 <= i && i < len(buf) {
+		buf[i] = c
+	}
+}
+func writeAt(w, p []byte, i int) int {
+	if 0 <= i && i < len(w) {
+		if w = w[i:]; len(w) >= len(p) {
+			w = w[:len(p)]
+			return copy(w, p)
+		}
+	}
+	return 0
+}
+
+func UnescapeRune(dst []byte, s string, i int) ([]byte, int) {
+	buf := [utf8.UTFMax]byte{}
+	r1 := utf8.RuneError
+	r2 := utf8.RuneError
+	if len(s) > 5 {
+		r1 = rune(bytemapFromHex[s[2]]) << 12
+		r1 |= rune(bytemapFromHex[s[3]]) << 8
+		if r1 == 0 {
+			return append(dst, bytemapFromHex[s[4]]<<4|bytemapFromHex[s[5]]), i + 6
+		}
+		r1 |= rune(bytemapFromHex[s[4]]) << 4
+		r1 |= rune(bytemapFromHex[s[5]])
+		i += 6
+		if utf16.IsSurrogate(r1) {
+			if len(s) > 11 && s[6] == delimEscape && s[7] == 'u' {
+				r2 = rune(bytemapFromHex[s[8]]) << 12
+				r2 |= rune(bytemapFromHex[s[9]]) << 8
+				r2 |= rune(bytemapFromHex[s[10]]) << 4
+				r2 |= rune(bytemapFromHex[s[11]])
+				i += 6
+			}
+			r1 = utf16.DecodeRune(r1, r2)
+		}
+	}
+
+	switch utf8.EncodeRune(buf[:], r1) {
+	case 1:
+		dst = append(dst, buf[0])
+	case 2:
+		dst = append(dst, buf[0], buf[1])
+	default:
+		dst = escapeError(dst)
+	case 3:
+		dst = append(dst, buf[0], buf[1], buf[2])
+	case 4:
+		dst = append(dst, buf[0], buf[1], buf[2], buf[3])
+	}
+	return dst, i
+}
+
 // Unescape appends the unescaped form of a string to a buffer.
 func Unescape(dst []byte, s string) []byte {
-	var (
-		c      byte
-		r1, r2 rune
-		buf    = [utf8.UTFMax]byte{}
-		i      = strings.IndexByte(s, '\\')
-		ss     string
-	)
-	if 0 <= i && i < len(s) {
-		if cap(dst)-len(dst) < len(s) {
-			// Buffer probably doesn't have enough capacity to store the string
-			tmp := make([]byte, len(dst)+i, len(dst)+MaxUnescapedLen(s))
-			copy(tmp, dst)
-			copy(tmp, s[:i])
-			dst = tmp
-		} else {
-			dst = append(dst, s[:i]...)
-		}
-	} else {
-		dst = append(dst, s...)
+	if len(s) == 0 {
 		return dst
 	}
-	for ; 0 <= i && i < len(s); i++ {
+	var (
+		c    byte
+		i, j int
+		ss   string
+	)
+	if j = len(dst) + len(s); cap(dst) < j {
+		buf := make([]byte, len(dst), j)
+		copy(buf, dst)
+	}
+unescape:
+	for j = i; 0 <= i && i < len(s); i++ {
 		if c = s[i]; c != '\\' {
-			dst = append(dst, c)
 			continue
 		}
-		// dst = append(dst, s[:i]...)
-		ss = s[i:]
-		i++
-		// i = -1
-		if len(ss) > 1 {
-			c = ss[1]
-			// s = s[2:]
+		if 0 <= j && j < i {
+			dst = append(dst, s[j:i]...)
+		}
+
+		if j = i + 1; 0 <= j && j < len(s) {
+			c = s[j]
 		} else {
-			c = '?'
+			// There's an escape slash at the end of the string.
+			return append(dst, c)
 		}
 		switch c {
 		case '"', '/', '\\':
@@ -106,64 +169,64 @@ func Unescape(dst []byte, s string) []byte {
 		case 'f':
 			c = '\f'
 		case 'u':
-			r1 = utf8.RuneError
-			if len(ss) > 5 {
-				buf[0] = fromHex(ss[2])
-				buf[1] = fromHex(ss[3])
-				buf[2] = fromHex(ss[4])
-				buf[3] = fromHex(ss[5])
-				if buf[0]&buf[1]&buf[2]&buf[3] != 0xff {
-					r1 = rune(uint16(buf[0])<<12 | uint16(buf[1])<<8 | uint16(buf[2])<<4 | uint16(buf[3]))
-					i += 4
-					// s = s[4:]
-				}
-			}
-			switch {
-			case r1 < utf8.RuneSelf:
-				dst = append(dst, byte(r1))
-				continue
-			case utf16.IsSurrogate(r1):
-				r2 = utf8.RuneError
-				if len(ss) > 11 && ss[6] == delimEscape && ss[7] == 'u' {
-					i += 2
-					buf[0] = fromHex(ss[8])
-					buf[1] = fromHex(ss[9])
-					buf[2] = fromHex(ss[10])
-					buf[3] = fromHex(ss[11])
-					if buf[0]&buf[1]&buf[2]&buf[3] != 0xff {
-						r2 = rune(uint16(buf[0])<<12 | uint16(buf[1])<<8 | uint16(buf[2])<<4 | uint16(buf[3]))
-						i += 4
-						// s = s[6:]
-					}
-				}
-				r1 = utf16.DecodeRune(r1, r2)
-			}
-			switch utf8.EncodeRune(buf[:], r1) {
-			case 1:
-				dst = append(dst, buf[0])
-			case 2:
-				dst = append(dst, buf[0], buf[1])
-			default:
-				fallthrough
-			case 3:
-				dst = append(dst, buf[0], buf[1], buf[2])
-			case 4:
-				dst = append(dst, buf[0], buf[1], buf[2], buf[3])
-			}
-			continue
+			ss = s[i:]
+			goto unescapeRune
 		default:
-			// append rune error
-			dst = append(dst, 0xef, 0xbf, 0xbc)
-			continue
+			// Invalid escape, append as is
+			dst = append(dst, '\\', c)
+			i += 2
+			goto unescape
 		}
-		// append escaped byte
 		dst = append(dst, c)
-
+		i += 2
+		goto unescape
 	}
 	// if len(s) > 0 {
 	// 	dst = append(dst, s...)
 	// }
+	if 0 <= j && j < len(s) {
+		dst = append(dst, s[j:]...)
+	}
 	return dst
+unescapeRune:
+	buf := [utf8.UTFMax]byte{}
+	r1 := utf8.RuneError
+	r2 := utf8.RuneError
+	if len(ss) > 5 {
+		i += 6
+		r1 = rune(bytemapFromHex[ss[2]]) << 12
+		r1 |= rune(bytemapFromHex[ss[3]]) << 8
+		if r1 == 0 {
+			dst = append(dst, bytemapFromHex[ss[4]]<<4|bytemapFromHex[ss[5]])
+			goto unescape
+		}
+		r1 |= rune(bytemapFromHex[ss[4]]) << 4
+		r1 |= rune(bytemapFromHex[ss[5]])
+		if utf16.IsSurrogate(r1) {
+			if len(ss) > 11 && ss[6] == delimEscape && ss[7] == 'u' {
+				i += 6
+				r2 = rune(bytemapFromHex[ss[8]]) << 12
+				r2 |= rune(bytemapFromHex[ss[9]]) << 8
+				r2 |= rune(bytemapFromHex[ss[10]]) << 4
+				r2 |= rune(bytemapFromHex[ss[11]])
+			}
+			r1 = utf16.DecodeRune(r1, r2)
+		}
+	}
+
+	switch utf8.EncodeRune(buf[:], r1) {
+	case 1:
+		dst = append(dst, buf[0])
+	case 2:
+		dst = append(dst, buf[0], buf[1])
+	default:
+		dst = escapeError(dst)
+	case 3:
+		dst = append(dst, buf[0], buf[1], buf[2])
+	case 4:
+		dst = append(dst, buf[0], buf[1], buf[2], buf[3])
+	}
+	goto unescape
 }
 
 // // UnescapeTo unescapes a string inside dst buffer which must have sufficient size (ie 3*len(s)/2).
