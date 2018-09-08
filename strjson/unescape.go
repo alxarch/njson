@@ -91,20 +91,20 @@ func UnescapeRune(dst []byte, s string, i int) ([]byte, int) {
 	r1 := utf8.RuneError
 	r2 := utf8.RuneError
 	if len(s) > 5 {
-		r1 = rune(bytemapFromHex[s[2]]) << 12
-		r1 |= rune(bytemapFromHex[s[3]]) << 8
+		r1 = rune(FromHex(s[2])) << 12
+		r1 |= rune(FromHex(s[3])) << 8
 		if r1 == 0 {
-			return append(dst, bytemapFromHex[s[4]]<<4|bytemapFromHex[s[5]]), i + 6
+			return append(dst, FromHex(s[4])<<4|FromHex(s[5])), i + 6
 		}
-		r1 |= rune(bytemapFromHex[s[4]]) << 4
-		r1 |= rune(bytemapFromHex[s[5]])
+		r1 |= rune(FromHex(s[4])) << 4
+		r1 |= rune(FromHex(s[5]))
 		i += 6
 		if utf16.IsSurrogate(r1) {
 			if len(s) > 11 && s[6] == delimEscape && s[7] == 'u' {
-				r2 = rune(bytemapFromHex[s[8]]) << 12
-				r2 |= rune(bytemapFromHex[s[9]]) << 8
-				r2 |= rune(bytemapFromHex[s[10]]) << 4
-				r2 |= rune(bytemapFromHex[s[11]])
+				r2 = rune(FromHex(s[8])) << 12
+				r2 |= rune(FromHex(s[9])) << 8
+				r2 |= rune(FromHex(s[10])) << 4
+				r2 |= rune(FromHex(s[11]))
 				i += 6
 			}
 			r1 = utf16.DecodeRune(r1, r2)
@@ -194,21 +194,21 @@ unescapeRune:
 	r2 := utf8.RuneError
 	if len(ss) > 5 {
 		i += 6
-		r1 = rune(bytemapFromHex[ss[2]]) << 12
-		r1 |= rune(bytemapFromHex[ss[3]]) << 8
+		r1 = rune(FromHex(ss[2])) << 12
+		r1 |= rune(FromHex(ss[3])) << 8
 		if r1 == 0 {
-			dst = append(dst, bytemapFromHex[ss[4]]<<4|bytemapFromHex[ss[5]])
+			dst = append(dst, FromHex(ss[4])<<4|FromHex(ss[5]))
 			goto unescape
 		}
-		r1 |= rune(bytemapFromHex[ss[4]]) << 4
-		r1 |= rune(bytemapFromHex[ss[5]])
+		r1 |= rune(FromHex(ss[4])) << 4
+		r1 |= rune(FromHex(ss[5]))
 		if utf16.IsSurrogate(r1) {
 			if len(ss) > 11 && ss[6] == delimEscape && ss[7] == 'u' {
 				i += 6
-				r2 = rune(bytemapFromHex[ss[8]]) << 12
-				r2 |= rune(bytemapFromHex[ss[9]]) << 8
-				r2 |= rune(bytemapFromHex[ss[10]]) << 4
-				r2 |= rune(bytemapFromHex[ss[11]])
+				r2 = rune(FromHex(ss[8])) << 12
+				r2 |= rune(FromHex(ss[9])) << 8
+				r2 |= rune(FromHex(ss[10])) << 4
+				r2 |= rune(FromHex(ss[11]))
 			}
 			r1 = utf16.DecodeRune(r1, r2)
 		}

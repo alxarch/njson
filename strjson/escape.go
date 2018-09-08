@@ -23,10 +23,10 @@ import (
 // retry:
 // 	if 0 <= i && i < len(dst) {
 // 		if buf := dst[i:]; len(buf) > 3 {
-// 			buf[0] = bytemapToHex[byte(r>>12)]
-// 			buf[1] = bytemapToHex[byte(r>>8)&0xF]
-// 			buf[2] = bytemapToHex[byte(r)>>4]
-// 			buf[3] = bytemapToHex[byte(r)&0xF]
+// 			buf[0] = ToHex(byte(r>>12)]
+// 			buf[1] = ToHex(byte(r>>8)&0xF]
+// 			buf[2] = ToHex(byte(r)>>4]
+// 			buf[3] = ToHex(byte(r)&0xF]
 // 			return dst
 // 		}
 // 	}
@@ -88,10 +88,10 @@ import (
 // }
 // func hexRune(buf []byte, r rune) []byte {
 // 	if len(buf) > 5 {
-// 		buf[2] = bytemapToHex[byte(r>>12)]
-// 		buf[3] = bytemapToHex[byte(r>>8)&0xF]
-// 		buf[4] = bytemapToHex[byte(r)>>4]
-// 		buf[5] = bytemapToHex[byte(r)&0xF]
+// 		buf[2] = ToHex(byte(r>>12)]
+// 		buf[3] = ToHex(byte(r>>8)&0xF]
+// 		buf[4] = ToHex(byte(r)>>4]
+// 		buf[5] = ToHex(byte(r)&0xF]
 // 	}
 // 	return buf
 // }
@@ -119,8 +119,8 @@ import (
 // 					dst = append(dst, byte(r))
 // 				} else {
 // 					dst = append(dst, '\\', 'u', '0', '0',
-// 						bytemapToHex[byte(r)>>4],
-// 						bytemapToHex[byte(r)],
+// 						ToHex(byte(r)>>4],
+// 						ToHex(byte(r)],
 // 					)
 // 				}
 // 			}
@@ -140,10 +140,10 @@ import (
 // 			}
 // 		case r < 0x10000:
 // 			return append(dst, '\\', 'u',
-// 				bytemapToHex[byte(r>>12)],
-// 				bytemapToHex[byte(r>>8)&0xF],
-// 				bytemapToHex[byte(r)>>4],
-// 				bytemapToHex[byte(r)&0xF],
+// 				ToHex(byte(r>>12)],
+// 				ToHex(byte(r>>8)&0xF],
+// 				ToHex(byte(r)>>4],
+// 				ToHex(byte(r)&0xF],
 // 			)
 // 		case utf16.IsSurrogate(r):
 // 			dst = escapeUTF16(dst, r)
@@ -193,18 +193,15 @@ import (
 // }
 
 func escapeByte(dst []byte, c byte) []byte {
-	return append(dst, '\\', 'u', '0', '0',
-		bytemapToHex[c>>4],
-		bytemapToHex[c],
-	)
+	return append(dst, '\\', 'u', '0', '0', ToHex(c>>4), ToHex(c))
 }
 
 func escapeUTF8(dst []byte, r rune) []byte {
 	return append(dst, '\\', 'u',
-		bytemapToHex[byte(r>>12)],
-		bytemapToHex[byte(r>>8)&0xF],
-		bytemapToHex[byte(r)>>4],
-		bytemapToHex[byte(r)&0xF],
+		ToHex(byte(r>>12)),
+		ToHex(byte(r>>8)&0xF),
+		ToHex(byte(r)>>4),
+		ToHex(byte(r)&0xF),
 	)
 }
 func escapeError(dst []byte) []byte {
@@ -231,39 +228,18 @@ func Escape(dst []byte, s string, HTML bool) []byte {
 		i     int
 	)
 	if size = len(dst) + len(s); cap(dst) < size {
-		if size < 64 {
-			size = 64
-		}
-		buf := make([]byte, size)
-		if len(buf) >= len(dst) {
-			buf = buf[:len(dst)]
-			copy(buf, dst)
-			dst = buf
-		}
+		buf := make([]byte, len(dst), size)
+		copy(buf, dst)
+		dst = buf
 	}
-	for ; 0 <= i && i < len(s); i++ {
+escape:
+	for start = i; 0 <= i && i < len(s); i++ {
 		c = s[i]
-		switch e = bytemapToJSON[c]; e {
-		case utf8.RuneSelf:
+		e = ToJSON(c)
+		if e == utf8.RuneSelf {
 			continue
-		case '\\':
-			if 0 <= start && start < i {
-				dst = append(dst, s[start:i]...)
-			}
-			start = i + 1
-			dst = append(dst, '\\', c)
-		case '<', '>', '&':
-			if !HTML {
-				continue
-			}
-			fallthrough
-		case 0:
-			if 0 <= start && start < i {
-				dst = append(dst, s[start:i]...)
-			}
-			start = i + 1
-			dst = escapeByte(dst, c)
-		case 0xff:
+		}
+		if e == 0xff {
 			r, size = utf8.DecodeRuneInString(s[i:])
 			switch r {
 			case utf8.RuneError:
@@ -271,23 +247,37 @@ func Escape(dst []byte, s string, HTML bool) []byte {
 					i += size - 1
 					continue
 				}
+				if size == 0 {
+					continue
+				}
 				fallthrough
 			case unicodeLineSeparator, unicodeParagraphSeparator:
 				if 0 <= start && start < i {
 					dst = append(dst, s[start:i]...)
 				}
-				start = i + 1
 				dst = escapeUTF8(dst, r)
-			default:
-				i += size - 1
+				i += size
+				goto escape
 			}
+			i += size - 1
+			continue
+		}
+		if e == 1 && !HTML {
+			continue
+		}
+		if 0 <= start && start < i {
+			dst = append(dst, s[start:i]...)
+		}
+		switch e {
+		case '\\':
+			dst = append(dst, '\\', c)
+		case 0, 1:
+			dst = escapeByte(dst, c)
 		default:
-			if 0 <= start && start < i {
-				dst = append(dst, s[start:i]...)
-			}
-			start = i + 1
 			dst = append(dst, '\\', e)
 		}
+		i++
+		goto escape
 	}
 	if 0 <= start && start < len(s) {
 		dst = append(dst, s[start:]...)

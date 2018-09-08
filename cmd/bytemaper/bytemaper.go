@@ -47,7 +47,7 @@ func toJSON(c byte) byte {
 	if c < utf8.RuneSelf {
 		switch c {
 		case '<', '>', '&':
-			return c
+			return 1 // HTML Unsafe
 		case '\\', '/', '"':
 			return '\\'
 		case '\r':
@@ -62,7 +62,7 @@ func toJSON(c byte) byte {
 			return 'b'
 		}
 		if unicode.IsControl(rune(c)) {
-			return 0
+			return 0 // Control character
 		}
 		return utf8.RuneSelf
 	}
