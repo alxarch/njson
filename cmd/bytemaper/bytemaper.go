@@ -43,6 +43,31 @@ func nameOrDefault(name, defaultName string) string {
 	return name
 }
 
+func toJSON(c byte) byte {
+	if c < utf8.RuneSelf {
+		switch c {
+		case '<', '>', '&':
+			return c
+		case '\\', '/', '"':
+			return '\\'
+		case '\r':
+			return 'r'
+		case '\n':
+			return 'n'
+		case '\t':
+			return 't'
+		case '\f':
+			return 'f'
+		case '\b':
+			return 'b'
+		}
+		if unicode.IsControl(rune(c)) {
+			return 0
+		}
+		return utf8.RuneSelf
+	}
+	return 0xff
+}
 func toHex(c byte) byte {
 	switch {
 	case 0 <= c && c <= 9:
@@ -90,6 +115,9 @@ func main() {
 			arg = ""
 		}
 		switch name {
+		case "ToJSON":
+			tr = toJSON
+			name = nameOrDefault(arg, name)
 		case "ToHex":
 			tr = toHex
 			name = nameOrDefault(arg, name)
