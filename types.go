@@ -5,6 +5,7 @@ import (
 	"math/bits"
 )
 
+// Type is the type of a node.
 type Type uint8
 
 // Token types and type masks
@@ -70,6 +71,7 @@ func (t Type) String() string {
 	}
 }
 
+// Info is a bitmask with type info for a node.
 type Info uint16
 
 const (
@@ -89,12 +91,17 @@ const (
 	NumberZeroDecimal
 	NumberParsed
 	Unescaped
+	Unsafe
 	IsTrue
 	HasError Info = 1 << 15
 )
 
 func (i Info) Unescaped() bool {
-	return i == Unescaped|vString
+	return i&Unescaped == Unescaped
+}
+
+func (i Info) Safe() bool {
+	return i&Unsafe == 0
 }
 
 func (i Info) NumberParsed() bool {
@@ -111,4 +118,38 @@ func (i Info) HasLen() bool {
 }
 func (i Info) HasRaw() bool {
 	return i&(vObject|vArray) == 0
+}
+
+func (i Info) IsNull() bool {
+	return i == vNull
+}
+func (i Info) IsArray() bool {
+	return i == vArray
+}
+func (i Info) IsValue() bool {
+	const vAnyValue = Info(TypeAnyValue)
+	return i&vAnyValue != 0
+}
+func (i Info) IsString() bool {
+	return i&vString == vString
+}
+func (i Info) IsTrue() bool {
+	return i == vTrue
+}
+func (i Info) IsFalse() bool {
+	return i == vFalse
+}
+
+func (i Info) ToUint() bool {
+	return i&vNumberInt == vNumberUint
+}
+
+func (i Info) ToInt() bool {
+	return i&vNumberUint == vNumberUint
+}
+func (i Info) IsNumber() bool {
+	return i&vNumber == vNumber
+}
+func (i Info) IsObject() bool {
+	return i == vObject
 }

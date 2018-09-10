@@ -13,7 +13,7 @@ import (
 
 type Node struct {
 	info   Info
-	safe   bool
+	unsafe bool
 	raw    string // json string
 	str    string // unescaped string
 	num    float64
@@ -40,26 +40,23 @@ func (n *Node) append(v *Node, i int) {
 		n.values[i] = v
 		return
 	}
-	// if cap(n.values) == 0 {
-	// 	n.values = []*Node{v, nil, nil, nil, nil, nil, nil, nil}
-	// 	return
-	// }
-	tmp := make([]*Node, 2*len(n.values)+minNumValues)
-	if i = copy(tmp, n.values); 0 <= i && i < len(tmp) {
-		tmp[i] = v
+	if tmp := make([]*Node, 2*len(n.values)+minNumValues); len(tmp) >= len(n.values) {
+		if i = copy(tmp[:len(n.values)], n.values); 0 <= i && i < len(tmp) {
+			tmp[i] = v
+		}
+		n.values = tmp
 	}
-	n.values = tmp
 	return
 }
 
 func (n *Node) Raw() string {
-	// if n != nil && n.info.HasRaw() {
 	return n.raw
-	// }
-	// return ""
 }
 func (n *Node) Bytes() []byte {
 	return s2b(n.raw)
+}
+func (n *Node) Info() Info {
+	return n.info
 }
 
 // Appender is a Marshaler interface for buffer append workflows.
@@ -68,9 +65,6 @@ type Appender interface {
 }
 
 func (n *Node) AppendJSON(dst []byte) ([]byte, error) {
-	if n == nil {
-		return dst, nil
-	}
 	switch Type(n.info) {
 	case TypeObject:
 		dst = append(dst, delimBeginObject)
@@ -97,8 +91,17 @@ func (n *Node) AppendJSON(dst []byte) ([]byte, error) {
 		dst = append(dst, delimString)
 		dst = append(dst, n.raw...)
 		dst = append(dst, delimString)
-	default:
+	case TypeNumber:
 		dst = append(dst, n.raw...)
+	case TypeNull:
+		dst = append(dst, strNull...)
+	case TypeBoolean:
+		if n.info.IsTrue() {
+			dst = append(dst, strTrue...)
+		} else {
+			dst = append(dst, strFalse...)
+		}
+		// default:
 	}
 	return dst, nil
 
@@ -112,35 +115,46 @@ func (n *Node) Len() (i int) {
 	return
 }
 
-// Unescaped returns the unescaped string form of the Node
-// The returned string is safe to use as a value even if ParseUnsafe was used
-func (n *Node) Unescaped() string {
+// String returns the unescaped string form of the Node.
+// The returned string is safe to use even if ParseUnsafe was used.
+func (n *Node) String() string {
 	if n == nil {
 		return ""
 	}
 	if n.info.Unescaped() {
 		return n.str
 	}
-	if n.info == vString {
-		if strings.IndexByte(n.raw, delimEscape) == -1 {
-			if n.safe {
-				n.str = n.raw
-			} else {
-				// When input is unsafe we need to copy the string so
-				// any calls to Unescaped() return a safe string to use.
-				n.str = scopy(n.raw)
-			}
-			return n.str
+	if n.info.IsString() {
+		n.str = strjson.Unescaped(n.raw)
+		if n.str == n.raw && !n.info.Safe() {
+			// When input is unsafe we need to copy the string so
+			// any calls to Unescaped() return a safe string to use.
+			b := strings.Builder{}
+			b.WriteString(n.str)
+			n.str = n.String()
 		}
-		b := blankBuffer(strjson.MaxUnescapedLen(n.raw))
-		b = strjson.Unescape(b[:0], n.raw)
-		n.str = string(b)
-		putBuffer(b)
 		n.info |= Unescaped
-
 		return n.str
 	}
-	return ""
+	if n.info.IsNumber() {
+		if n.info.Safe() {
+			n.str = n.raw
+		} else {
+			n.str = scopy(n.raw)
+		}
+		n.info |= Unescaped
+		return n.str
+	}
+	switch n.info {
+	case vNull:
+		return strNull
+	case vTrue:
+		return strTrue
+	case vFalse:
+		return strFalse
+	default:
+		return ""
+	}
 }
 
 // func (n *Node) unescape() {
@@ -288,7 +302,7 @@ func (n *Node) ToInterface() (interface{}, bool) {
 		}
 		return s, true
 	case TypeString:
-		return n.Unescaped(), true
+		return n.String(), true
 	case TypeBoolean:
 		switch n.info {
 		case vTrue:
@@ -313,10 +327,6 @@ func (n *Node) TypeError(want Type) error {
 	return newTypeError(n.Type(), want)
 }
 
-const (
-	vNumberParsed = vNumber | NumberParsed
-)
-
 func (n *Node) parseFloat() (f float64, ok bool) {
 	f, err := strconv.ParseFloat(n.raw, 10)
 	if ok = err == nil; ok {
@@ -333,38 +343,35 @@ func (n *Node) parseFloat() (f float64, ok bool) {
 
 }
 func (n *Node) ToUint() (uint64, bool) {
-	switch n.info {
-	case vNumberUint:
+	if n.info.ToUint() {
 		return uint64(n.num), true
-	case vNumber:
+	}
+	if n.info.IsNumber() {
 		n.parseFloat()
-		return uint64(n.num), n.info == vNumberUint
+		return uint64(n.num), n.info&vNumberInt == vNumberUint
 	}
 	return 0, false
 }
 func (n *Node) ToFloat() (float64, bool) {
-	if n.info&vNumberParsed == vNumberParsed {
+	if n.info.NumberParsed() {
 		return n.num, true
 	}
-	if n.info&vNumber == vNumber {
+	if n.info.IsNumber() {
 		return n.parseFloat()
 	}
 	return 0, false
 }
 
 func (n *Node) ToInt() (int64, bool) {
-	if n.info&vNumberUint == vNumberUint {
+	// vNumberInt is a superset of vNumberUint
+	if n.info.ToInt() {
 		return int64(n.num), true
 	}
-	if Type(n.info) == TypeNumber {
+	if n.info.IsNumber() {
 		n.parseFloat()
 		return int64(n.num), n.info&vNumberUint == vNumberUint
 	}
 	return 0, false
-}
-
-func (n *Node) ToString() (string, bool) {
-	return n.Unescaped(), n.info.Unescaped()
 }
 
 func (n *Node) ToBool() (bool, bool) {
@@ -379,19 +386,14 @@ func (n *Node) ToBool() (bool, bool) {
 
 }
 
-func (n *Node) IsNull() bool {
-	return n.info == vNull
+func (n *Node) SetNumber(f float64) {
+	// n.raw = FormatFloat()
+	// n.num = f
+	// n.info = TypeNumber
 }
-func (n *Node) IsArray() bool {
-	return n.info == vArray
-}
-func (n *Node) IsValue() bool {
-	const vAnyValue = Info(TypeAnyValue)
-	return n.info&vAnyValue != 0
-}
-func (n *Node) IsString() bool {
-	return n.info&vString == vString
-}
-func (n *Node) IsObject() bool {
-	return n.info == vObject
+
+func (n *Node) SetString(s string) {
+	n.raw = strjson.Unescaped(s)
+	n.str = s
+	n.info = vString
 }

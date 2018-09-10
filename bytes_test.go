@@ -20,9 +20,22 @@ func TestS2B(t *testing.T) {
 	}
 }
 
+func Test_scopy(t *testing.T) {
+	b := []byte("Lorem ipsum dolor")
+	s := b2s(b)
+	ss := scopy(s)
+	b[0] = 'F'
+	if s == ss {
+		t.Errorf("Invalid byte string conversion: %s == %s", s, ss)
+	}
+
+}
 func Benchmark_scopy(b *testing.B) {
 	s := "Lorem ipsum dolor"
+	var ss string
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = scopy(s)
+		ss = scopy(s)
 	}
+	_ = ss
 }

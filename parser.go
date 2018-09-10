@@ -1,22 +1,24 @@
 package njson
 
 import (
+	"math"
 	"strings"
 	"sync"
 )
 
 // Parser is a JSON parser.
 type Parser struct {
-	nodes []Node
-	safe  bool
-	n     int
-	err   error
+	nodes  []Node
+	unsafe Info
+	n      int
+	err    error
 }
 
 // ParseUnsafe parses JSON from a slice of bytes without copying it to a string.
 // The contents of the slice should not be modified while using the result node.
 func (p *Parser) ParseUnsafe(data []byte) (*Node, []byte, error) {
-	p.reset(false)
+	p.reset()
+	p.unsafe = Unsafe
 	s := b2s(data)
 	n := p.node()
 	n.values = n.values[:0]
@@ -24,21 +26,22 @@ func (p *Parser) ParseUnsafe(data []byte) (*Node, []byte, error) {
 	if p.err != nil {
 		return nil, data, p.err
 	}
-	if 0 <= pos && pos < len(data) {
+	if pos < uint(len(data)) {
 		return n, data[pos:], nil
 	}
 	return n, nil, nil
 }
 
+// Parse parses JSON from a string.
 func (p *Parser) Parse(s string) (*Node, string, error) {
-	p.reset(true)
+	p.reset()
 	n := p.node()
 	n.values = n.values[:0]
 	pos := p.parseValue(s, 0, n)
 	if p.err != nil {
 		return nil, s, p.err
 	}
-	if 0 <= pos && pos < len(s) {
+	if pos < uint(len(s)) {
 		return n, s[pos:], nil
 	}
 	return n, "", nil
@@ -46,17 +49,15 @@ func (p *Parser) Parse(s string) (*Node, string, error) {
 
 const minNumNodes = 64
 
-func (p *Parser) reset(safe bool) {
+func (p *Parser) reset() {
 	p.err = nil
-	// If we don't use unsafe pkg we're safe anyway
-	p.safe = safe || safebytes
+	p.unsafe = 0
 	p.n = 0
 }
 
 func (p *Parser) node() (n *Node) {
 	if 0 <= p.n && p.n < len(p.nodes) {
 		n = &p.nodes[p.n]
-		// n.safe = p.safe
 		p.n++
 		return
 	}
@@ -64,95 +65,101 @@ func (p *Parser) node() (n *Node) {
 	p.nodes = make([]Node, (len(p.nodes)*2)+minNumNodes)
 	if len(p.nodes) > 0 {
 		n = &p.nodes[0]
-		// n.safe = p.safe
 		p.n = 1
 	}
 	return
 }
 
-func (p *Parser) parseValue(s string, pos int, n *Node) int {
+func (p *Parser) parseValue(s string, pos uint, n *Node) uint {
 	var c byte
-	for ; 0 <= pos && pos < len(s); pos++ {
-		if c = s[pos]; bytemapIsSpace[c] == 1 {
-			continue
+	for ; pos < uint(len(s)); pos++ {
+		c = s[pos]
+		if bytemapIsSpace[c] == 0 {
+			if c == delimString {
+				goto readString
+			}
+			if c == delimBeginObject {
+				return p.parseObject(s, pos+1, n)
+			}
+			if c == delimBeginArray {
+				return p.parseArray(s, pos+1, n)
+			}
+			if bytemapIsDigit[c] == 1 {
+				n.info = vNumber | p.unsafe
+				goto readNumber
+			}
+			if c == 'n' {
+				goto readNull
+			}
+			if c == '-' {
+				const signedNumber = vNumber | NumberSigned
+				n.info = signedNumber | p.unsafe
+				goto readNumber
+			}
+			if c == 'f' {
+				goto readFalse
+			}
+			if c == 't' {
+				goto readTrue
+			}
+			return p.abort(pos, TypeAnyValue, c, "any value")
 		}
-		if c == delimString {
-			goto readString
-		}
-		if c == delimBeginObject {
-			return p.parseObject(s, pos+1, n)
-		}
-		if c == delimBeginArray {
-			return p.parseArray(s, pos+1, n)
-		}
-		if bytemapIsDigit[c] == 1 {
-			n.info = vNumber
-			goto readNumber
-		}
-		if c == 'n' {
-			goto readNull
-		}
-		if c == '-' {
-			n.info = vNumber | NumberSigned
-			goto readNumber
-		}
-		if c == 'f' {
-			goto readFalse
-		}
-		if c == 't' {
-			goto readTrue
-		}
-		return p.abort(pos, TypeAnyValue, c, "any value")
 	}
 	return p.eof(TypeAnyValue)
 readNumber:
-	if 0 <= pos && pos < len(s) {
+	if pos < uint(len(s)) {
 		s = s[pos:]
-		for i := 0; 0 <= i && i < len(s); i++ {
-			if c = s[i]; bytemapIsNumberEnd[c] == 1 {
-				n.raw = s[:i]
-				return pos + i
+		for i := uint(0); i < uint(len(s)); i++ {
+			c = s[i]
+			if bytemapIsNumberEnd[c] == 0 {
+				continue
 			}
+			n.raw = s[:i]
+			return pos + i
 		}
 		n.raw = s
-		return pos + len(n.raw)
+		return pos + uint(len(s))
 	}
 	return p.eof(TypeNumber)
 readString:
-	n.info = vString
-	n.safe = p.safe
-	if pos++; 0 < pos && pos < len(s) {
+	n.info = vString | p.unsafe
+	if pos++; pos < uint(len(s)) {
+		// Slice after the opening quote
 		s = s[pos:]
-		pos++
+		pos++ // Early jump to the next character after the closing quote
+		// Immediately decrement to check if previous byte is '\'
 		i := strings.IndexByte(s, delimString) - 1
-		if 0 <= i && i < len(s) {
+		if 0 <= i && i < len(s) { // Avoid bounds check and -1 result from IndexByte
 			if s[i] == delimEscape {
-				for i += 2; 0 <= i && i < len(s); i++ {
+				// Advance past '\' and '"' and scan the remaining string
+				for i += 2; 0 <= i && i < len(s); i++ { // Avoid bounds check
 					switch s[i] {
 					case delimString:
+						// Slice until the closing quote
 						n.raw = s[:i]
-						return pos + i
+						return pos + uint(i)
 					case delimEscape:
+						// Jump over the next character
 						i++
 					}
 				}
-			} else if i++; 0 <= i && i <= len(s) {
+			} else if i++; 0 <= i && i <= len(s) { // Avoid bounds check
+				// Slice until the closing quote
 				n.raw = s[:i]
-				return pos + i
+				return pos + uint(i)
 			}
-		}
-		if i == -1 {
+		} else if i == -1 { // Empty string case
 			n.raw = ""
 			return pos
 		}
 	}
 	return p.eof(TypeString)
 readTrue:
-	if 0 <= pos && pos < len(s) {
+	if pos < uint(len(s)) {
 		if s = s[pos:]; len(s) >= 4 {
 			if s = s[:4]; s == strTrue {
 				n.info = vTrue
-				n.raw = strTrue
+				// n.raw = strTrue
 				return pos + 4
 			}
 			return p.abort(pos, TypeBoolean, s, strTrue)
@@ -160,11 +167,11 @@ readTrue:
 	}
 	return p.eof(TypeBoolean)
 readFalse:
-	if 0 <= pos && pos < len(s) {
+	if pos < uint(len(s)) {
 		if s = s[pos:]; len(s) >= 5 {
 			if s = s[:5]; s == strFalse {
 				n.info = vFalse
-				n.raw = strFalse
+				// n.raw = strFalse
 				return pos + 5
 			}
 			return p.abort(pos, TypeBoolean, s, strFalse)
@@ -172,11 +179,11 @@ readFalse:
 	}
 	return p.eof(TypeBoolean)
 readNull:
-	if 0 <= pos && pos < len(s) {
+	if pos < uint(len(s)) {
 		if s = s[pos:]; len(s) >= 4 {
 			if s = s[:4]; s == strNull {
 				n.info = vNull
-				n.raw = strNull
+				// n.raw = strNull
 				return pos + 4
 			}
 			return p.abort(pos, TypeNull, s, strNull)
@@ -197,13 +204,13 @@ const (
 	delimValueSeparator = ','
 )
 
-func (p *Parser) abort(pos int, typ Type, got, want interface{}) int {
-	p.err = abort(pos, typ, got, want)
+func (p *Parser) abort(pos uint, typ Type, got, want interface{}) uint {
+	p.err = abort(int(pos), typ, got, want)
 	return pos
 }
-func (p *Parser) eof(typ Type) int {
+func (p *Parser) eof(typ Type) uint {
 	p.err = eof(typ)
-	return -1
+	return math.MaxUint64
 }
 
 var pool = new(sync.Pool)
@@ -228,7 +235,7 @@ func (p *Parser) Close() error {
 	return nil
 }
 
-func (p *Parser) parseArray(s string, pos int, n *Node) int {
+func (p *Parser) parseArray(s string, pos uint, n *Node) uint {
 	var (
 		c         byte
 		v         *Node
@@ -236,8 +243,9 @@ func (p *Parser) parseArray(s string, pos int, n *Node) int {
 	)
 	n.info = vArray
 	// Skip space after '['
-	for ; 0 <= pos && pos < len(s); pos++ {
-		if c = s[pos]; bytemapIsSpace[c] == 0 {
+	for ; pos < uint(len(s)); pos++ {
+		c = s[pos]
+		if bytemapIsSpace[c] == 0 {
 			if c == delimEndArray {
 				n.values = n.values[:0]
 				return pos + 1
@@ -255,8 +263,9 @@ readValue:
 	}
 
 	// Skip space after value
-	for ; 0 <= pos && pos < len(s); pos++ {
-		if c = s[pos]; bytemapIsSpace[c] == 0 {
+	for ; pos < uint(len(s)); pos++ {
+		c = s[pos]
+		if bytemapIsSpace[c] == 0 {
 			break
 		}
 	}
@@ -278,19 +287,23 @@ readValue:
 		return p.abort(pos, TypeArray, c, []rune{delimValueSeparator, delimEndArray})
 	}
 }
-func (p *Parser) parseObject(s string, pos int, n *Node) int {
+func (p *Parser) parseObject(s string, pos uint, n *Node) uint {
 	var (
 		c       byte
 		numKeys = 0
 		v       *Node
 	)
-	for ; 0 <= pos && pos < len(s); pos++ {
-		if c = s[pos]; bytemapIsSpace[c] == 0 {
+	// Skip space after opening '{'
+	for ; pos < uint(len(s)); pos++ {
+		c = s[pos]
+		if bytemapIsSpace[c] == 0 {
+			// Check for empty object
 			if c == delimEndObject {
 				n.info = vObject
 				n.values = n.values[:0]
 				return pos + 1
 			}
+			// Check for start of key
 			if c == delimString {
 				n.info = vObject
 				n.values = n.values[:cap(n.values)]
@@ -301,26 +314,40 @@ func (p *Parser) parseObject(s string, pos int, n *Node) int {
 		}
 	}
 	return p.eof(TypeObject)
+
+	// Current pos is at the opening quote of a key.
 readKey:
-	if pos++; 0 <= pos && pos < len(s) {
+	if pos++; pos < uint(len(s)) {
+		// Slice after the opening quote
 		v.key = s[pos:]
-		for i := 0; 0 <= i && i < len(v.key); i++ {
+		pos++ // Early jump after the closing quote
+		// Keys are usually small.
+		// IndexByte seems to have a performance benefit only if the
+		// byte we're looking for is more than 16 bytes away.
+		// Since most keys are less than 16 bytes using a simple loop
+		// actually improves throughput.
+		for i := uint(0); i < uint(len(v.key)); i++ {
 			switch v.key[i] {
 			case delimString:
+				// Slice until closing quote
 				v.key = v.key[:i]
-				for pos += i + 1; 0 <= pos && pos < len(s); pos++ {
-					if c = s[pos]; c == delimNameSeparator {
+				// Skip space after closing quote
+				for pos += i; pos < uint(len(s)); pos++ {
+					c = s[pos]
+					if c == delimNameSeparator {
 						goto readValue
 					}
 					if bytemapIsSpace[c] == 0 {
-						break
+						return p.abort(pos, TypeObject, c, delimNameSeparator)
 					}
+					// Space
 				}
-				return p.abort(pos, TypeObject, c, delimNameSeparator)
+				return p.eof(TypeObject)
 			case delimEscape:
 				i++
 			}
 		}
+		// end of input reached
 	}
 	return p.eof(TypeObject)
 
@@ -331,26 +358,27 @@ readValue:
 		return pos
 	}
 	// Skip space after value
-	for ; 0 <= pos && pos < len(s); pos++ {
-		if c = s[pos]; bytemapIsSpace[c] == 0 {
+	for ; pos < uint(len(s)); pos++ {
+		c = s[pos]
+		if bytemapIsSpace[c] == 0 {
 			break
 		}
 	}
 	switch c {
 	case delimValueSeparator:
 		// Skip space after ','
-		for pos++; 0 <= pos && pos < len(s); pos++ {
-			if c = s[pos]; c == delimString {
+		for pos++; pos < uint(len(s)); pos++ {
+			c = s[pos]
+			if c == delimString {
 				// Append value
 				n.append(v, numKeys)
 				numKeys++
 				v = p.node()
 				goto readKey
 			}
-			if bytemapIsSpace[c] == 1 {
-				continue
+			if bytemapIsSpace[c] == 0 {
+				return p.abort(pos, TypeObject, c, delimString)
 			}
-			return p.abort(pos, TypeObject, c, delimString)
 		}
 		return p.eof(TypeObject)
 	case delimEndObject:
