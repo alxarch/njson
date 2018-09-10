@@ -16,15 +16,15 @@ func Escaped(s string, HTML bool, quoted bool) string {
 		r    rune
 		c, e byte
 		size int
-		pos  int
-		i    int
+		pos  uint
+		i    uint
 	)
 	b.Grow(3 * len(s) / 2)
 	if quoted {
 		b.WriteByte('"')
 	}
 escape:
-	for pos = i; 0 <= i && i < len(s); i++ {
+	for pos = i; i < uint(len(s)); i++ {
 		c = s[i]
 		e = toJSON(c)
 		if e == utf8.RuneSelf {
@@ -46,10 +46,10 @@ escape:
 					toHex(byte(r) >> 4),
 					toHex(byte(r) & 0x0F),
 				})
-				i += size
+				i += uint(size)
 				goto escape
 			default:
-				i += size - 1
+				i += uint(size - 1)
 				continue
 			}
 		}
@@ -77,7 +77,7 @@ escape:
 		}
 		goto escape
 	}
-	if 0 <= pos && pos < len(s) {
+	if pos < uint(len(s)) {
 		b.WriteString(s[pos:])
 	}
 	if quoted {
@@ -95,8 +95,8 @@ func AppendEscaped(dst []byte, s string, HTML bool) []byte {
 		c, e byte
 		r    rune
 		size int
-		pos  int
-		i    int
+		pos  uint
+		i    uint
 	)
 	if size = len(dst) + len(s); cap(dst) < size {
 		if buf := make([]byte, len(dst), size); len(buf) >= len(dst) {
@@ -106,7 +106,7 @@ func AppendEscaped(dst []byte, s string, HTML bool) []byte {
 	}
 
 escape:
-	for pos = i; 0 <= i && i < len(s); i++ {
+	for pos = i; i < uint(len(s)); i++ {
 		c = s[i]
 		e = toJSON(c)
 		if e == utf8.RuneSelf {
@@ -123,10 +123,10 @@ escape:
 					dst = append(dst, s[pos:i]...)
 				}
 				dst = escapeUTF8(dst, r)
-				i += size
+				i += uint(size)
 				goto escape
 			default:
-				i += size - 1
+				i += uint(size - 1)
 				continue
 			}
 		}
@@ -151,7 +151,7 @@ escape:
 		}
 		goto escape
 	}
-	if 0 <= pos && pos < len(s) {
+	if pos < uint(len(s)) {
 		return append(dst, s[pos:]...)
 	}
 	return dst
