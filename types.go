@@ -75,39 +75,40 @@ func (t Type) String() string {
 type Info uint16
 
 const (
-	vString     = Info(TypeString)
-	vNumber     = Info(TypeNumber)
-	vNull       = Info(TypeNull)
-	vBoolean    = Info(TypeBoolean)
-	vArray      = Info(TypeArray)
-	vObject     = Info(TypeObject)
-	vFalse      = vBoolean
-	vTrue       = vBoolean | IsTrue
-	vNumberUint = vNumber | NumberZeroDecimal | NumberParsed
-	vNumberInt  = vNumber | NumberZeroDecimal | NumberSigned | NumberParsed
+	vString  = Info(TypeString)
+	vNumber  = Info(TypeNumber)
+	vNull    = Info(TypeNull)
+	vBoolean = Info(TypeBoolean)
+	vArray   = Info(TypeArray)
+	vObject  = Info(TypeObject)
+	vFalse   = vBoolean
+	vTrue    = vBoolean | IsTrue
+	// vNumberUint = vNumber | NumberZeroDecimal | NumberParsed
+	// vNumberInt  = vNumber | NumberZeroDecimal | NumberSigned | NumberParsed
 )
 const (
-	NumberSigned Info = 1 << (iota + 8)
-	NumberZeroDecimal
-	NumberParsed
-	Unescaped
+	_ Info = 1 << (iota + 8)
+	// NumberSigned Info = 1 << (iota + 8)
+	// NumberZeroDecimal
+	// NumberParsed
+	// Unescaped
 	Unsafe
 	IsTrue
 	HasError Info = 1 << 15
 )
 
-func (i Info) Unescaped() bool {
-	return i&Unescaped == Unescaped
-}
+// func (i Info) Unescaped() bool {
+// 	return i&Unescaped == Unescaped
+// }
 
 func (i Info) Safe() bool {
 	return i&Unsafe == 0
 }
 
-func (i Info) NumberParsed() bool {
-	const parsed = NumberParsed | vNumber
-	return i&parsed > NumberParsed
-}
+// func (i Info) NumberParsed() bool {
+// 	const parsed = NumberParsed | vNumber
+// 	return i&parsed > NumberParsed
+// }
 
 func (i Info) Type() Type {
 	return Type(i)
@@ -115,9 +116,6 @@ func (i Info) Type() Type {
 
 func (i Info) HasLen() bool {
 	return i&(vObject|vArray) != 0
-}
-func (i Info) HasRaw() bool {
-	return i&(vObject|vArray) == 0
 }
 
 func (i Info) IsNull() bool {
@@ -140,13 +138,13 @@ func (i Info) IsFalse() bool {
 	return i == vFalse
 }
 
-func (i Info) ToUint() bool {
-	return i&vNumberInt == vNumberUint
-}
+// func (i Info) ToUint() bool {
+// 	return i&vNumberInt == vNumberUint
+// }
 
-func (i Info) ToInt() bool {
-	return i&vNumberUint == vNumberUint
-}
+// func (i Info) ToInt() bool {
+// 	return i&vNumberUint == vNumberUint
+// }
 func (i Info) IsNumber() bool {
 	return i&vNumber == vNumber
 }

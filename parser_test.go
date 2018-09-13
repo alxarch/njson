@@ -27,6 +27,7 @@ func TestParse(t *testing.T) {
 		`[42,42]`,
 		`{}`,
 		`42`,
+		`-1.0`,
 		`{"answer":42.0}`,
 		`{"answer":"42"}`,
 		`{"answer":42,"notanswer":"41"}`,

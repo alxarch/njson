@@ -4,50 +4,51 @@ import (
 	"encoding/json"
 	"io"
 	"math"
-	"strconv"
-	"strings"
 	"sync"
 
+	"github.com/alxarch/njson/numjson"
 	"github.com/alxarch/njson/strjson"
 )
 
 type Node struct {
-	info   Info
-	unsafe bool
-	raw    string // json string
-	str    string // unescaped string
-	num    float64
-	key    string
-	values []*Node
+	info Info
+	raw  string // json string
+	// key    string
+	values []KV
+}
+type KV struct {
+	Key   string
+	Value *Node
 }
 
-func (n *Node) Key() string {
-	return n.key
-}
+// func (n *Node) Key() string {
+// 	return n.key
+// }
 
-func (n *Node) Values() []*Node {
-	if n == nil || n.info&(vObject|vArray) == 0 {
-		return nil
+func (n *Node) Values() []KV {
+	if n != nil && n.info.HasLen() {
+		return n.values
 	}
-	return n.values
+	return nil
 
 }
 
 const minNumValues = 8
 
-func (n *Node) append(v *Node, i int) {
-	if 0 <= i && i < len(n.values) {
-		n.values[i] = v
-		return
-	}
-	if tmp := make([]*Node, 2*len(n.values)+minNumValues); len(tmp) >= len(n.values) {
-		if i = copy(tmp[:len(n.values)], n.values); 0 <= i && i < len(tmp) {
-			tmp[i] = v
-		}
-		n.values = tmp
-	}
-	return
-}
+// func (n *Node) append(v *Node, i uint) {
+// 	if i < uint(len(n.values)) {
+// 		n.values[i] = v
+// 		return
+// 	}
+// 	if tmp := make([]*Node, 2*len(n.values)+minNumValues); len(tmp) >= len(n.values) {
+// 		copy(tmp[:len(n.values)], n.values)
+// 		if i < uint(len(tmp)) {
+// 			tmp[i] = v
+// 		}
+// 		n.values = tmp
+// 	}
+// 	return
+// }
 
 func (n *Node) Raw() string {
 	return n.raw
@@ -68,23 +69,23 @@ func (n *Node) AppendJSON(dst []byte) ([]byte, error) {
 	switch Type(n.info) {
 	case TypeObject:
 		dst = append(dst, delimBeginObject)
-		for i, n := range n.values {
+		for i, kv := range n.values {
 			if i > 0 {
 				dst = append(dst, delimValueSeparator)
 			}
 			dst = append(dst, delimString)
-			dst = append(dst, n.key...)
+			dst = append(dst, kv.Key...)
 			dst = append(dst, delimString, delimNameSeparator)
-			dst, _ = n.AppendJSON(dst)
+			dst, _ = kv.Value.AppendJSON(dst)
 		}
 		dst = append(dst, delimEndObject)
 	case TypeArray:
 		dst = append(dst, delimBeginArray)
-		for i, n := range n.values {
+		for i, kv := range n.values {
 			if i > 0 {
 				dst = append(dst, delimValueSeparator)
 			}
-			dst, _ = n.AppendJSON(dst)
+			dst, _ = kv.Value.AppendJSON(dst)
 		}
 		dst = append(dst, delimEndArray)
 	case TypeString:
@@ -121,29 +122,20 @@ func (n *Node) String() string {
 	if n == nil {
 		return ""
 	}
-	if n.info.Unescaped() {
-		return n.str
-	}
 	if n.info.IsString() {
-		n.str = strjson.Unescaped(n.raw)
-		if n.str == n.raw && !n.info.Safe() {
+		s := strjson.Unescaped(n.raw)
+		if s == n.raw && !n.info.Safe() {
 			// When input is unsafe we need to copy the string so
 			// any calls to Unescaped() return a safe string to use.
-			b := strings.Builder{}
-			b.WriteString(n.str)
-			n.str = n.String()
+			return scopy(s)
 		}
-		n.info |= Unescaped
-		return n.str
+		return s
 	}
 	if n.info.IsNumber() {
 		if n.info.Safe() {
-			n.str = n.raw
-		} else {
-			n.str = scopy(n.raw)
+			return n.raw
 		}
-		n.info |= Unescaped
-		return n.str
+		return scopy(n.raw)
 	}
 	switch n.info {
 	case vNull:
@@ -280,8 +272,8 @@ func (n *Node) ToInterface() (interface{}, bool) {
 	case TypeObject:
 		m := make(map[string]interface{}, n.Len())
 		ok := false
-		for _, k := range n.values {
-			if m[k.key], ok = k.ToInterface(); !ok {
+		for _, kv := range n.values {
+			if m[kv.Key], ok = kv.Value.ToInterface(); !ok {
 				return nil, false
 			}
 		}
@@ -292,8 +284,8 @@ func (n *Node) ToInterface() (interface{}, bool) {
 			ok := false
 			// Avoid bounds check
 			s = s[:len(n.values)]
-			for i, n := range n.values {
-				if s[i], ok = n.ToInterface(); !ok {
+			for i, kv := range n.values {
+				if s[i], ok = kv.Value.ToInterface(); !ok {
 					return nil, false
 
 				}
@@ -327,51 +319,17 @@ func (n *Node) TypeError(want Type) error {
 	return newTypeError(n.Type(), want)
 }
 
-func (n *Node) parseFloat() (f float64, ok bool) {
-	f, err := strconv.ParseFloat(n.raw, 10)
-	if ok = err == nil; ok {
-		n.num = f
-		n.info |= NumberParsed
-		if math.Trunc(f) == f {
-			n.info |= NumberZeroDecimal
-		}
-		// if f < 0 {
-		// 	n.info |= NumberSigned
-		// }
-	}
-	return
-
-}
 func (n *Node) ToUint() (uint64, bool) {
-	if n.info.ToUint() {
-		return uint64(n.num), true
-	}
-	if n.info.IsNumber() {
-		n.parseFloat()
-		return uint64(n.num), n.info&vNumberInt == vNumberUint
-	}
-	return 0, false
+	f := numjson.ParseFloat(n.raw)
+	return uint64(f), 0 <= f && f < math.MaxUint64 && math.Trunc(f) == f
+}
+func (n *Node) ToInt() (int64, bool) {
+	f := numjson.ParseFloat(n.raw)
+	return int64(f), math.MinInt64 <= f && f < math.MaxInt64 && math.Trunc(f) == f
 }
 func (n *Node) ToFloat() (float64, bool) {
-	if n.info.NumberParsed() {
-		return n.num, true
-	}
-	if n.info.IsNumber() {
-		return n.parseFloat()
-	}
-	return 0, false
-}
-
-func (n *Node) ToInt() (int64, bool) {
-	// vNumberInt is a superset of vNumberUint
-	if n.info.ToInt() {
-		return int64(n.num), true
-	}
-	if n.info.IsNumber() {
-		n.parseFloat()
-		return int64(n.num), n.info&vNumberUint == vNumberUint
-	}
-	return 0, false
+	f := numjson.ParseFloat(n.raw)
+	return f, f == f
 }
 
 func (n *Node) ToBool() (bool, bool) {
@@ -384,16 +342,4 @@ func (n *Node) ToBool() (bool, bool) {
 		return false, false
 	}
 
-}
-
-func (n *Node) SetNumber(f float64) {
-	// n.raw = FormatFloat()
-	// n.num = f
-	// n.info = TypeNumber
-}
-
-func (n *Node) SetString(s string) {
-	n.raw = strjson.Unescaped(s)
-	n.str = s
-	n.info = vString
 }

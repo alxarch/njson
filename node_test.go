@@ -100,7 +100,7 @@ func TestNodeToInt(t *testing.T) {
 	if n, _, err := d.Parse("-1.0"); err != nil {
 		t.Errorf("Unexpected error: %s", err)
 	} else if f, ok := n.ToInt(); !ok {
-		t.Errorf("Unexpected conversion error")
+		t.Errorf("Unexpected conversion error %#v %d", n, f)
 	} else if f != -1 {
 		t.Errorf("Unexpected conversion %d", f)
 	}
