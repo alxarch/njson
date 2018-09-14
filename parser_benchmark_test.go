@@ -7,8 +7,7 @@ import (
 )
 
 func benchmark(src string) func(b *testing.B) {
-	p := Parser{}
-
+	p := Document{}
 	return func(b *testing.B) {
 		n, tail, err := p.Parse(src)
 		if err != nil {
@@ -19,7 +18,7 @@ func benchmark(src string) func(b *testing.B) {
 			b.Errorf("Non empty tail: %q", tail)
 			return
 		}
-		if n == nil {
+		if n.N() == nil {
 			b.Errorf("Nil root")
 			return
 		}
@@ -44,8 +43,7 @@ func BenchmarkParse(b *testing.B) {
 }
 func benchmarkUnsafe(src string) func(b *testing.B) {
 	data := []byte(src)
-	p := Parser{}
-
+	p := Document{}
 	return func(b *testing.B) {
 		b.SetBytes(int64(len(src)))
 		for i := 0; i < b.N; i++ {
@@ -75,7 +73,7 @@ var (
 )
 
 func init() {
-	if data, err := ioutil.ReadFile("./testdata/large.json"); err != nil {
+	if data, err := ioutil.ReadFile("./testdata/large.min.json"); err != nil {
 		panic(err)
 	} else {
 		largeJSON = string(data)

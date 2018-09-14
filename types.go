@@ -81,8 +81,8 @@ const (
 	vBoolean = Info(TypeBoolean)
 	vArray   = Info(TypeArray)
 	vObject  = Info(TypeObject)
-	vFalse   = vBoolean
-	vTrue    = vBoolean | IsTrue
+	// vFalse   = vBoolean
+	// vTrue    = vBoolean | IsTrue
 	// vNumberUint = vNumber | NumberZeroDecimal | NumberParsed
 	// vNumberInt  = vNumber | NumberZeroDecimal | NumberSigned | NumberParsed
 )
@@ -93,7 +93,6 @@ const (
 	// NumberParsed
 	// Unescaped
 	Unsafe
-	IsTrue
 	HasError Info = 1 << 15
 )
 
@@ -131,12 +130,13 @@ func (i Info) IsValue() bool {
 func (i Info) IsString() bool {
 	return i&vString == vString
 }
-func (i Info) IsTrue() bool {
-	return i == vTrue
-}
-func (i Info) IsFalse() bool {
-	return i == vFalse
-}
+
+// func (i Info) IsTrue() bool {
+// 	return i == vTrue
+// }
+// func (i Info) IsFalse() bool {
+// 	return i == vFalse
+// }
 
 // func (i Info) ToUint() bool {
 // 	return i&vNumberInt == vNumberUint

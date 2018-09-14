@@ -50,6 +50,9 @@ func (n *N) Safe() string {
 func (n *N) Raw() string {
 	return n.raw
 }
+func (n *N) Bytes() []byte {
+	return s2b(n.raw)
+}
 
 // Len returns the length of a node's values.
 func (n *N) Len() int {

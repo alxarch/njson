@@ -13,17 +13,20 @@ func TestUnmarshalBasic(t *testing.T) {
 	src := `{"Foo":1,"Bar":2,"Baz":3}`
 	type A struct{ Foo, Bar, Baz int }
 	a := A{}
-	dec, err := unjson.TypeUnmarshaler(reflect.TypeOf(&a), unjson.DefaultOptions())
+
+	dec, err := unjson.TypeDecoder(reflect.TypeOf(&a), "")
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
 	}
-	n, _, err := njson.Get().Parse(src)
+	d := njson.Blank()
+	defer d.Close()
+	n, _, err := d.Parse(src)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
 	}
-	err = dec.Unmarshal(&a, n)
+	err = dec.Decode(&a, n.ID(), d)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return

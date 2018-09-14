@@ -1,95 +1,125 @@
 package njson
 
-import (
-	"math"
-	"strings"
-	"sync"
-)
+import "strings"
 
-// Parser is a JSON parser.
-type Parser struct {
-	nodes  []Node
-	n      int
-	times  int
+type parser struct {
+	nodes  []N
+	n      uint
 	unsafe Info
 	err    error
 }
 
-func (p *Parser) snapshot() []Node {
-	nodes := p.nodes
-	if 0 <= p.n && p.n < len(nodes) {
-		nodes = nodes[:p.n]
-	}
-	return nodes
-}
-
-// ParseUnsafe parses JSON from a slice of bytes without copying it to a string.
-// The contents of the slice should not be modified while using the result node.
-func (p *Parser) ParseUnsafe(data []byte) (*Node, []byte, error) {
-	p.Reset()
-	p.unsafe = Unsafe
-	s := b2s(data)
-	n := p.node()
-	if pos := p.parseValue(s, 0, n); pos <= uint(len(data)) {
-		data = data[pos:]
-	} else {
-		data = nil
-	}
-	if p.err != nil {
-		return nil, data, p.err
-	}
-	return n, data, nil
-}
-
-func (p *Parser) Reset() {
-	p.n = 0
-	p.err = nil
-	p.unsafe = 0
-
-}
-
-// Parse parses JSON from a string.
-func (p *Parser) Parse(s string) (*Node, string, error) {
-	p.Reset()
-	n := p.node()
-	if pos := p.parseValue(s, 0, n); pos < uint(len(s)) {
+// Parse parses a JSON string and returns the root node as a Partial.
+func (d *Document) Parse(s string) (Node, string, error) {
+	p := d.parser()
+	id := p.n
+	// n := p.node()
+	if pos := p.parseValue(s, 0); pos <= uint(len(s)) {
 		s = s[pos:]
 	} else {
 		s = ""
 	}
 	if p.err != nil {
-		return nil, s, p.err
+		return Node{}, s, p.err
 	}
-	return n, "", nil
+	if nodes := p.update(d); len(nodes) > 0 {
+		resetNodes(nodes)
+	}
+	return Node{id, d.rev, d}, s, nil
 }
 
-const minNumNodes = 64
-
-func (p *Parser) reset() {
-	p.err = nil
-	p.unsafe = 0
-	p.n = 0
+// ParseUnsafe parses a JSON buffer without copying it to a string and returns the root node as a Partial.
+// Make sure to call Document.Reset() or Document.Close() to avoid memory leaks.
+func (d *Document) ParseUnsafe(b []byte) (Node, []byte, error) {
+	p := d.parser()
+	p.unsafe = Unsafe
+	id := p.n
+	// n := p.node()
+	if pos := p.parseValue(b2s(b), 0); pos <= uint(len(b)) {
+		b = b[pos:]
+	} else {
+		b = nil
+	}
+	if p.err != nil {
+		return Node{}, b, p.err
+	}
+	// Free references to previous JSON source
+	if nodes := p.update(d); len(nodes) > 0 {
+		resetNodes(nodes)
+	}
+	return Node{id, d.rev, d}, b, nil
 }
 
-func (p *Parser) node() *Node {
-	if 0 <= p.n && p.n < len(p.nodes) {
+func (d *Document) parser() parser {
+	return parser{
+		nodes: d.nodes[:cap(d.nodes)],
+		n:     uint(len(d.nodes)),
+	}
+}
+
+func (p *parser) abort(pos uint, typ Type, got, want interface{}) uint {
+	p.err = abort(int(pos), typ, got, want)
+	return pos
+}
+func (p *parser) value(id uint, key string) *N {
+start:
+	if p.n < uint(len(p.nodes)) {
+		v := &p.nodes[p.n]
+		if id < uint(len(p.nodes)) {
+			n := &p.nodes[id]
+			n.values = append(n.values, V{p.n, key})
+			_ = n.values
+		}
+		p.n++
+		return v
+	}
+	nodes := make([]N, 2*len(p.nodes)+1)
+	copy(nodes, p.nodes)
+	p.nodes = nodes
+	goto start
+
+}
+
+func (p *parser) node() *N {
+	if p.n < uint(len(p.nodes)) {
 		n := &p.nodes[p.n]
 		p.n++
 		return n
 	}
-
-	nodes := make([]Node, (2*len(p.nodes))+minNumNodes)
+	nodes := make([]N, 2*len(p.nodes)+1)
+	copy(nodes, p.nodes)
 	p.nodes = nodes
-	if len(p.nodes) > 0 {
-		n := &p.nodes[0]
-		p.n = 1
+	if p.n < uint(len(p.nodes)) {
+		n := &p.nodes[p.n]
+		p.n++
 		return n
 	}
 	return nil
 }
+func appendV(values []V, key string, id, i uint) []V {
+	if i < uint(len(values)) {
+		values[i] = V{id, key}
+		return values
+	}
+	tmp := make([]V, 2*len(values)+1)
+	copy(tmp, values)
+	if i < uint(len(tmp)) {
+		tmp[i] = V{id, key}
+	}
+	return tmp
+}
 
-func (p *Parser) parseValue(s string, pos uint, n *Node) uint {
-	var c byte
+func (p *parser) eof(typ Type) (pos uint) {
+	p.err = eof(typ)
+	return maxUint
+}
+
+func (p *parser) parseValue(s string, pos uint) uint {
+	var (
+		c    byte
+		info = p.unsafe
+	)
+
 	for ; pos < uint(len(s)); pos++ {
 		c = s[pos]
 		if bytemapIsSpace[c] == 0 {
@@ -97,10 +127,10 @@ func (p *Parser) parseValue(s string, pos uint, n *Node) uint {
 				goto readString
 			}
 			if c == delimBeginObject {
-				return p.parseObject(s, pos+1, n)
+				return p.parseObject(s, pos+1)
 			}
 			if c == delimBeginArray {
-				return p.parseArray(s, pos+1, n)
+				return p.parseArray(s, pos+1)
 			}
 			if bytemapIsDigit[c] == 1 {
 				goto readNumber
@@ -122,39 +152,37 @@ func (p *Parser) parseValue(s string, pos uint, n *Node) uint {
 	}
 	return p.eof(TypeAnyValue)
 readNumber:
-	n.info = vNumber | p.unsafe
+	info |= vNumber
 	if pos < uint(len(s)) {
 		s = s[pos:]
 		for i := uint(0); i < uint(len(s)); i++ {
-			c = s[i]
-			if bytemapIsNumberEnd[c] == 0 {
+			if bytemapIsNumberEnd[s[i]] == 0 {
 				continue
 			}
-			n.raw = s[:i]
+			s = s[:i]
 			pos += i
 			goto done
 		}
-		n.raw = s
 		pos += uint(len(s))
 		goto done
 	}
 	return p.eof(TypeNumber)
 readString:
-	n.info = vString | p.unsafe
+	info |= vString
 	if pos++; pos < uint(len(s)) {
 		// Slice after the opening quote
 		s = s[pos:]
 		pos++ // Early jump to the next character after the closing quote
 		// Immediately decrement to check if previous byte is '\'
 		i := strings.IndexByte(s, delimString) - 1
-		if 0 <= i && i < len(s) { // Avoid bounds check and -1 result from IndexByte
+		if 0 <= i && i < len(s) {
 			if s[i] == delimEscape {
 				// Advance past '\' and '"' and scan the remaining string
 				for i += 2; 0 <= i && i < len(s); i++ { // Avoid bounds check
 					switch s[i] {
 					case delimString:
 						// Slice until the closing quote
-						n.raw = s[:i]
+						s = s[:i]
 						pos += uint(i)
 						goto done
 					case delimEscape:
@@ -164,21 +192,21 @@ readString:
 				}
 			} else if i++; 0 <= i && i <= len(s) { // Avoid bounds check
 				// Slice until the closing quote
-				n.raw = s[:i]
+				s = s[:i]
 				pos += uint(i)
 				goto done
 			}
-		} else if i == -1 { // Empty string case
-			n.raw = ""
+		} else if i == -1 {
+			s = ""
 			goto done
 		}
 	}
 	return p.eof(TypeString)
 readTrue:
+	info |= vBoolean
 	if pos < uint(len(s)) {
 		if s = s[pos:]; len(s) >= 4 {
 			if s = s[:4]; s == strTrue {
-				n.set(vTrue, strTrue)
 				pos += 4
 				goto done
 			}
@@ -187,10 +215,10 @@ readTrue:
 	}
 	return p.eof(TypeBoolean)
 readFalse:
+	info |= vBoolean
 	if pos < uint(len(s)) {
 		if s = s[pos:]; len(s) >= 5 {
 			if s = s[:5]; s == strFalse {
-				n.set(vFalse, strFalse)
 				pos += 5
 				goto done
 			}
@@ -199,10 +227,10 @@ readFalse:
 	}
 	return p.eof(TypeBoolean)
 readNull:
+	info |= vNull
 	if pos < uint(len(s)) {
 		if s = s[pos:]; len(s) >= 4 {
 			if s = s[:4]; s == strNull {
-				n.set(vNull, strNull)
 				pos += 4
 				goto done
 			}
@@ -211,109 +239,70 @@ readNull:
 	}
 	return p.eof(TypeNull)
 done:
+	n := p.node()
+	n.set(info, s)
 	for i := range n.values {
-		n.values[i] = KV{}
+		n.values[i] = V{}
 	}
 	n.values = n.values[:0]
 	return pos
 }
 
-func (n *Node) set(info Info, raw string) {
-	n.info = info
-	n.raw = raw
-}
-
-const (
-	delimString         = '"'
-	delimEscape         = '\\'
-	delimBeginObject    = '{'
-	delimEndObject      = '}'
-	delimBeginArray     = '['
-	delimEndArray       = ']'
-	delimNameSeparator  = ':'
-	delimValueSeparator = ','
-)
-
-func (p *Parser) abort(pos uint, typ Type, got, want interface{}) uint {
-	p.err = abort(int(pos), typ, got, want)
-	return pos
-}
-func (p *Parser) eof(typ Type) uint {
-	p.err = eof(typ)
-	return math.MaxUint64
-}
-
-var pool = new(sync.Pool)
-
-// Get returns a parser from a a pool.
-// Put it back once you're done with Parser.Close()
-func Get() *Parser {
-	x := pool.Get()
-	if x == nil {
-		return &Parser{
-			nodes: make([]Node, minNumNodes),
-		}
-	}
-	return x.(*Parser)
-}
-
-// Close returns the parser to the pool.
-func (p *Parser) Close() error {
-	if p != nil {
-		pool.Put(p)
-	}
-	return nil
-}
-
-func (p *Parser) parseArray(s string, pos uint, n *Node) uint {
+func (p *parser) parseArray(s string, pos uint) uint {
 	var (
-		c      byte
-		v      *Node
-		values []KV
+		id = p.n
+		n  = p.node()
+		c  byte
+		// v      *N
+		values []V
+		numV   uint
 	)
-	n.info = vArray
-	n.raw = ""
+	n.set(vArray, "")
 	// Skip space after '['
 	for ; pos < uint(len(s)); pos++ {
 		c = s[pos]
 		if bytemapIsSpace[c] == 0 {
 			if c == delimEndArray {
 				for i := range n.values {
-					n.values[i] = KV{}
+					n.values[i] = V{}
 				}
 				n.values = n.values[:0]
 				return pos + 1
 			}
-			values = n.values
-			n.values = n.values[:0]
+
+			values = n.values[:cap(n.values)]
 			goto readValue
 		}
 	}
 	return p.eof(TypeArray)
 readValue:
-	v = p.node()
-	pos = p.parseValue(s, pos, v)
+	values = appendV(values, "", p.n, numV)
+	numV++
+	// pos = p.parseValue(s, pos, p.node())
+	pos = p.parseValue(s, pos)
 	if p.err != nil {
 		return pos
 	}
-	n.values = append(n.values, KV{"", v})
 
 	// Skip space after value
 	for ; pos < uint(len(s)); pos++ {
 		c = s[pos]
 		switch c {
 		case delimValueSeparator:
-			// n.append(v, numValues)
-			// numValues++
-			// v = p.node()
 			pos++
 			goto readValue
 		case delimEndArray:
-			if i := len(n.values); 0 <= i && i < len(values) {
-				values = values[:i]
-				for i := range values {
-					values[i] = KV{}
+			if numV < uint(len(n.values)) {
+				values = n.values[:numV]
+				n.values = n.values[numV:]
+				for i := range n.values {
+					n.values[i] = V{}
 				}
+			} else if numV < uint(len(values)) {
+				values = values[:numV]
+			}
+			if id < uint(len(p.nodes)) {
+				p.nodes[id].values = values
 			}
 			return pos + 1
 		default:
@@ -325,35 +314,35 @@ readValue:
 	return p.eof(TypeArray)
 
 }
-func (p *Parser) parseObject(s string, pos uint, n *Node) uint {
+
+func (p *parser) parseObject(s string, pos uint) uint {
 	var (
+		id     = p.n
+		n      = p.node()
 		c      byte
-		v      *Node
 		key    string
-		values []KV
+		values []V
+		numV   uint
 	)
+	n.set(vObject, "")
 	// Skip space after opening '{'
 	for ; pos < uint(len(s)); pos++ {
 		c = s[pos]
-		if bytemapIsSpace[c] == 0 {
-			// Check for empty object
-			if c == delimEndObject {
-				n.info = vObject
-				n.raw = ""
-				for i := range n.values {
-					n.values[i] = KV{}
-				}
-				n.values = n.values[:0]
-				return pos + 1
+		switch c {
+		case delimEndObject:
+			// Zero out the values slice to
+			for i := range n.values {
+				n.values[i] = V{}
 			}
-			// Check for start of key
-			if c == delimString {
-				n.info = vObject
-				values = n.values
-				n.values = n.values[:0]
-				goto readKey
+			n.values = n.values[:0]
+			return pos + 1
+		case delimString:
+			values = n.values[:cap(n.values)]
+			goto readKey
+		default:
+			if bytemapIsSpace[c] == 0 {
+				return p.abort(pos, TypeObject, c, []rune{delimEndObject, delimString})
 			}
-			return p.abort(pos, TypeObject, c, []rune{delimEndObject, delimString})
 		}
 	}
 	return p.eof(TypeObject)
@@ -373,9 +362,13 @@ readKey:
 			switch key[i] {
 			case delimString:
 				// Slice until closing quote
+				values = appendV(values, key[:i], p.n, numV)
+				numV++
 				key = key[:i]
+				pos += i
+				// key = key[:i]
 				// Skip space after closing quote
-				for pos += i; pos < uint(len(s)); pos++ {
+				for ; pos < uint(len(s)); pos++ {
 					c = s[pos]
 					if c == delimNameSeparator {
 						goto readValue
@@ -395,13 +388,13 @@ readKey:
 	return p.eof(TypeObject)
 
 readValue:
-	v = p.node()
+	// values = appendV(values, V{p.n, key}, numV)
+	// numV++
 	// We're at ':' after key
-	pos = p.parseValue(s, pos+1, v)
+	pos = p.parseValue(s, pos+1)
 	if p.err != nil {
 		return pos
 	}
-	n.values = append(n.values, KV{key, v})
 	// Skip space after value
 	for ; pos < uint(len(s)); pos++ {
 		c = s[pos]
@@ -411,7 +404,6 @@ readValue:
 			for pos++; pos < uint(len(s)); pos++ {
 				c = s[pos]
 				if c == delimString {
-					// Append value
 					goto readKey
 				}
 				if bytemapIsSpace[c] == 0 {
@@ -420,11 +412,17 @@ readValue:
 			}
 			return p.eof(TypeObject)
 		case delimEndObject:
-			if i := len(n.values); 0 <= i && i < len(values) {
-				values = values[i:]
-				for i := range values {
-					values[i] = KV{}
+			if numV < uint(len(n.values)) {
+				values = n.values[:numV]
+				n.values = n.values[numV:]
+				for i := range n.values {
+					n.values[i] = V{}
 				}
+			} else if numV < uint(len(values)) {
+				values = values[:numV]
+			}
+			if id < uint(len(p.nodes)) {
+				p.nodes[id].values = values
 			}
 			return pos + 1
 		default:
@@ -434,4 +432,45 @@ readValue:
 		}
 	}
 	return p.eof(TypeObject)
+
 }
+
+func (n *N) set(info Info, raw string) {
+	n.info = info
+	n.raw = raw
+}
+
+// Update document nodes and returned unused nodes
+func (p *parser) update(d *Document) []N {
+	if p.n < uint(len(d.nodes)) {
+		nodes := d.nodes[p.n:]
+		d.nodes = d.nodes[:p.n]
+		return nodes
+	} else if p.n <= uint(cap(p.nodes)) {
+		d.nodes = p.nodes[:p.n]
+	}
+	return nil
+
+}
+
+// Garbage collect unused nodes' references to JSON source string
+func resetNodes(nodes []N) {
+	for i := range nodes {
+		n := &nodes[i]
+		n.raw = ""
+		for i := range n.values {
+			n.values[i] = V{}
+		}
+	}
+}
+
+const (
+	delimString         = '"'
+	delimEscape         = '\\'
+	delimBeginObject    = '{'
+	delimEndObject      = '}'
+	delimBeginArray     = '['
+	delimEndArray       = ']'
+	delimNameSeparator  = ':'
+	delimValueSeparator = ','
+)

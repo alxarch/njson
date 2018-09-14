@@ -6,17 +6,17 @@ import (
 )
 
 func TestNodeToBool(t *testing.T) {
-	d := Parser{}
+	d := Document{}
 	if n, _, err := d.Parse("true"); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if v, ok := n.ToBool(); !ok {
+	} else if v, ok := n.N().ToBool(); !ok {
 		t.Errorf("Unexpected conversion %v", n)
 	} else if !v {
 		t.Errorf("Unexpected conversion %v", n)
 	}
 	if n, _, err := d.Parse("false"); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if v, ok := n.ToBool(); !ok {
+	} else if v, ok := n.N().ToBool(); !ok {
 		t.Errorf("Unexpected conversion %v", n)
 	} else if v {
 		t.Errorf("Unexpected conversion %v", n)
@@ -26,7 +26,7 @@ func TestNodeToBool(t *testing.T) {
 	// } else if v {
 	// 	t.Errorf("Unexpected conversion %v", v)
 	// }
-	if v, ok := new(Node).ToBool(); ok {
+	if v, ok := new(N).ToBool(); ok {
 		t.Errorf("Unexpected conversion %v", v)
 	} else if v {
 		t.Errorf("Unexpected conversion %v", v)
@@ -34,16 +34,16 @@ func TestNodeToBool(t *testing.T) {
 }
 
 func TestNodeToFloat(t *testing.T) {
-	d := Parser{}
+	d := Document{}
 	n, _, err := d.Parse("1.2")
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 	}
-	if f, ok := n.ToFloat(); !ok {
+	if f, ok := n.N().ToFloat(); !ok {
 		t.Errorf("Unexpected conversion error")
 	} else if f != 1.2 {
 		t.Errorf("Unexpected conversion %f", f)
-	} else if f, ok := n.ToFloat(); !ok {
+	} else if f, ok := n.N().ToFloat(); !ok {
 		t.Errorf("Unexpected conversion error")
 	} else if f != 1.2 {
 		t.Errorf("Unexpected conversion %f", f)
@@ -51,7 +51,7 @@ func TestNodeToFloat(t *testing.T) {
 
 	// if n, _, err := d.Parse("NaN"); err != nil {
 	// 	t.Errorf("Unexpected error: %s", err)
-	// } else if f, ok := n.ToFloat(); !ok {
+	// } else if f, ok := n.Node().ToFloat(); !ok {
 	// 	t.Errorf("Unexpected conversion error")
 	// } else if !math.IsNaN(f) {
 	// 	t.Errorf("Unexpected conversion %f", f)
@@ -59,7 +59,7 @@ func TestNodeToFloat(t *testing.T) {
 
 	if n, _, err := d.Parse("0"); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if f, ok := n.ToFloat(); !ok {
+	} else if f, ok := n.N().ToFloat(); !ok {
 		t.Errorf("Unexpected conversion error")
 	} else if f != 0 {
 		t.Errorf("Unexpected conversion %f", f)
@@ -67,7 +67,7 @@ func TestNodeToFloat(t *testing.T) {
 
 	if n, _, err := d.Parse("-17"); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if f, ok := n.ToFloat(); !ok {
+	} else if f, ok := n.N().ToFloat(); !ok {
 		t.Errorf("Unexpected conversion error")
 	} else if f != -17 {
 		t.Errorf("Unexpected conversion %f", f)
@@ -75,12 +75,12 @@ func TestNodeToFloat(t *testing.T) {
 
 	if n, _, err := d.Parse("-a7"); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if _, ok := n.ToFloat(); ok {
+	} else if _, ok := n.N().ToFloat(); ok {
 		t.Errorf("Expected conversion error")
 	}
 	if n, _, err := d.Parse("true"); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if _, ok := n.ToFloat(); ok {
+	} else if _, ok := n.N().ToFloat(); ok {
 		t.Errorf("Unexpected conversion error")
 	}
 	// if v, ok := ((*Node)(nil)).ToFloat(); ok {
@@ -91,15 +91,15 @@ func TestNodeToFloat(t *testing.T) {
 }
 
 func TestNodeToInt(t *testing.T) {
-	d := Parser{}
+	d := Document{}
 	if n, _, err := d.Parse("1.2"); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if _, ok := n.ToInt(); ok {
+	} else if _, ok := n.N().ToInt(); ok {
 		t.Errorf("Unexpected conversion ok")
 	}
 	if n, _, err := d.Parse("-1.0"); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if f, ok := n.ToInt(); !ok {
+	} else if f, ok := n.N().ToInt(); !ok {
 		t.Errorf("Unexpected conversion error %#v %d", n, f)
 	} else if f != -1 {
 		t.Errorf("Unexpected conversion %d", f)
@@ -107,13 +107,13 @@ func TestNodeToInt(t *testing.T) {
 
 	// if n, _, err := d.Parse("NaN"); err != nil {
 	// 	t.Errorf("Unexpected error: %s", err)
-	// } else if _, ok := n.ToInt(); ok {
+	// } else if _, ok := n.Node().ToInt(); ok {
 	// 	t.Errorf("Unexpected conversion error")
 	// }
 
 	if n, _, err := d.Parse("0"); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if f, ok := n.ToInt(); !ok {
+	} else if f, ok := n.N().ToInt(); !ok {
 		t.Errorf("Unexpected conversion error")
 	} else if f != 0 {
 		t.Errorf("Unexpected conversion %d", f)
@@ -121,18 +121,18 @@ func TestNodeToInt(t *testing.T) {
 
 	if n, _, err := d.Parse("-17"); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if f, ok := n.ToInt(); !ok {
+	} else if f, ok := n.N().ToInt(); !ok {
 		t.Errorf("Unexpected conversion error")
 	} else if f != -17 {
 		t.Errorf("Unexpected conversion %d", f)
 	}
 	if n, _, err := d.Parse("42.0"); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if f, ok := n.ToInt(); !ok {
+	} else if f, ok := n.N().ToInt(); !ok {
 		t.Errorf("Unexpected conversion error")
 	} else if f != 42 {
 		t.Errorf("Unexpected conversion %d", f)
-	} else if f, ok := n.ToInt(); !ok {
+	} else if f, ok := n.N().ToInt(); !ok {
 		t.Errorf("Unexpected conversion error")
 	} else if f != 42 {
 		t.Errorf("Unexpected conversion %d", f)
@@ -140,23 +140,23 @@ func TestNodeToInt(t *testing.T) {
 
 	if n, _, err := d.Parse("-a7"); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if v, ok := n.ToInt(); ok {
+	} else if v, ok := n.N().ToInt(); ok {
 		t.Errorf("Unexpected conversion %v", v)
 	}
 }
 
 func TestNodeToUint(t *testing.T) {
-	d := Parser{}
+	d := Document{}
 	n, _, err := d.Parse("1.2")
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 	}
-	if _, ok := n.ToUint(); ok {
+	if _, ok := n.N().ToUint(); ok {
 		t.Errorf("Unexpected conversion ok")
 	}
 	if n, _, err := d.Parse("0"); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if f, ok := n.ToUint(); !ok {
+	} else if f, ok := n.N().ToUint(); !ok {
 		t.Errorf("Unexpected conversion error")
 	} else if f != 0 {
 		t.Errorf("Unexpected conversion %d", f)
@@ -164,23 +164,23 @@ func TestNodeToUint(t *testing.T) {
 
 	// if n, _, err := d.Parse("NaN"); err != nil {
 	// 	t.Errorf("Unexpected error: %s", err)
-	// } else if _, ok := n.ToUint(); ok {
+	// } else if _, ok := n.Node().ToUint(); ok {
 	// 	t.Errorf("Unexpected conversion error")
 	// }
 
 	if n, _, err := d.Parse("-17"); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if _, ok := n.ToUint(); ok {
+	} else if _, ok := n.N().ToUint(); ok {
 		t.Errorf("Unexpected conversion ok")
 	}
 
 	if n, _, err := d.Parse("42.0"); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if f, ok := n.ToUint(); !ok {
+	} else if f, ok := n.N().ToUint(); !ok {
 		t.Errorf("Unexpected conversion error")
 	} else if f != 42 {
 		t.Errorf("Unexpected conversion %d", f)
-	} else if f, ok := n.ToUint(); !ok {
+	} else if f, ok := n.N().ToUint(); !ok {
 		t.Errorf("Unexpected conversion error")
 	} else if f != 42 {
 		t.Errorf("Unexpected conversion %d", f)
@@ -188,7 +188,7 @@ func TestNodeToUint(t *testing.T) {
 
 	if n, _, err := d.Parse("-a7"); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if u, ok := n.ToUint(); ok {
+	} else if u, ok := n.N().ToUint(); ok {
 		t.Errorf("Unexpected conversion %d", u)
 	}
 	// if v, ok := ((*Node)(nil)).ToUint(); ok {
@@ -344,12 +344,12 @@ func TestNodeToUint(t *testing.T) {
 // }
 
 func TestNode_PrintJSON(t *testing.T) {
-	d := Parser{}
+	d := Document{}
 	buf := bytes.NewBuffer(nil)
 	s := `{"answer":42}`
 	if n, _, err := d.Parse(s); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if N, err := n.PrintJSON(buf); err != nil {
+	} else if N, err := PrintJSON(buf, n); err != nil {
 		t.Errorf("Failed to print %v to buffer.", n)
 	} else if N != len(s) {
 		t.Errorf("Invalid number of written bytes %d != %d", N, len(s))

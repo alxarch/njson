@@ -1,6 +1,8 @@
 package njson
 
 import (
+	"encoding/json"
+	"errors"
 	"strconv"
 	"sync"
 
@@ -18,7 +20,7 @@ type Document struct {
 func (d *Document) Lookup(id uint, path []string) (uint, bool) {
 lookup:
 	for _, key := range path {
-		if n := d.Get(id); n != nil {
+		if n := d.N(id); n != nil {
 			switch n.info {
 			case vObject:
 				for _, v := range n.values {
@@ -109,8 +111,8 @@ func (d *Document) Object() uint {
 }
 
 // NewObject adds a new empty Object node to the document and returns a pointer to the node.
-func (d *Document) NewObject() *N {
-	return d.Get(d.Object())
+func (d *Document) NewObject() Node {
+	return Node{d.Object(), d.rev, d}
 }
 
 // Array adds a new empty Array node to the document and returns it's id.
@@ -123,8 +125,8 @@ func (d *Document) Array() uint {
 }
 
 // NewArray adds a new empty Array node to the document and returns a pointer to the node.
-func (d *Document) NewArray() *N {
-	return d.Get(d.Array())
+func (d *Document) NewArray() Node {
+	return Node{d.Array(), d.rev, d}
 }
 
 // Number adds a new Number node to the document and returns it's id.
@@ -144,16 +146,23 @@ func (d *Document) Reset() {
 	d.rev++
 }
 
-// Get finds a node by id.
+// N finds a node by id.
 // The returned node is only valid until Document.Close() or Document.Reset().
-func (d *Document) Get(id uint) *N {
+func (d *Document) N(id uint) *N {
 	if d != nil && id < uint(len(d.nodes)) {
 		return &d.nodes[id]
 	}
 	return nil
 }
 
+// With returns a node with id set to id.
+func (d *Document) With(id uint) Node {
+	return Node{id, d.rev, d}
+}
+
 var docs = new(sync.Pool)
+
+const minNumNodes = 64
 
 // Blank returns a blank document from a pool.
 // Use Document.Close() to reset and return the document to the pool.
@@ -161,7 +170,10 @@ func Blank() *Document {
 	if x := docs.Get(); x != nil {
 		return x.(*Document)
 	}
-	return new(Document)
+	d := Document{
+		nodes: make([]N, 0, minNumNodes),
+	}
+	return &d
 }
 
 // Close returns the document to the pool to be reused.
@@ -172,7 +184,7 @@ func (d *Document) Close() {
 
 // ToInterface converts a node to any combatible go value (many allocations on large trees).
 func (d *Document) ToInterface(id uint) (interface{}, bool) {
-	n := d.Get(id)
+	n := d.N(id)
 	if n == nil {
 		return nil, false
 	}
@@ -222,8 +234,15 @@ func (d *Document) ToInterface(id uint) (interface{}, bool) {
 	}
 }
 
+func (p Node) AppendJSON(dst []byte) ([]byte, error) {
+	if d := p.Document(); d != nil {
+		return d.AppendJSON(dst, p.id)
+	}
+	return dst, errors.New("Nil document")
+}
+
 func (d *Document) AppendJSON(dst []byte, id uint) ([]byte, error) {
-	n := d.Get(id)
+	n := d.N(id)
 	if n == nil {
 		return dst, newTypeError(TypeInvalid, TypeAnyValue)
 	}
@@ -237,7 +256,7 @@ func (d *Document) AppendJSON(dst []byte, id uint) ([]byte, error) {
 			}
 			dst = append(dst, delimString)
 			dst = append(dst, v.Key...)
-			dst = append(dst, delimString)
+			dst = append(dst, delimString, delimNameSeparator)
 			dst, err = d.AppendJSON(dst, v.ID)
 			if err != nil {
 				return dst, err
@@ -276,7 +295,36 @@ func (d *Document) Root() *N {
 	return nil
 }
 
-// Partial returns a Partial for a node id.
-func (d *Document) Partial(id uint) Partial {
-	return Partial{id, d.rev, d}
+type Unmarshaler interface {
+	UnmarshalNodeJSON(n Node) error
+}
+
+// WrapUnmarshalJSON wraps a call to the json.Unmarshaler interface
+func (n Node) WrapUnmarshalJSON(u json.Unmarshaler) (err error) {
+	node := n.N()
+	if node == nil {
+		return node.TypeError(TypeAnyValue)
+	}
+
+	switch node.info.Type() {
+	case TypeArray:
+		if len(node.values) == 0 {
+			return u.UnmarshalJSON([]byte{delimBeginArray, delimEndArray})
+		}
+	case TypeObject:
+		if len(node.values) == 0 {
+			return u.UnmarshalJSON([]byte{delimBeginObject, delimEndObject})
+		}
+	case TypeInvalid:
+		return node.TypeError(TypeAnyValue)
+	default:
+		return u.UnmarshalJSON(s2b(node.raw))
+	}
+	data := bufferpool.Get().([]byte)
+	data, err = n.Document().AppendJSON(data[:0], n.id)
+	if err == nil {
+		err = u.UnmarshalJSON(data)
+	}
+	bufferpool.Put(data)
+	return
 }

@@ -7,28 +7,61 @@ import (
 
 type cacheKey struct {
 	reflect.Type
-	Options
+	options Options
 }
 
 var (
 	unmarshalCacheLock sync.RWMutex
-	unmarshalCache     = map[cacheKey]Unmarshaler{}
+	unmarshalCache     = map[cacheKey]Decoder{}
 	marshalCacheLock   sync.RWMutex
-	marhsalCache       = map[cacheKey]Marshaler{}
+	marshalCache       = map[cacheKey]Encoder{}
+	codecCacheLock     sync.RWMutex
+	codecCache         = map[cacheKey]dencoder{}
 )
 
-func cachedUnmarshaler(typ reflect.Type, options Options) (u Unmarshaler, err error) {
-	if typ == nil {
-		return interfaceCodec{options}, nil
+type dencoder interface {
+	encoder
+	decoder
+}
+
+func cachedCodec(typ reflect.Type, options *Options) (c dencoder, err error) {
+	if typ == nil || typ.Kind() != reflect.Struct {
+		return nil, errInvalidType
 	}
-	key := cacheKey{typ, options}
+	if options == nil {
+		options = &defaultOptions
+	}
+	key := cacheKey{typ, *options}
+	codecCacheLock.RLock()
+	c, ok := codecCache[key]
+	codecCacheLock.RUnlock()
+	if ok {
+		return
+	}
+	if c, err = newStructCodec(typ, options); err != nil {
+		return
+	}
+	codecCacheLock.Lock()
+	codecCache[key] = c
+	codecCacheLock.Unlock()
+	return
+}
+
+func cachedDecoder(typ reflect.Type, options *Options) (u Decoder, err error) {
+	if typ == nil {
+		return interfaceDecoder{}, nil
+	}
+	if options == nil {
+		options = &defaultOptions
+	}
+	key := cacheKey{typ, *options}
 	unmarshalCacheLock.RLock()
 	u, ok := unmarshalCache[key]
 	unmarshalCacheLock.RUnlock()
 	if ok {
 		return
 	}
-	if u, err = newTypeUnmarshaler(typ, options); err != nil {
+	if u, err = newTypeDecoder(typ, options); err != nil {
 		return
 	}
 	unmarshalCacheLock.Lock()
@@ -37,22 +70,25 @@ func cachedUnmarshaler(typ reflect.Type, options Options) (u Unmarshaler, err er
 	return
 }
 
-func cachedMarshaler(typ reflect.Type, options Options) (m Marshaler, err error) {
+func cachedEncoder(typ reflect.Type, options *Options) (m Encoder, err error) {
 	if typ == nil {
-		return interfaceCodec{options}, nil
+		return interfaceEncoder{}, nil
 	}
-	key := cacheKey{typ, options}
+	if options == nil {
+		options = &defaultOptions
+	}
+	key := cacheKey{typ, *options}
 	marshalCacheLock.RLock()
-	m, ok := marhsalCache[key]
+	m, ok := marshalCache[key]
 	marshalCacheLock.RUnlock()
 	if ok {
 		return
 	}
-	if m, err = newTypeMarshaler(typ, DefaultOptions()); err != nil {
+	if m, err = newTypeEncoder(typ, options); err != nil {
 		return
 	}
 	marshalCacheLock.Lock()
-	marhsalCache[key] = m
+	marshalCache[key] = m
 	marshalCacheLock.Unlock()
 	return
 }

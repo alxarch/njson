@@ -24,24 +24,26 @@ func BenchmarkJSON_Unmarshal(b *testing.B) {
 func BenchmarkUnmarshalFromString(b *testing.B) {
 	var err error
 	b.SetBytes(int64(len(mediumJSON)))
-	b.ResetTimer()
 	m := medium{}
+	if err = unjson.UnmarshalFromString(mediumJSON, &m); err != nil {
+		b.Errorf("UnexpectedError: %s", err)
+	}
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err = unjson.UnmarshalFromString(mediumJSON, &m); err != nil {
-			b.Errorf("UnexpectedError: %s", err)
-		}
+		unjson.UnmarshalFromString(mediumJSON, &m)
 	}
 }
 func BenchmarkParseAndUnmarshal(b *testing.B) {
-	p := njson.Get()
-	defer p.Close()
+	d := njson.Blank()
+	defer d.Close()
 	b.SetBytes(int64(len(mediumJSON)))
 	b.ResetTimer()
 	m := medium{}
 	var err error
-	var n *njson.Node
+	var n njson.Node
 	for i := 0; i < b.N; i++ {
-		if n, _, err = p.Parse(mediumJSON); err != nil {
+		d.Reset()
+		if n, _, err = d.Parse(mediumJSON); err != nil {
 			b.Errorf("UnexpectedError: %s", err)
 		}
 		if err = unjson.UnmarshalFromNode(n, &m); err != nil {
@@ -50,7 +52,7 @@ func BenchmarkParseAndUnmarshal(b *testing.B) {
 	}
 }
 func BenchmarkUnmarshaler_Unmarshal(b *testing.B) {
-	dec, err := unjson.TypeUnmarshaler(reflect.TypeOf(&medium{}), unjson.DefaultOptions())
+	dec, err := unjson.TypeDecoder(reflect.TypeOf(&medium{}), "")
 	if err != nil {
 		b.Errorf("UnexpectedError: %s", err)
 		return
@@ -59,23 +61,21 @@ func BenchmarkUnmarshaler_Unmarshal(b *testing.B) {
 		b.Errorf("Nil decoder")
 		return
 	}
-	doc := njson.Get()
-	root, _, err := doc.Parse(mediumJSON)
-	doc.Close()
-	if err != nil {
-		b.Errorf("UnexpectedError: %s", err)
-		return
-	}
-	if root == nil {
-		b.Errorf("Nil root")
-		return
-	}
+	d := njson.Blank()
+	defer d.Close()
 	b.ResetTimer()
 	b.SetBytes(int64(len(mediumJSON)))
 	m := medium{}
+	var n njson.Node
 	for i := 0; i < b.N; i++ {
-		if err = dec.Unmarshal(&m, root); err != nil {
+		d.Reset()
+		if n, _, err = d.Parse(mediumJSON); err != nil {
 			b.Errorf("UnexpectedError: %s", err)
+			return
+		}
+		if err = dec.Decode(&m, n.ID(), d); err != nil {
+			b.Errorf("UnexpectedError: %s", err)
+			return
 		}
 	}
 }

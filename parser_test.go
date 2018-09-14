@@ -3,11 +3,12 @@ package njson
 import (
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 )
 
 func TestParseQuick(t *testing.T) {
-	s := `{"answer":42}`
+	s := largeJSON
 	testParse(t, s, s)
 }
 func TestParse(t *testing.T) {
@@ -17,6 +18,7 @@ func TestParse(t *testing.T) {
 		testParse(t, in, out)
 	}
 	for _, src := range []string{
+		largeJSON,
 		`{"results":[]}`,
 		`{"answer":42}`,
 		`{"foo":"bar"}`,
@@ -42,7 +44,6 @@ func TestParse(t *testing.T) {
 		`{"results":[{"id":42,"name":"answer"},{"id":43,"name":"answerplusone"}],"error":null}`,
 		smallJSON,
 		mediumJSON,
-		largeJSON,
 	} {
 		testParse(t, src, src)
 	}
@@ -51,59 +52,24 @@ func TestParse(t *testing.T) {
 
 func testParse(t *testing.T, input, output string) {
 	t.Helper()
-	p := Parser{}
-	root, tail, err := p.Parse(input)
+	d := Blank()
+	defer d.Close()
+	p, tail, err := d.Parse(input)
 	if err != nil {
 		t.Error(input, err)
-	} else if root == nil {
-		t.Errorf("Nil root")
-	} else if out, _ := root.AppendJSON(nil); string(out) != output {
+	} else if out, _ := d.AppendJSON(nil, p.id); string(out) != output {
 		t.Errorf("Invalid root:\nexpect: %s\nactual: %s", output, out)
-	} else if tail != "" {
+	} else if strings.TrimSpace(tail) != "" {
 		t.Errorf("Tail not empty: %q", tail)
 	}
 }
 
-// func Test_scanNumberAt(t *testing.T) {
-// 	type args struct {
-// 		c   byte
-// 		s   string
-// 		pos int
-// 	}
-// 	tests := []struct {
-// 		name    string
-// 		args    args
-// 		want    string
-// 		wantEnd int
-// 		wantInf Info
-// 	}{
-// 		{`42`, args{'4', `42`, 0}, `42`, 2, vNumberUint},
-// 		{`-42`, args{'-', `-42`, 0}, `-42`, 3, vNumberInt},
-// 		{`-42.0`, args{'-', `-42.0`, 0}, `-42.0`, 5, vNumberFloat},
-// 		{`-a42.0`, args{'-', `-a42.0`, 0}, `-a`, 1, HasError},
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			got, gotEnd, gotInf := scanNumberAt(tt.args.c, tt.args.s, tt.args.pos)
-// 			if got != tt.want {
-// 				t.Errorf("scanNumberAt() got = %v, want %v", got, tt.want)
-// 			}
-// 			if gotEnd != tt.wantEnd {
-// 				t.Errorf("scanNumberAt() gotEnd = %v, want %v", gotEnd, tt.wantEnd)
-// 			}
-// 			if gotInf != tt.wantInf {
-// 				t.Errorf("scanNumberAt() gotInf = %v, want %v", gotInf, tt.wantInf)
-// 			}
-// 		})
-// 	}
-// }
-
 func TestParser_Parse(t *testing.T) {
-	p := Get()
+	p := Blank()
 	defer p.Close()
 	tests := []struct {
 		args    string
-		wantN   *Node
+		wantN   Node
 		wantS   string
 		wantErr bool
 	}{

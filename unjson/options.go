@@ -6,21 +6,31 @@ import (
 )
 
 type Options struct {
-	FieldParser           // If nil DefaultFieldParser is used
-	FloatPrecision int    // strconv.FormatFloat precision for marshaler
+	Tag       string
+	OmitEmpty bool
+	// FieldParser           // If nil DefaultFieldParser is used
 	OmitMethod     string // Method name for checking if a value is empty
+	HTML           bool   // Escape HTML-safe
+	FloatPrecision int    // strconv.FormatFloat precision for marshaler
+	AllowNaN       bool   // Allow NaN values for numbers
+	AllowInf       bool   // Allow ±Inf values for numbers
 }
 
-func (o Options) parseField(f reflect.StructField) (name string, omiempty, ok bool) {
-	if o.FieldParser == nil {
-		return defaultFieldParser.parseField(f)
+func (o *Options) parseField(f reflect.StructField) (name string, omiempty, ok bool) {
+	p := fieldParser{}
+	if o != nil {
+		p.Key = o.Tag
+		p.OmitEmpty = o.OmitEmpty
 	}
-	return o.FieldParser.parseField(f)
+	if p.Key == "" {
+		p.Key = defaultTag
+	}
+	return p.parseField(f)
 }
 
 func (o Options) normalize() Options {
-	if o.FieldParser == nil {
-		o.FieldParser = defaultFieldParser
+	if o.Tag == "" {
+		o.Tag = defaultTag
 	}
 	if o.FloatPrecision <= 0 {
 		o.FloatPrecision = defaultOptions.FloatPrecision
@@ -39,9 +49,13 @@ const (
 var (
 	defaultFieldParser = NewFieldParser(defaultTag, false)
 	defaultOptions     = Options{
-		FieldParser:    defaultFieldParser,
-		FloatPrecision: 6,
+		Tag:            defaultTag,
+		OmitEmpty:      false,
+		FloatPrecision: -1,
 		OmitMethod:     defaultOmitMethod,
+		HTML:           false,
+		AllowInf:       false,
+		AllowNaN:       false,
 	}
 )
 
