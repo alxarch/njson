@@ -201,7 +201,7 @@ func (g *Generator) TypeAppender(typ types.Type) (c meta.Code) {
 				out = append(out, '"')`).Import(strjsonPkg)
 		default:
 			if info := t.Info(); info&types.IsFloat != 0 {
-				return c.Println(`out = strconv.AppendFloat(out, float64(v), 'f', -1, 64)`).Import(strconvPkg)
+				return c.Println(`out = numjson.AppendFloat(out, float64(v), 64)`).Import(numjsonPkg)
 			} else if info&types.IsUnsigned != 0 {
 				return c.Println(`out = strconv.AppendUint(out, uint64(v), 10)`).Import(strconvPkg)
 			} else if info&types.IsInteger != 0 {

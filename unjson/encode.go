@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/alxarch/njson"
+	"github.com/alxarch/njson/numjson"
 	"github.com/alxarch/njson/strjson"
 )
 
@@ -313,24 +314,20 @@ func (boolEncoder) encode(b []byte, v reflect.Value) ([]byte, error) {
 }
 
 type floatEncoder struct {
-	bits      int
-	precision int
-	allowInf  bool
-	allowNan  bool
+	bits     int
+	allowInf bool
+	allowNan bool
 }
 
 func newFloatEncoder(bits int, options *Options) (floatEncoder, error) {
-	e := floatEncoder{bits, -1, options.AllowInf, options.AllowNaN}
-	// if options.FloatPrecision > 0 {
-	// 	e.precision = options.FloatPrecision
-	// }
+	e := floatEncoder{bits, options.AllowInf, options.AllowNaN}
 	return e, nil
 }
 
 func (e floatEncoder) encode(out []byte, v reflect.Value) ([]byte, error) {
 	f := v.Float()
 	if math.IsInf(f, 0) {
-		if e.allowNan {
+		if e.allowInf {
 			if math.IsInf(f, -1) {
 				return append(out, "-Inf"...), nil
 			}
@@ -344,23 +341,7 @@ func (e floatEncoder) encode(out []byte, v reflect.Value) ([]byte, error) {
 		}
 		return out, errValue
 	}
-	abs := math.Abs(f)
-	fmt := byte('f')
-	if (e.bits == 64 && (abs < 1e-6 || abs >= 1e21)) ||
-		(e.bits == 32 && (float32(abs) < 1e-6 || float32(abs) > 1e21)) {
-		fmt = 'e'
-	}
-	out = strconv.AppendFloat(out, f, fmt, e.precision, e.bits)
-	if fmt == 'e' {
-		if i := len(out) - 4; 0 <= i && i < len(out) {
-			if buf := out[i:]; len(buf) == 4 && buf[0] == 'e' && buf[1] == '-' && buf[2] == '0' {
-				buf[2] = buf[3]
-				if i = len(out) - 1; 0 <= i && i < len(out) {
-					out = out[:i]
-				}
-			}
-		}
-	}
+	out = numjson.AppendFloat(out, f, e.bits)
 	return out, nil
 }
 

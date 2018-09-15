@@ -166,6 +166,7 @@ var (
 	methodOmit = typOmiter.Method(0)
 
 	strjsonPkg = meta.MustImport(njsonPkgPath + "/strjson")
+	numjsonPkg = meta.MustImport(njsonPkgPath + "/numjson")
 
 	jsonPkg            = meta.MustImport("encoding/json")
 	typJSONUnmarshaler = jsonPkg.Scope().Lookup("Unmarshaler").Type().Underlying().(*types.Interface)
