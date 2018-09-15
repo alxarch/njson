@@ -116,6 +116,9 @@ func (i Info) Type() Type {
 func (i Info) HasLen() bool {
 	return i&(vObject|vArray) != 0
 }
+func (t Type) IsNull() bool {
+	return t == TypeNull
+}
 
 func (i Info) IsNull() bool {
 	return i == vNull
@@ -123,9 +126,18 @@ func (i Info) IsNull() bool {
 func (i Info) IsArray() bool {
 	return i == vArray
 }
+func (t Type) IsArray() bool {
+	return t == TypeArray
+}
+func (t Type) IsValue() bool {
+	return t&TypeAnyValue != 0
+}
 func (i Info) IsValue() bool {
 	const vAnyValue = Info(TypeAnyValue)
 	return i&vAnyValue != 0
+}
+func (t Type) IsString() bool {
+	return t == TypeString
 }
 func (i Info) IsString() bool {
 	return i&vString == vString

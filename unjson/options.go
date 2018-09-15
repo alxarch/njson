@@ -9,13 +9,59 @@ type Options struct {
 	Tag       string
 	OmitEmpty bool
 	// FieldParser           // If nil DefaultFieldParser is used
-	OmitMethod     string // Method name for checking if a value is empty
-	HTML           bool   // Escape HTML-safe
-	FloatPrecision int    // strconv.FormatFloat precision for marshaler
-	AllowNaN       bool   // Allow NaN values for numbers
-	AllowInf       bool   // Allow ±Inf values for numbers
+	OmitMethod string // Method name for checking if a value is empty
+	HTML       bool   // Escape HTML-safe
+	AllowNaN   bool   // Allow NaN values for numbers
+	AllowInf   bool   // Allow ±Inf values for numbers
 }
 
+const (
+	offset64 = 14695981039346656037
+	prime64  = 1099511628211
+)
+
+var (
+	defaultOptionsHash = defaultOptions.hash()
+)
+
+// hashNew initializies a new fnv64a hash value.
+func hashNew() uint64 {
+	return offset64
+}
+
+// hashAddByte adds a byte to a fnv64a hash value, returning the updated hash.
+func hashAddByte(h uint64, b byte) uint64 {
+	h ^= uint64(b)
+	h *= prime64
+	return h
+}
+func hashAddUint64(h, n uint64) uint64 {
+	h ^= n
+	h *= prime64
+	return h
+}
+func (o *Options) hash() uint64 {
+	h := hashNew()
+	for _, c := range []byte(o.Tag) {
+		h = hashAddByte(h, c)
+	}
+	for _, c := range []byte(o.OmitMethod) {
+		h = hashAddByte(h, c)
+	}
+	if o.OmitEmpty {
+		h = hashAddByte(h, 'O')
+	}
+	if o.HTML {
+		h = hashAddByte(h, 'H')
+	}
+	if o.AllowInf {
+		h = hashAddByte(h, 'I')
+	}
+	if o.AllowNaN {
+		h = hashAddByte(h, 'N')
+	}
+	return h
+}
 func (o *Options) parseField(f reflect.StructField) (name string, omiempty, ok bool) {
 	p := fieldParser{}
 	if o != nil {
@@ -32,9 +78,9 @@ func (o Options) normalize() Options {
 	if o.Tag == "" {
 		o.Tag = defaultTag
 	}
-	if o.FloatPrecision <= 0 {
-		o.FloatPrecision = defaultOptions.FloatPrecision
-	}
+	// if o.FloatPrecision <= 0 {
+	// 	o.FloatPrecision = defaultOptions.FloatPrecision
+	// }
 	if o.OmitMethod == "" {
 		o.OmitMethod = defaultOmitMethod
 	}
@@ -49,13 +95,13 @@ const (
 var (
 	defaultFieldParser = NewFieldParser(defaultTag, false)
 	defaultOptions     = Options{
-		Tag:            defaultTag,
-		OmitEmpty:      false,
-		FloatPrecision: -1,
-		OmitMethod:     defaultOmitMethod,
-		HTML:           false,
-		AllowInf:       false,
-		AllowNaN:       false,
+		Tag:       defaultTag,
+		OmitEmpty: false,
+		// FloatPrecision: -1,
+		OmitMethod: defaultOmitMethod,
+		HTML:       false,
+		AllowInf:   false,
+		AllowNaN:   false,
 	}
 )
 

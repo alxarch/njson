@@ -18,7 +18,7 @@ func benchmark(src string) func(b *testing.B) {
 			b.Errorf("Non empty tail: %q", tail)
 			return
 		}
-		if n.N() == nil {
+		if n.get() == nil {
 			b.Errorf("Nil root")
 			return
 		}

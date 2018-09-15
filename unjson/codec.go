@@ -7,11 +7,45 @@ import (
 )
 
 type structCodec struct {
-	fields map[string]codec
-	zero   reflect.Value
+	fields    []codec
+	zeroValue reflect.Value
+}
+
+func (c *structCodec) Add(f codec) {
+	c.fields = append(c.fields, f)
+}
+func (c *structCodec) Get(key string) *codec {
+	for i := range c.fields {
+		f := &c.fields[i]
+		if f.key == key {
+			return f
+		}
+	}
+	return nil
+	// // Binary search in sorted fields
+	// var (
+	// 	i, j, h = 0, len(c.fields), 0
+	// 	f       *fieldCodec
+	// )
+	// for i < j {
+	// 	h = int(uint(i+j) >> 1) // avoid overflow when computing h
+	// 	// i ≤ h < j
+	// 	if 0 <= h && h < len(c.fields) {
+	// 		f = &c.fields[h]
+	// 		if f.Key < key {
+	// 			i = h + 1
+	// 		} else if f.Key > key {
+	// 			j = h
+	// 		} else {
+	// 			return f.codec
+	// 		}
+	// 	}
+	// }
+	// return nil
 }
 
 type codec struct {
+	key   string
 	index []int
 	n     int
 	decoder
@@ -19,8 +53,9 @@ type codec struct {
 	omit omiter
 }
 
-func (d structCodec) omit(v reflect.Value) bool {
-	for _, field := range d.fields {
+func (d *structCodec) omit(v reflect.Value) bool {
+	for i := range d.fields {
+		field := &d.fields[i]
 		if f := fieldByIndex(v, field.index); f.IsValid() && !field.omit(f) {
 			return false
 		}
@@ -28,30 +63,30 @@ func (d structCodec) omit(v reflect.Value) bool {
 	return true
 }
 
-func (d structCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
+func (d *structCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
 	var (
-		i   = 0
 		err error
 		fv  reflect.Value
+		fc  *codec
 	)
 	b = append(b, delimBeginObject)
-	for name, field := range d.fields {
-		fv = fieldByIndex(v, field.index)
-		if !fv.IsValid() || field.omit(fv) {
+	for i := range d.fields {
+		fc = &d.fields[i]
+		fv = fieldByIndex(v, fc.index)
+		if !fv.IsValid() || fc.omit(fv) {
 			continue
 		}
 		if i > 0 {
 			b = append(b, delimValueSeparator)
 		}
 		b = append(b, delimString)
-		b = append(b, name...)
+		b = append(b, fc.key...)
 		b = append(b, delimString)
 		b = append(b, delimNameSeparator)
-		b, err = field.encode(b, fv)
+		b, err = fc.encode(b, fv)
 		if err != nil {
 			return b, err
 		}
-		i++
 	}
 	b = append(b, delimEndObject)
 	return b, nil
@@ -91,7 +126,7 @@ func (d *structCodec) merge(typ reflect.Type, options *Options, index []int) err
 			}
 		}
 		// tag = string(strjson.Escape(nil, tag))
-		if ff, duplicate := d.fields[tag]; duplicate && cmpIndex(ff.index, index) != -1 {
+		if ff := d.Get(tag); ff != nil && cmpIndex(ff.index, index) != -1 {
 			continue
 		}
 		u, err := newDecoder(field.Type, options)
@@ -110,32 +145,37 @@ func (d *structCodec) merge(typ reflect.Type, options *Options, index []int) err
 				omit = newOmiter(field.Type, options.OmitMethod)
 			}
 		}
-		d.fields[tag] = codec{
+		d.Add(codec{
+			key:     tag,
 			index:   copyIndex(index),
 			n:       len(index),
 			decoder: u,
 			encoder: m,
 			omit:    omit,
-		}
+		})
 	}
 	return nil
 
 }
 
-func newStructCodec(typ reflect.Type, options *Options) (structCodec, error) {
+func newStructCodec(typ reflect.Type, options *Options) (*structCodec, error) {
 	if typ.Kind() == reflect.Ptr {
 		typ = typ.Elem()
 	}
 	if typ.Kind() != reflect.Struct {
-		return structCodec{}, errInvalidType
+		return nil, errInvalidType
 	}
-	d := structCodec{
-		fields: make(map[string]codec, typ.NumField()),
-		zero:   reflect.Zero(typ),
+	d := &structCodec{
+		fields:    make([]codec, 0, typ.NumField()),
+		zeroValue: reflect.Zero(typ),
 	}
 	if err := d.merge(typ, options, nil); err != nil {
-		return structCodec{}, err
+		return nil, err
 	}
+	// // Sort fields for binary search
+	// sort.Slice(d.fields, func(i, j int) bool {
+	// 	return d.fields[i].Key < d.fields[j].Key
+	// })
 	return d, nil
 }
 
@@ -153,27 +193,30 @@ func fieldByIndex(v reflect.Value, index []int) reflect.Value {
 	return v
 }
 
-func (d structCodec) decode(v reflect.Value, id uint, doc *njson.Document) (err error) {
-	switch n := doc.N(id); n.Type() {
+func (d *structCodec) decode(v reflect.Value, n njson.Node) (err error) {
+	switch n.Type() {
 	case njson.TypeNull:
-		v.Set(d.zero)
+		v.Set(d.zeroValue)
 		return nil
 	case njson.TypeObject:
 		var (
 			field reflect.Value
-			fc    codec
-			i, j  int
+			fc    *codec
 		)
-		for _, kv := range n.Values() {
-			switch fc = d.fields[kv.Key]; len(fc.index) {
+		for values := n.Values(); values.Next(); {
+			fc = d.Get(values.Key())
+			if fc == nil {
+				continue
+			}
+			switch len(fc.index) {
 			case 0:
 				continue
 			case 1:
 				field = v.Field(fc.index[0])
 			default:
 				field = v.Field(fc.index[0])
-				for i = 1; 0 <= i && i < len(fc.index); i++ {
-					switch j = fc.index[i]; j {
+				for i := 1; 0 <= i && i < len(fc.index); i++ {
+					switch j := fc.index[i]; j {
 					case -1:
 						if field.IsNil() {
 							field = reflect.New(field.Type().Elem())
@@ -184,7 +227,7 @@ func (d structCodec) decode(v reflect.Value, id uint, doc *njson.Document) (err 
 					}
 				}
 			}
-			if err = fc.decode(field, kv.ID, doc); err != nil {
+			if err = fc.decode(field, n.With(values.ID())); err != nil {
 				return
 			}
 		}

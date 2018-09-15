@@ -6,8 +6,8 @@ import (
 )
 
 type cacheKey struct {
-	reflect.Type
-	options Options
+	typ     reflect.Type
+	options uint64
 }
 
 var (
@@ -28,10 +28,12 @@ func cachedCodec(typ reflect.Type, options *Options) (c dencoder, err error) {
 	if typ == nil || typ.Kind() != reflect.Struct {
 		return nil, errInvalidType
 	}
+	key := cacheKey{typ, defaultOptionsHash}
 	if options == nil {
 		options = &defaultOptions
+	} else {
+		key.options = options.hash()
 	}
-	key := cacheKey{typ, *options}
 	codecCacheLock.RLock()
 	c, ok := codecCache[key]
 	codecCacheLock.RUnlock()
@@ -51,10 +53,12 @@ func cachedDecoder(typ reflect.Type, options *Options) (u Decoder, err error) {
 	if typ == nil {
 		return interfaceDecoder{}, nil
 	}
+	key := cacheKey{typ, defaultOptionsHash}
 	if options == nil {
 		options = &defaultOptions
+	} else {
+		key.options = options.hash()
 	}
-	key := cacheKey{typ, *options}
 	unmarshalCacheLock.RLock()
 	u, ok := unmarshalCache[key]
 	unmarshalCacheLock.RUnlock()
@@ -74,10 +78,13 @@ func cachedEncoder(typ reflect.Type, options *Options) (m Encoder, err error) {
 	if typ == nil {
 		return interfaceEncoder{}, nil
 	}
+	key := cacheKey{typ, defaultOptionsHash}
 	if options == nil {
 		options = &defaultOptions
+	} else {
+		key.options = options.hash()
 	}
-	key := cacheKey{typ, *options}
+
 	marshalCacheLock.RLock()
 	m, ok := marshalCache[key]
 	marshalCacheLock.RUnlock()

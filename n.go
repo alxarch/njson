@@ -19,8 +19,58 @@ type N struct {
 // V is a node's value referencing it's id.
 // Array node's values have empty string keys.
 type V struct {
-	ID  uint
-	Key string
+	id  uint
+	key string
+}
+
+// Key returns a value's key
+func (v *V) Key() string {
+	return v.key
+}
+
+// ID returns a value's id
+func (v *V) ID() uint {
+	return v.id
+}
+
+type IterV struct {
+	*V
+	index  int
+	values []V
+}
+
+func (i *IterV) Reset() {
+	i.index = 0
+	i.V = nil
+}
+func (i *IterV) Close() {
+	i.values = nil
+	i.V = nil
+}
+func (i *IterV) Next() bool {
+	if 0 <= i.index && i.index < len(i.values) {
+		i.V = &i.values[i.index]
+		i.index++
+		return true
+	}
+	i.V = nil
+	i.index = -1
+	// i.values = nil
+	return false
+}
+func (i *IterV) Len() int {
+	return len(i.values)
+}
+
+func (i *IterV) Index() int {
+	return i.index
+}
+
+func (n *N) Values() IterV {
+	if n != nil {
+		return IterV{values: n.values}
+	}
+	return IterV{}
 }
 
 // Unescaped unescapes the value of a String node.
@@ -36,6 +86,9 @@ func (n *N) Unescaped() string {
 // Object and Array nodes return an empty string.
 // The returned string is safe to use even if ParseUnsafe was used.
 func (n *N) Safe() string {
+	if n == nil {
+		return ""
+	}
 	if n.info.Safe() {
 		return n.raw
 	}
@@ -48,21 +101,26 @@ func (n *N) Safe() string {
 // Object and Array nodes return an empty string.
 // The returned string is NOT safe to use if ParseUnsafe was used.
 func (n *N) Raw() string {
-	return n.raw
+	if n != nil {
+		return n.raw
+	}
+	return ""
 }
+
+// Bytes returns a node's JSON string as bytes
 func (n *N) Bytes() []byte {
-	return s2b(n.raw)
+	if n != nil {
+		return s2b(n.raw)
+	}
+	return nil
 }
 
 // Len returns the length of a node's values.
 func (n *N) Len() int {
-	return len(n.values)
-}
-
-// Values returns a node's values.
-// Only non-empty Object and Array nodes have values.
-func (n *N) Values() []V {
-	return n.values
+	if n != nil {
+		return len(n.values)
+	}
+	return 0
 }
 
 // Append appends a node id to an Array node's values.
@@ -77,9 +135,11 @@ func (n *N) Append(id uint) {
 // If the key needs escaping use strjson.Escaped.
 func (n *N) Set(key string, id uint) {
 	if n != nil && n.info == vObject {
+		var v *V
 		for i := range n.values {
-			if n.values[i].Key == key {
-				n.values[i].ID = id
+			v = &n.values[i]
+			if v.key == key {
+				v.id = id
 				return
 			}
 		}
@@ -112,9 +172,11 @@ const maxUint = ^(uint(0))
 // Get finds a key in an Object node's values and returns it's id.
 func (n *N) Get(key string) uint {
 	if n != nil && n.info == vObject {
+		var v *V
 		for i := range n.values {
-			if n.values[i].Key == key {
-				return n.values[i].ID
+			v = &n.values[i]
+			if v.key == key {
+				return v.id
 			}
 		}
 	}
@@ -125,7 +187,7 @@ func (n *N) Get(key string) uint {
 func (n *N) Del(key string) {
 	if n != nil && n.info == vObject {
 		for i := range n.values {
-			if n.values[i].Key == key {
+			if n.values[i].key == key {
 				if j := len(n.values) - 1; 0 <= j && j < len(n.values) {
 					n.values[i] = n.values[j]
 					n.values[j] = V{}
@@ -150,20 +212,29 @@ func (n *N) TypeError(want Type) error {
 }
 
 func (n *N) ToUint() (uint64, bool) {
-	f := numjson.ParseFloat(n.raw)
-	return uint64(f), 0 <= f && f < math.MaxUint64 && math.Trunc(f) == f
+	if n != nil {
+		f := numjson.ParseFloat(n.raw)
+		return uint64(f), 0 <= f && f < math.MaxUint64 && math.Trunc(f) == f
+	}
+	return 0, false
 }
 func (n *N) ToInt() (int64, bool) {
-	f := numjson.ParseFloat(n.raw)
-	return int64(f), math.MinInt64 <= f && f < math.MaxInt64 && math.Trunc(f) == f
+	if n != nil {
+		f := numjson.ParseFloat(n.raw)
+		return int64(f), math.MinInt64 <= f && f < math.MaxInt64 && math.Trunc(f) == f
+	}
+	return 0, false
 }
 func (n *N) ToFloat() (float64, bool) {
-	f := numjson.ParseFloat(n.raw)
-	return f, f == f
+	if n != nil {
+		f := numjson.ParseFloat(n.raw)
+		return f, f == f
+	}
+	return 0, false
 }
 
 func (n *N) ToBool() (bool, bool) {
-	if n.info == vBoolean {
+	if n != nil && n.info == vBoolean {
 		switch n.raw {
 		case strTrue:
 			return true, true

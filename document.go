@@ -1,9 +1,7 @@
 package njson
 
 import (
-	"encoding/json"
 	"errors"
-	"strconv"
 	"sync"
 
 	"github.com/alxarch/njson/strjson"
@@ -17,28 +15,42 @@ type Document struct {
 	rev   uint // document revision incremented on every Reset/Close invalidating partials
 }
 
-func (d *Document) Lookup(id uint, path []string) (uint, bool) {
+func (d *Document) Lookup(id uint, path []string) uint {
+	var (
+		v *V
+		n *N
+	)
 lookup:
 	for _, key := range path {
-		if n := d.N(id); n != nil {
+		if n = d.get(id); n != nil {
 			switch n.info {
 			case vObject:
-				for _, v := range n.values {
-					if v.Key == key {
-						id = v.ID
+				for i := range n.values {
+					v = &n.values[i]
+					if v.key == key {
+						id = v.id
 						continue lookup
 					}
 				}
 			case vArray:
-				if i, err := strconv.Atoi(key); err == nil && 0 <= i && i < len(n.values) {
-					id = n.values[i].ID
+				i := 0
+				for _, c := range []byte(key) {
+					if c -= '0'; 0 <= c && c <= 9 {
+						i = i*10 + int(c)
+					} else {
+						return maxUint
+					}
+				}
+				if 0 <= i && i < len(n.values) {
+					v = &n.values[i]
+					id = v.id
 					continue lookup
 				}
 			}
 		}
-		return id, false
+		return maxUint
 	}
-	return id, true
+	return id
 }
 
 // Null adds a new Null node to the document and returns it's id
@@ -146,9 +158,9 @@ func (d *Document) Reset() {
 	d.rev++
 }
 
-// N finds a node by id.
+// get finds a node by id.
 // The returned node is only valid until Document.Close() or Document.Reset().
-func (d *Document) N(id uint) *N {
+func (d *Document) get(id uint) *N {
 	if d != nil && id < uint(len(d.nodes)) {
 		return &d.nodes[id]
 	}
@@ -184,7 +196,7 @@ func (d *Document) Close() {
 
 // ToInterface converts a node to any combatible go value (many allocations on large trees).
 func (d *Document) ToInterface(id uint) (interface{}, bool) {
-	n := d.N(id)
+	n := d.get(id)
 	if n == nil {
 		return nil, false
 	}
@@ -194,7 +206,7 @@ func (d *Document) ToInterface(id uint) (interface{}, bool) {
 		m := make(map[string]interface{}, len(n.values))
 		for _, v := range n.values {
 
-			if m[v.Key], ok = d.ToInterface(v.ID); !ok {
+			if m[v.key], ok = d.ToInterface(v.id); !ok {
 				return nil, false
 			}
 		}
@@ -206,7 +218,7 @@ func (d *Document) ToInterface(id uint) (interface{}, bool) {
 			// Avoid bounds check
 			s = s[:len(n.values)]
 			for i, v := range n.values {
-				if s[i], ok = d.ToInterface(v.ID); !ok {
+				if s[i], ok = d.ToInterface(v.id); !ok {
 					return nil, false
 
 				}
@@ -242,7 +254,7 @@ func (p Node) AppendJSON(dst []byte) ([]byte, error) {
 }
 
 func (d *Document) AppendJSON(dst []byte, id uint) ([]byte, error) {
-	n := d.N(id)
+	n := d.get(id)
 	if n == nil {
 		return dst, newTypeError(TypeInvalid, TypeAnyValue)
 	}
@@ -255,9 +267,9 @@ func (d *Document) AppendJSON(dst []byte, id uint) ([]byte, error) {
 				dst = append(dst, delimValueSeparator)
 			}
 			dst = append(dst, delimString)
-			dst = append(dst, v.Key...)
+			dst = append(dst, v.key...)
 			dst = append(dst, delimString, delimNameSeparator)
-			dst, err = d.AppendJSON(dst, v.ID)
+			dst, err = d.AppendJSON(dst, v.id)
 			if err != nil {
 				return dst, err
 			}
@@ -270,7 +282,7 @@ func (d *Document) AppendJSON(dst []byte, id uint) ([]byte, error) {
 			if i > 0 {
 				dst = append(dst, delimValueSeparator)
 			}
-			dst, err = d.AppendJSON(dst, v.ID)
+			dst, err = d.AppendJSON(dst, v.id)
 			if err != nil {
 				return dst, err
 			}
@@ -297,34 +309,4 @@ func (d *Document) Root() *N {
 
 type Unmarshaler interface {
 	UnmarshalNodeJSON(n Node) error
-}
-
-// WrapUnmarshalJSON wraps a call to the json.Unmarshaler interface
-func (n Node) WrapUnmarshalJSON(u json.Unmarshaler) (err error) {
-	node := n.N()
-	if node == nil {
-		return node.TypeError(TypeAnyValue)
-	}
-
-	switch node.info.Type() {
-	case TypeArray:
-		if len(node.values) == 0 {
-			return u.UnmarshalJSON([]byte{delimBeginArray, delimEndArray})
-		}
-	case TypeObject:
-		if len(node.values) == 0 {
-			return u.UnmarshalJSON([]byte{delimBeginObject, delimEndObject})
-		}
-	case TypeInvalid:
-		return node.TypeError(TypeAnyValue)
-	default:
-		return u.UnmarshalJSON(s2b(node.raw))
-	}
-	data := bufferpool.Get().([]byte)
-	data, err = n.Document().AppendJSON(data[:0], n.id)
-	if err == nil {
-		err = u.UnmarshalJSON(data)
-	}
-	bufferpool.Put(data)
-	return
 }

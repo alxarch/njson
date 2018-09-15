@@ -73,7 +73,7 @@ func BenchmarkUnmarshaler_Unmarshal(b *testing.B) {
 			b.Errorf("UnexpectedError: %s", err)
 			return
 		}
-		if err = dec.Decode(&m, n.ID(), d); err != nil {
+		if err = dec.Decode(&m, n); err != nil {
 			b.Errorf("UnexpectedError: %s", err)
 			return
 		}

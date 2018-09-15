@@ -52,7 +52,7 @@ func (d *LineDecoder) Decode(x interface{}) (err error) {
 		if d.Decoder == nil {
 			return UnmarshalFromNode(n, x)
 		}
-		return d.Decoder.Decode(x, n.ID(), &d.p)
+		return d.Decoder.Decode(x, n)
 	}
 }
 

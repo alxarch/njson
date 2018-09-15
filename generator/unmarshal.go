@@ -16,11 +16,12 @@ func (g *Generator) Unmarshaler(typeName string) (code meta.Code) {
 	}
 	receiverName := strings.ToLower(typeName[:1])
 	return g.Code(`
-		func (%[1]s *%[2]s) %[3]s(node *njson.Node) error {
-			if node == nil || !node.IsValue() {
+		func (%[1]s *%[2]s) %[3]s(node njson.Node) error {
+			typ := node.Type()
+			if !typ.IsValue() {
 				return node.TypeError(njson.TypeAnyValue)
 			}
-			if node.IsNull() {
+			if typ == njson.TypeNull {
 				return nil
 			}
 			{
@@ -89,26 +90,26 @@ func (g *Generator) TypeUnmarshaler(t types.Type) (code meta.Code) {
 // SliceUnmarshaler generates the code block to unmarshal a slice.
 func (g *Generator) SliceUnmarshaler(T types.Type, t *types.Slice) meta.Code {
 	return g.Code(`
-switch {
-case n.IsArray():
+switch n.Type() {
+case njson.TypeArray:
 	// Ensure slice is big enough
 	values := n.Values()
+	size := values.Len()
 	
-	if cap(*r) < len(values) {
-		*r = make([]%s, len(*r) + len(values))
+	if cap(*r) < size {
+		*r = make([]%s, len(*r) + size)
 	} else {
-		*r = (*r)[:len(values)]
+		*r = (*r)[:size]
 	}
-	if s := *r; len(s) >= len(values) {
-		// Avoid bounds check
-		s = s[:len(values)]
-		for i, n := range values {
-			r := &s[i]
-			%s
-		}
+	
+	s := *r
+	for i := 0; values.Next() && 0 <= i && i < len(s) ; i++ {
+		r := &s[i]
+		n := n.With(values.ID())
+		%s
 	}
 
-case n.IsNull():
+case njson.TypeNull:
 	*r = nil
 default:
 	return n.TypeError(njson.TypeArray|njson.TypeNull)
@@ -120,7 +121,7 @@ default:
 func (g *Generator) PointerUnmarshaler(T types.Type, t *types.Pointer) (code meta.Code) {
 	return g.Code(`
 switch {
-case n.IsNull():
+case n.Type() == njson.TypeNull:
 	*r = nil
 case *r == nil:
 	*r = new(%s)
@@ -196,12 +197,7 @@ func (g *Generator) JSONUnmarshaler(t types.Type) (code meta.Code) {
 // TextUnmarshaler generates code to wrap the UnmarshalText method of a value.
 func (g *Generator) TextUnmarshaler(t types.Type) (code meta.Code) {
 	return g.Code(`
-	if !n.IsString() {
-		return n.TypeError(njson.TypeString)
-	}
-	if err := n.UnmarshalText(n.Unescaped()); err != nil {
-		return err
-	}
+	return n.WrapUnmarshalText(r)
 	`)
 }
 
@@ -221,24 +217,26 @@ func (g *Generator) MapUnmarshaler(t types.Type, m *types.Map) (code meta.Code) 
 	typV := m.Elem()
 	codeV := g.TypeUnmarshaler(typV)
 	return g.Code(`
-switch {
-case n.IsNull():
+switch n.Type() {
+case njson.TypeNull:
 	*r = nil
-case !n.IsObject():
-	return n.TypeError(njson.TypeObject|njson.TypeNull)
-case *r == nil:
-	*r = make(map[%[1]s]%[2]s, n.Len())
-	fallthrough
-default:
+case njson.TypeObject:
+	values := n.Values()
+	if *r == nil {
+		*r = make(map[%[1]s]%[2]s, values.Len())
+	}
 	m := *r
-	for _, n := range n.Values() {
+	for values.Next() {
 		var v %[2]s
 		{
+			n := n.With(values.ID())
 			r := &v
 			%[3]s
 		}
-		m[n.Key()] = v
+		m[values.Key()] = v
 	}
+default:
+	return n.TypeError(njson.TypeObject|njson.TypeNull)
 }
 `, typK, typV, codeV).Import(njsonPkg)
 }
@@ -270,6 +268,7 @@ func (g *Generator) StructUnmarshaler(t *types.Struct) (code meta.Code) {
 			used[tag.Name] = true
 			code = g.Code(`%s
 				case %s:
+					n := n.With(values.ID())
 					%s{
 						r := &r%s
 						%s
@@ -281,11 +280,11 @@ func (g *Generator) StructUnmarshaler(t *types.Struct) (code meta.Code) {
 		}
 	}
 	return g.Code(`
-		if !n.IsObject() {
+		if n.Type() != njson.TypeObject {
 			return n.TypeError(njson.TypeObject)
 		}
-		for _, n := range n.Values() {
-			switch n.Key() {
+		for values := n.Values(); values.Next(); {
+			switch values.Key() {
 				%s
 			}
 		}`, code).Import(njsonPkg)

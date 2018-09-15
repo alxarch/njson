@@ -23,7 +23,7 @@ func UnmarshalUnsafe(data []byte, x interface{}) (err error) {
 	p := njson.Blank()
 	n, data, err := p.ParseUnsafe(data)
 	if err == nil {
-		err = d.Decode(x, n.ID(), p)
+		err = d.Decode(x, n)
 	}
 	p.Close()
 	return
@@ -36,7 +36,7 @@ func UnmarshalFromNode(n njson.Node, x interface{}) error {
 	if err != nil {
 		return err
 	}
-	return dec.Decode(x, n.ID(), n.Document())
+	return dec.Decode(x, n)
 }
 
 func UnmarshalFromString(s string, x interface{}) (err error) {
@@ -50,7 +50,7 @@ func UnmarshalFromString(s string, x interface{}) (err error) {
 	p := njson.Blank()
 	n, s, err := p.Parse(s)
 	if err == nil {
-		err = d.Decode(x, n.ID(), p)
+		err = d.Decode(x, n)
 	}
 	p.Close()
 	return

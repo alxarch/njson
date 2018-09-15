@@ -321,9 +321,9 @@ type floatEncoder struct {
 
 func newFloatEncoder(bits int, options *Options) (floatEncoder, error) {
 	e := floatEncoder{bits, -1, options.AllowInf, options.AllowNaN}
-	if options.FloatPrecision > 0 {
-		e.precision = options.FloatPrecision
-	}
+	// if options.FloatPrecision > 0 {
+	// 	e.precision = options.FloatPrecision
+	// }
 	return e, nil
 }
 

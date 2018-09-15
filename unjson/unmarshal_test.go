@@ -26,7 +26,7 @@ func TestUnmarshalBasic(t *testing.T) {
 		t.Errorf("Unexpected error: %s", err)
 		return
 	}
-	err = dec.Decode(&a, n.ID(), d)
+	err = dec.Decode(&a, n)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return

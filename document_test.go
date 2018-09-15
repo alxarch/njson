@@ -12,7 +12,7 @@ func Test_parser(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	if n.N() == nil {
+	if n.get() == nil {
 		t.Errorf("Nil root")
 		return
 	}
@@ -54,7 +54,7 @@ func benchmarkD(src string) func(b *testing.B) {
 			b.Errorf("Non empty tail: %d", len(tail))
 			return
 		}
-		if n.N() == nil {
+		if n.get() == nil {
 			b.Errorf("Nil root")
 			return
 		}
