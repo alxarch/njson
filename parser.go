@@ -133,18 +133,23 @@ func (p *parser) parseValue(s string, pos uint) uint {
 				return p.parseArray(s, pos+1)
 			}
 			if bytemapIsDigit[c] == 1 {
+				s = s[pos:]
 				goto readNumber
 			}
 			if c == 'n' {
+				s = s[pos:]
 				goto readNull
 			}
 			if c == '-' {
+				s = s[pos:]
 				goto readNumber
 			}
 			if c == 'f' {
+				s = s[pos:]
 				goto readFalse
 			}
 			if c == 't' {
+				s = s[pos:]
 				goto readTrue
 			}
 			return p.abort(pos, TypeAnyValue, c, "any value")
@@ -153,20 +158,16 @@ func (p *parser) parseValue(s string, pos uint) uint {
 	return p.eof(TypeAnyValue)
 readNumber:
 	info |= vNumber
-	if pos < uint(len(s)) {
-		s = s[pos:]
-		for i := uint(0); i < uint(len(s)); i++ {
-			if bytemapIsNumberEnd[s[i]] == 0 {
-				continue
-			}
-			s = s[:i]
-			pos += i
-			goto done
+	for i := uint(0); i < uint(len(s)); i++ {
+		if bytemapIsNumberEnd[s[i]] == 0 {
+			continue
 		}
-		pos += uint(len(s))
+		s = s[:i]
+		pos += i
 		goto done
 	}
-	return p.eof(TypeNumber)
+	pos += uint(len(s))
+	goto done
 readString:
 	info |= vString
 	if pos++; pos < uint(len(s)) {
@@ -204,38 +205,32 @@ readString:
 	return p.eof(TypeString)
 readTrue:
 	info |= vBoolean
-	if pos < uint(len(s)) {
-		if s = s[pos:]; len(s) >= 4 {
-			if s = s[:4]; s == strTrue {
-				pos += 4
-				goto done
-			}
-			return p.abort(pos, TypeBoolean, s, strTrue)
+	if len(s) >= 4 {
+		if s = s[:4]; s == strTrue {
+			pos += 4
+			goto done
 		}
+		return p.abort(pos, TypeBoolean, s, strTrue)
 	}
 	return p.eof(TypeBoolean)
 readFalse:
 	info |= vBoolean
-	if pos < uint(len(s)) {
-		if s = s[pos:]; len(s) >= 5 {
-			if s = s[:5]; s == strFalse {
-				pos += 5
-				goto done
-			}
-			return p.abort(pos, TypeBoolean, s, strFalse)
+	if len(s) >= 5 {
+		if s = s[:5]; s == strFalse {
+			pos += 5
+			goto done
 		}
+		return p.abort(pos, TypeBoolean, s, strFalse)
 	}
 	return p.eof(TypeBoolean)
 readNull:
 	info |= vNull
-	if pos < uint(len(s)) {
-		if s = s[pos:]; len(s) >= 4 {
-			if s = s[:4]; s == strNull {
-				pos += 4
-				goto done
-			}
-			return p.abort(pos, TypeNull, s, strNull)
+	if len(s) >= 4 {
+		if s = s[:4]; s == strNull {
+			pos += 4
+			goto done
 		}
+		return p.abort(pos, TypeNull, s, strNull)
 	}
 	return p.eof(TypeNull)
 done:
