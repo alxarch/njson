@@ -61,25 +61,8 @@ func (p *parser) abort(pos uint, typ Type, got, want interface{}) uint {
 	p.err = abort(int(pos), typ, got, want)
 	return pos
 }
-func (p *parser) value(id uint, key string) *N {
-start:
-	if p.n < uint(len(p.nodes)) {
-		v := &p.nodes[p.n]
-		if id < uint(len(p.nodes)) {
-			n := &p.nodes[id]
-			n.values = append(n.values, V{p.n, key})
-			_ = n.values
-		}
-		p.n++
-		return v
-	}
-	nodes := make([]N, 2*len(p.nodes)+1)
-	copy(nodes, p.nodes)
-	p.nodes = nodes
-	goto start
 
-}
-
+// node returns a node pointer. The pointer is valid until the next call to node()
 func (p *parser) node() *N {
 	if p.n < uint(len(p.nodes)) {
 		n := &p.nodes[p.n]
@@ -318,6 +301,7 @@ func (p *parser) parseObject(s string, pos uint) uint {
 		key    string
 		values []V
 		numV   uint
+		i      uint
 	)
 	n.set(vObject, "")
 	// Skip space after opening '{'
@@ -325,7 +309,7 @@ func (p *parser) parseObject(s string, pos uint) uint {
 		c = s[pos]
 		switch c {
 		case delimEndObject:
-			// Zero out the values slice to
+			// Zero out the values slice to release key strings
 			for i := range n.values {
 				n.values[i] = V{}
 			}
@@ -353,13 +337,13 @@ readKey:
 		// byte we're looking for is more than 16 bytes away.
 		// Since most keys are less than 16 bytes using a simple loop
 		// actually improves throughput.
-		for i := uint(0); i < uint(len(key)); i++ {
+		for i = 0; i < uint(len(key)); i++ {
 			switch key[i] {
 			case delimString:
+				// key = key[:i]
 				// Slice until closing quote
 				values = appendV(values, key[:i], p.n, numV)
 				numV++
-				key = key[:i]
 				pos += i
 				// key = key[:i]
 				// Skip space after closing quote
@@ -383,8 +367,6 @@ readKey:
 	return p.eof(TypeObject)
 
 readValue:
-	// values = appendV(values, V{p.n, key}, numV)
-	// numV++
 	// We're at ':' after key
 	pos = p.parseValue(s, pos+1)
 	if p.err != nil {
@@ -410,14 +392,18 @@ readValue:
 			if numV < uint(len(n.values)) {
 				values = n.values[:numV]
 				n.values = n.values[numV:]
+				// Zero out unused values to release key strings
 				for i := range n.values {
 					n.values[i] = V{}
 				}
 			} else if numV < uint(len(values)) {
 				values = values[:numV]
+				// No need to zero out n.values because n will have no references after return
 			}
+			// Use id because n pointer might be invalid after a node() call
 			if id < uint(len(p.nodes)) {
-				p.nodes[id].values = values
+				n = &p.nodes[id]
+				n.values = values
 			}
 			return pos + 1
 		default:
