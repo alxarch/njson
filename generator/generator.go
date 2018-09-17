@@ -170,9 +170,11 @@ var (
 
 	jsonPkg            = meta.MustImport("encoding/json")
 	typJSONUnmarshaler = jsonPkg.Scope().Lookup("Unmarshaler").Type().Underlying().(*types.Interface)
+	typJSONMarshaler   = jsonPkg.Scope().Lookup("Marshaler").Type().Underlying().(*types.Interface)
 
 	encodingPkg        = meta.MustImport("encoding")
 	typTextUnmarshaler = encodingPkg.Scope().Lookup("TextUnmarshaler").Type().Underlying().(*types.Interface)
+	typTextMarshaler   = encodingPkg.Scope().Lookup("TextMarshaler").Type().Underlying().(*types.Interface)
 
 	strconvPkg = meta.MustImport("strconv")
 )

@@ -69,8 +69,9 @@ func (g *Generator) TypeOmiter(typ types.Type, block meta.Code) meta.Code {
 			default:
 				if t.Info()&types.IsNumeric != 0 {
 					cond = `v != 0`
+				} else {
+					return block.Error(fmt.Errorf("Omit basic error %s", typeError{typ}))
 				}
-				return block.Error(typeError{typ})
 			}
 		case *types.Interface:
 			if t.NumMethods() == 0 {
@@ -126,7 +127,16 @@ func (g *Generator) StructAppender(fields meta.Fields) (c meta.Code) {
 				continue
 			}
 			used[name] = true
-			cf := g.TypeAppender(field.Type())
+			var cf meta.Code
+			if tag.Params.Has("raw") && meta.IsString(field.Type()) {
+			cf = g.Code(`
+				out = append(out, '"')
+				out = append(out, v...)
+				out = append(out, '"')
+				`)
+			} else {
+				cf = g.TypeAppender(field.Type())
+			}
 			cf = g.Code(`
 				out = append(out, "{,"[more])
 				more = 1
@@ -149,6 +159,33 @@ func (g *Generator) StructAppender(fields meta.Fields) (c meta.Code) {
 	return
 }
 func (g *Generator) TypeAppender(typ types.Type) (c meta.Code) {
+	switch {
+	case types.Implements(typ, typJSONAppender):
+		return g.Code(`
+		var err error
+		if out, err = v.AppendJSON(out); err != nil {
+			return out, err
+		}
+		`)
+	case types.Implements(typ, typJSONMarshaler):
+		return g.Code(`
+		data, err := v.UnmarshalJSON()
+		if err != nil {
+			return out, err
+		}
+		out = append(out, data...)
+		`)
+	case types.Implements(typ, typTextMarshaler):
+		return g.Code(`
+		data, err := v.MarshalText()
+		if err != nil {
+			return out, err
+		}
+		out = append(out, '"')
+		out = append(out, data...)
+		out = append(out, '"')
+		`)
+	}
 	switch t := typ.Underlying().(type) {
 	case *types.Pointer:
 		return g.Code(`

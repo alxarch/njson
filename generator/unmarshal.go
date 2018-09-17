@@ -64,9 +64,7 @@ func (g *Generator) TypeUnmarshaler(t types.Type) (code meta.Code) {
 		return g.TextUnmarshaler(t)
 	}
 
-	switch typ := t.(type) {
-	case *types.Named:
-		return g.TypeUnmarshaler(typ.Underlying())
+	switch typ := t.Underlying().(type) {
 	case *types.Map:
 		return g.MapUnmarshaler(t, typ)
 	case *types.Struct:
@@ -241,6 +239,10 @@ default:
 `, typK, typV, codeV).Import(njsonPkg)
 }
 
+func (g *Generator) RawStringUnmarshaler(t types.Type) meta.Code {
+	return g.Code(`*r = %s(n.Raw())`, t)
+}
+
 // StructUnmarshaler generates the code block to unmarshal a struct.
 func (g *Generator) StructUnmarshaler(t *types.Struct) (code meta.Code) {
 	fields := meta.NewFields(t, true)
@@ -266,6 +268,12 @@ func (g *Generator) StructUnmarshaler(t *types.Struct) (code meta.Code) {
 				continue
 			}
 			used[tag.Name] = true
+			var cf meta.Code
+			if tag.Params.Has("raw") && meta.IsString(field.Type()) {
+				cf = g.RawStringUnmarshaler(field.Type())
+			} else {
+				cf = g.TypeUnmarshaler(field.Type())
+			}
 			code = g.Code(`%s
 				case %s:
 					n := n.With(values.ID())
@@ -273,7 +281,7 @@ func (g *Generator) StructUnmarshaler(t *types.Struct) (code meta.Code) {
 						r := &r%s
 						%s
 					}
-					`, code, fmt.Sprintf("`%s`", name), g.EnsurePath(field.Path), field.Path, g.TypeUnmarshaler(field.Type()))
+					`, code, fmt.Sprintf("`%s`", name), g.EnsurePath(field.Path), field.Path, cf)
 			if code.Err() != nil {
 				return
 			}
