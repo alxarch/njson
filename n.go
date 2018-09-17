@@ -2,6 +2,7 @@ package njson
 
 import (
 	"math"
+	"strconv"
 
 	"github.com/alxarch/njson/numjson"
 	"github.com/alxarch/njson/strjson"
@@ -147,6 +148,13 @@ func (n *N) Set(key string, id uint) {
 	}
 }
 
+// Slice reslices the node's values.
+func (n *N) Slice(i, j int) {
+	if n != nil && n.info == vArray && 0 <= i && i < j && j < len(n.values) {
+		n.values = n.values[i:j]
+	}
+}
+
 // Replace replaces the id of a value at offset i of an Array node.
 func (n *N) Replace(i int, id uint) {
 	if n != nil && n.info == vArray && 0 <= i && i < len(n.values) {
@@ -243,4 +251,112 @@ func (n *N) ToBool() (bool, bool) {
 		}
 	}
 	return false, false
+}
+
+func (n *N) SetStringRaw(s string) {
+	if n == nil {
+		return
+	}
+	n.info = vString
+	n.raw = s
+	for i := range n.values {
+		n.values[i] = V{}
+	}
+	n.values = n.values[:0]
+}
+func (n *N) SetStringHTML(s string) {
+	if n == nil {
+		return
+	}
+	n.info = vString
+	n.raw = strjson.Escaped(s, true, false)
+	for i := range n.values {
+		n.values[i] = V{}
+	}
+	n.values = n.values[:0]
+}
+func (n *N) SetString(s string) {
+	if n == nil {
+		return
+	}
+	n.info = vString
+	n.raw = strjson.Escaped(s, false, false)
+	for i := range n.values {
+		n.values[i] = V{}
+	}
+	n.values = n.values[:0]
+}
+func (n *N) SetFalse() {
+	if n == nil {
+		return
+	}
+	n.info = vBoolean
+	n.raw = strFalse
+	for i := range n.values {
+		n.values[i] = V{}
+	}
+	n.values = n.values[:0]
+}
+func (n *N) SetNull() {
+	if n == nil {
+		return
+	}
+	n.info = vNull
+	n.raw = strNull
+	for i := range n.values {
+		n.values[i] = V{}
+	}
+	n.values = n.values[:0]
+}
+func (n *N) SetTrue() {
+	if n == nil {
+		return
+	}
+	n.info = vBoolean
+	n.raw = strTrue
+	for i := range n.values {
+		n.values[i] = V{}
+	}
+	n.values = n.values[:0]
+}
+
+func (n *N) SetFloat(f float64) {
+	if n == nil {
+		return
+	}
+	n.info = vNumber
+	n.raw = numjson.FormatFloat(f, 64)
+	for i := range n.values {
+		n.values[i] = V{}
+	}
+	n.values = n.values[:0]
+}
+
+func (n *N) SetUint(u uint64) {
+	if n == nil {
+		return
+	}
+	n.info = vNumber
+	n.raw = strconv.FormatUint(u, 10)
+	for i := range n.values {
+		n.values[i] = V{}
+	}
+	n.values = n.values[:0]
+
+}
+func (n *N) SetInt(i int64) {
+	if n == nil {
+		return
+	}
+	n.info = vNumber
+	n.raw = strconv.FormatInt(i, 10)
+	for i := range n.values {
+		n.values[i] = V{}
+	}
+	n.values = n.values[:0]
+}
+
+func (n *N) set(info Info, raw string) {
+	n.info = info
+	n.raw = raw
 }

@@ -35,58 +35,31 @@ func (n Node) get() *N {
 	return n.Document().get(n.id)
 }
 
-func (n Node) Raw() string {
-	return n.get().Raw()
-}
-func (n Node) Unescaped() string {
-	return n.get().Unescaped()
-}
-func (n Node) ToFloat() (float64, bool) {
-	return n.get().ToFloat()
-}
-func (p Node) ToInt() (int64, bool) {
-	if n := p.get(); n != nil {
-		return n.ToInt()
-	}
-	return 0, false
-}
-func (p Node) ToUint() (uint64, bool) {
-	if n := p.get(); n != nil {
-		return n.ToUint()
-	}
-	return 0, false
-}
-func (p Node) ToBool() (bool, bool) {
-	if n := p.get(); n != nil {
-		return n.ToBool()
-	}
-	return false, false
+func (n Node) AppendJSON(dst []byte) ([]byte, error) {
+	return n.Document().AppendJSON(dst, n.id)
 }
 
-func (p Node) TypeError(want Type) error {
-	return p.get().TypeError(want)
-}
+func (n Node) Raw() string              { return n.get().Raw() }
+func (n Node) Unescaped() string        { return n.get().Unescaped() }
+func (n Node) ToFloat() (float64, bool) { return n.get().ToFloat() }
+func (n Node) ToInt() (int64, bool)     { return n.get().ToInt() }
+func (n Node) ToUint() (uint64, bool)   { return n.get().ToUint() }
+func (n Node) ToBool() (bool, bool)     { return n.get().ToBool() }
+func (n Node) Type() Type               { return n.get().Type() }
+func (n Node) Bytes() []byte            { return n.get().Bytes() }
+func (n Node) Values() IterV            { return n.get().Values() }
 
-func (n Node) Values() IterV {
-	return n.get().Values()
+func (n Node) TypeError(want Type) error {
+	return n.get().TypeError(want)
 }
 
 // Lookup finds a node by path
-func (p Node) Lookup(path []string) Node {
-	return p.With(p.Document().Lookup(p.id, path))
-}
-func (p Node) Type() Type {
-	return p.get().Type()
-}
-func (p Node) Bytes() []byte {
-	if n := p.get(); n != nil {
-		return n.Bytes()
-	}
-	return nil
+func (n Node) Lookup(path []string) Node {
+	return n.With(n.Document().Lookup(n.id, path))
 }
 
-func (p Node) ToInterface() (interface{}, bool) {
-	return p.Document().ToInterface(p.id)
+func (n Node) ToInterface() (interface{}, bool) {
+	return n.Document().ToInterface(n.id)
 }
 
 var bufferpool = &sync.Pool{
@@ -110,8 +83,8 @@ func PrintJSON(w io.Writer, a Appender) (n int, err error) {
 	return
 }
 
-func (p Node) PrintJSON(w io.Writer) (n int, err error) {
-	return PrintJSON(w, p)
+func (n Node) PrintJSON(w io.Writer) (int, error) {
+	return PrintJSON(w, n)
 }
 
 // WrapUnmarshalJSON wraps a call to the json.Unmarshaler interface
@@ -152,3 +125,20 @@ func (n Node) WrapUnmarshalText(u encoding.TextUnmarshaler) (err error) {
 	}
 	return node.TypeError(TypeAnyValue)
 }
+
+func (n Node) Get(key string) Node {
+	return n.With(n.get().Get(key))
+}
+
+func (n Node) Set(key string, id uint) { n.get().Set(key, id) }
+func (n Node) Slice(i, j int)          { n.get().Slice(i, j) }
+func (n Node) Del(key string)          { n.get().Del(key) }
+func (n Node) SetInt(i int64)          { n.get().SetInt(i) }
+func (n Node) SetUint(u uint64)        { n.get().SetUint(u) }
+func (n Node) SetFloat(f float64)      { n.get().SetFloat(f) }
+func (n Node) SetString(s string)      { n.get().SetString(s) }
+func (n Node) SetStringHTML(s string)  { n.get().SetStringHTML(s) }
+func (n Node) SetStringRaw(s string)   { n.get().SetStringRaw(s) }
+func (n Node) SetFalse()               { n.get().SetFalse() }
+func (n Node) SetTrue()                { n.get().SetTrue() }
+func (n Node) SetNull()                { n.get().SetNull() }

@@ -1,6 +1,8 @@
 package njson
 
-import "strings"
+import (
+	"strings"
+)
 
 type parser struct {
 	nodes  []N
@@ -414,11 +416,6 @@ readValue:
 	}
 	return p.eof(TypeObject)
 
-}
-
-func (n *N) set(info Info, raw string) {
-	n.info = info
-	n.raw = raw
 }
 
 // Update document nodes and returned unused nodes

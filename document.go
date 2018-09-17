@@ -1,7 +1,6 @@
 package njson
 
 import (
-	"errors"
 	"sync"
 
 	"github.com/alxarch/njson/strjson"
@@ -246,13 +245,6 @@ func (d *Document) ToInterface(id uint) (interface{}, bool) {
 	}
 }
 
-func (p Node) AppendJSON(dst []byte) ([]byte, error) {
-	if d := p.Document(); d != nil {
-		return d.AppendJSON(dst, p.id)
-	}
-	return dst, errors.New("Nil document")
-}
-
 func (d *Document) AppendJSON(dst []byte, id uint) ([]byte, error) {
 	n := d.get(id)
 	if n == nil {
@@ -300,7 +292,7 @@ func (d *Document) AppendJSON(dst []byte, id uint) ([]byte, error) {
 }
 
 // Root returns the root partial of a Document
-func (d *Document) Root() *N {
+func (d *Document) root() *N {
 	if len(d.nodes) > 0 {
 		return &d.nodes[0]
 	}
