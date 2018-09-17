@@ -43,6 +43,26 @@ func nameOrDefault(name, defaultName string) string {
 	return name
 }
 
+func toISO3166(c byte) byte {
+	if 'A' <= c && c <= 'Z' {
+		return c
+	}
+	if 'a' <= c && c <= 'z' {
+		return byte(unicode.ToUpper(rune(c)))
+	}
+	return 'Z'
+}
+
+func toISO639(c byte) byte {
+	if 'A' <= c && c <= 'Z' {
+		return byte(unicode.ToLower(rune(c)))
+	}
+	if 'a' <= c && c <= 'z' {
+		return c
+	}
+	return 'z'
+}
+
 func toJSON(c byte) byte {
 	if c < utf8.RuneSelf {
 		switch c {
@@ -117,6 +137,12 @@ func main() {
 		switch name {
 		case "ToJSON":
 			tr = toJSON
+			name = nameOrDefault(arg, name)
+		case "ToISO3166":
+			tr = toISO3166
+			name = nameOrDefault(arg, name)
+		case "ToISO639":
+			tr = toISO639
 			name = nameOrDefault(arg, name)
 		case "ToHex":
 			tr = toHex
