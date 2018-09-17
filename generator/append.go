@@ -3,6 +3,7 @@ package generator
 import (
 	"fmt"
 	"go/types"
+	"sort"
 	"strings"
 
 	"github.com/alxarch/meta"
@@ -112,32 +113,38 @@ func (g *Generator) EnsureReversePath(path meta.FieldPath, code meta.Code) meta.
 
 func (g *Generator) StructAppender(fields meta.Fields) (c meta.Code) {
 	c = c.Println(`more := 0`)
+	sortedFields := []meta.Field{}
 	for name := range fields {
-		used := make(map[string]bool)
-		for _, field := range fields[name] {
-			field = field.WithTag(g.TagKey())
-			name, tag, ok := g.parseField(field.Var, field.Tag)
-			if !ok {
-				continue
-			}
-			if tag.Name != "" {
-				name = tag.Name
-			}
-			if used[name] {
-				continue
-			}
-			used[name] = true
-			var cf meta.Code
-			if tag.Params.Has("raw") && meta.IsString(field.Type()) {
+		sortedFields = append(sortedFields, fields[name]...)
+	}
+	sort.SliceStable(sortedFields, func(i, j int) bool {
+		return sortedFields[i].Tag < sortedFields[j].Tag
+	})
+	used := make(map[string]bool)
+	for _, field := range sortedFields {
+		field = field.WithTag(g.TagKey())
+		name, tag, ok := g.parseField(field.Var, field.Tag)
+		if !ok {
+			continue
+		}
+		if tag.Name != "" {
+			name = tag.Name
+		}
+		if used[name] {
+			continue
+		}
+		used[name] = true
+		var cf meta.Code
+		if tag.Params.Has("raw") && meta.IsString(field.Type()) {
 			cf = g.Code(`
 				out = append(out, '"')
 				out = append(out, v...)
 				out = append(out, '"')
 				`)
-			} else {
-				cf = g.TypeAppender(field.Type())
-			}
-			cf = g.Code(`
+		} else {
+			cf = g.TypeAppender(field.Type())
+		}
+		cf = g.Code(`
 				out = append(out, "{,"[more])
 				more = 1
 				out = append(out, '"')
@@ -146,13 +153,12 @@ func (g *Generator) StructAppender(fields meta.Fields) (c meta.Code) {
 				{
 					%s
 				}`, name, cf)
-			if tag.Params.Has(paramOmitempty) {
-				cf = g.TypeOmiter(field.Type(), cf)
-			}
-			cf = g.EnsureReversePath(field.Path, cf)
-			c = c.Append(cf)
-
+		if tag.Params.Has(paramOmitempty) {
+			cf = g.TypeOmiter(field.Type(), cf)
 		}
+		cf = g.EnsureReversePath(field.Path, cf)
+		c = c.Append(cf)
+
 	}
 	c = c.Println(`
 	out = append(out, "{}"[more:]...)`)
