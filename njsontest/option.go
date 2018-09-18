@@ -90,6 +90,12 @@ func defaultJSON(x interface{}) Option {
 	})
 }
 
+func Value(x interface{}) Option {
+	return option(func(t *T) {
+		t.value = x
+	})
+}
+
 // JSON sets JSON data for the test case.
 func JSON(x interface{}) Option {
 	var getjson func() ([]byte, error)

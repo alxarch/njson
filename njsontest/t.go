@@ -16,6 +16,7 @@ var (
 
 // T is a test case for njson.
 type T struct {
+	value  interface{}
 	check  func(err error) error
 	json   func() ([]byte, error)
 	method string
@@ -96,8 +97,11 @@ func Unmarshal(x interface{}, options ...Option) func(t *testing.T) {
 			err  error
 			d    = njson.Blank()
 			n    njson.Node
-			v    = reflect.New(typ)
+			v    = reflect.ValueOf(test.value)
 		)
+		if !v.IsValid() {
+			v = reflect.New(typ)
+		}
 		defer d.Close()
 		if err := checkMethod(v, method); err != nil {
 			t.Error(err)
