@@ -129,6 +129,9 @@ func (n Node) WrapUnmarshalText(u encoding.TextUnmarshaler) (err error) {
 func (n Node) Get(key string) Node {
 	return n.With(n.get().Get(key))
 }
+func (n Node) Index(i int) Node {
+	return n.With(n.get().Index(i))
+}
 
 func (n Node) Set(key string, id uint) { n.get().Set(key, id) }
 func (n Node) Slice(i, j int)          { n.get().Slice(i, j) }

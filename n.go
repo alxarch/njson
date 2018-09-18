@@ -177,6 +177,15 @@ func (n *N) Remove(i int) {
 
 const maxUint = ^(uint(0))
 
+// Index gets the id of an Array node's values at position i
+func (n *N) Index(i int) uint {
+	if n != nil && n.info == vArray && 0 <= i && i < len(n.values) {
+		v := &n.values[i]
+		return v.id
+	}
+	return maxUint
+}
+
 // Get finds a key in an Object node's values and returns it's id.
 func (n *N) Get(key string) uint {
 	if n != nil && n.info == vObject {
