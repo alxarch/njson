@@ -247,8 +247,8 @@ func (g *Generator) RawStringUnmarshaler(t types.Type) meta.Code {
 func (g *Generator) StructUnmarshaler(t *types.Struct) (code meta.Code) {
 	fields := meta.NewFields(t, true)
 	tagKey := g.TagKey()
+	used := make(map[string]bool)
 	for name := range fields {
-		used := make(map[string]bool)
 		for _, field := range fields[name] {
 			field = field.WithTag(tagKey)
 			if field.Name() == "_" {
@@ -264,10 +264,10 @@ func (g *Generator) StructUnmarshaler(t *types.Struct) (code meta.Code) {
 			if tag.Name != "" {
 				name = tag.Name
 			}
-			if used[tag.Name] {
+			if used[name] {
 				continue
 			}
-			used[tag.Name] = true
+			used[name] = true
 			var cf meta.Code
 			if tag.Params.Has("raw") && meta.IsString(field.Type()) {
 				cf = g.RawStringUnmarshaler(field.Type())
