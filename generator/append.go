@@ -99,7 +99,8 @@ func (g *Generator) EnsureReversePath(path meta.FieldPath, code meta.Code) meta.
 	}
 
 	if len(cond) > 0 {
-		return g.Code(`if %s {
+		return g.Code(`
+		if %s {
 			v := v%s
 			%s
 		}`, strings.Join(cond, " && "), path, code)

@@ -161,13 +161,13 @@ func (g *Generator) EnsurePath(path meta.FieldPath) (code meta.Code) {
 	if last := len(path) - 1; last > 0 {
 		for i := 0; i < last; i++ {
 			f := &path[i]
-			t := f.Type().Underlying()
+			t := f.Type()
 			if t == nil {
 				return
 			}
-			if _, ok := t.(*types.Pointer); ok {
+			if p, ok := t.(*types.Pointer); ok {
 				r := g.Code("r%s", path[:i+1])
-				code = g.Code("%[1]sif %[2]s == nil { %[2]s = new(%[3]s) }\n", code, r, f.Type())
+				code = g.Code("%[1]s\nif %[2]s == nil { %[2]s = new(%[3]s) }\n", code, r, p.Elem())
 			}
 		}
 	}
