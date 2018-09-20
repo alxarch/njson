@@ -35,7 +35,7 @@ func (g *Generator) Appender(typName string) (c meta.Code) {
 			}
 			return out, nil
 		}
-	`, receiverName, typ, method, g.TypeAppender(typ))
+	`, receiverName, typ, method, g.TypeAppender(typ, nil))
 
 }
 
@@ -136,15 +136,7 @@ func (g *Generator) StructAppender(fields meta.Fields) (c meta.Code) {
 		}
 		used[name] = true
 		var cf meta.Code
-		if tag.Params.Has("raw") && meta.IsString(field.Type()) {
-			cf = g.Code(`
-				out = append(out, '"')
-				out = append(out, v...)
-				out = append(out, '"')
-				`)
-		} else {
-			cf = g.TypeAppender(field.Type())
-		}
+		cf = g.TypeAppender(field.Type(), tag.Params)
 		cf = g.Code(`
 				out = append(out, "{,"[more])
 				more = 1
@@ -165,7 +157,7 @@ func (g *Generator) StructAppender(fields meta.Fields) (c meta.Code) {
 	out = append(out, "{}"[more:]...)`)
 	return
 }
-func (g *Generator) TypeAppender(typ types.Type) (c meta.Code) {
+func (g *Generator) TypeAppender(typ types.Type, params meta.Params) (c meta.Code) {
 	switch {
 	case types.Implements(typ, typJSONAppender):
 		return g.Code(`
@@ -201,7 +193,7 @@ func (g *Generator) TypeAppender(typ types.Type) (c meta.Code) {
 			} else {
 				%s
 			}
-		`, g.TypeAppender(t.Elem()))
+		`, g.TypeAppender(t.Elem(), params))
 	case *types.Map:
 		return g.Code(`
 			{
@@ -219,7 +211,7 @@ func (g *Generator) TypeAppender(typ types.Type) (c meta.Code) {
 				}
 				out = append(out, "{}"[more:]...)
 			}
-		`, g.TypeAppender(t.Key()), g.TypeAppender(t.Elem()))
+		`, g.TypeAppender(t.Key(), nil), g.TypeAppender(t.Elem(), params))
 	case *types.Slice:
 		return g.Code(`
 			out = append(out, '[')
@@ -230,7 +222,7 @@ func (g *Generator) TypeAppender(typ types.Type) (c meta.Code) {
 				%s
 			}
 			out = append(out, ']')
-		`, g.TypeAppender(t.Elem()))
+		`, g.TypeAppender(t.Elem(), params))
 	case *types.Struct:
 		fields := meta.NewFields(t, true)
 		return g.StructAppender(fields)
@@ -239,6 +231,12 @@ func (g *Generator) TypeAppender(typ types.Type) (c meta.Code) {
 		case types.Bool:
 			return c.Println(`if v { out = append(out, "true"...) } else { out = append(out, "false"...) }`)
 		case types.String:
+			if params.Has("raw") {
+				return c.Println(`
+					out = append(out, '"')
+					out = append(out, v...)
+					out = append(out, '"')`)
+			}
 			return c.Println(`
 				out = append(out, '"')
 				out = strjson.AppendEscaped(out, v, false)
