@@ -168,7 +168,7 @@ func (g *Generator) TypeAppender(typ types.Type, params meta.Params) (c meta.Cod
 		`)
 	case types.Implements(typ, typJSONMarshaler):
 		return g.Code(`
-		data, err := v.UnmarshalJSON()
+		data, err := v.MarshalJSON()
 		if err != nil {
 			return out, err
 		}
@@ -184,6 +184,7 @@ func (g *Generator) TypeAppender(typ types.Type, params meta.Params) (c meta.Cod
 		out = append(out, data...)
 		out = append(out, '"')
 		`)
+
 	}
 	switch t := typ.Underlying().(type) {
 	case *types.Pointer:
