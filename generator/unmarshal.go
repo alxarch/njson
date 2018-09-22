@@ -55,12 +55,13 @@ func (g *Generator) TypeUnmarshaler(t types.Type) (code meta.Code) {
 		return code.Error(typeError{t})
 	}
 
+	pt := types.NewPointer(t)
 	switch {
-	case types.Implements(t, typNodeJSONUnmarshaler):
+	case types.Implements(pt, typNodeJSONUnmarshaler):
 		return g.NodeJSONUnmarshaler(t)
-	case types.Implements(t, typJSONUnmarshaler):
+	case types.Implements(pt, typJSONUnmarshaler):
 		return g.JSONUnmarshaler(t)
-	case types.Implements(t, typTextUnmarshaler):
+	case types.Implements(pt, typTextUnmarshaler):
 		return g.TextUnmarshaler(t)
 	}
 
