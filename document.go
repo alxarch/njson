@@ -158,7 +158,6 @@ func (d *Document) Reset() {
 }
 
 // get finds a node by id.
-// The returned node is only valid until Document.Close() or Document.Reset().
 func (d *Document) get(id uint) *N {
 	if d != nil && id < uint(len(d.nodes)) {
 		return &d.nodes[id]
@@ -171,7 +170,7 @@ func (d *Document) With(id uint) Node {
 	return Node{id, d.rev, d}
 }
 
-var docs = new(sync.Pool)
+var docs sync.Pool
 
 const minNumNodes = 64
 
@@ -297,8 +296,4 @@ func (d *Document) root() *N {
 		return &d.nodes[0]
 	}
 	return nil
-}
-
-type Unmarshaler interface {
-	UnmarshalNodeJSON(n Node) error
 }

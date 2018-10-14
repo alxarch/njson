@@ -15,6 +15,10 @@ type Node struct {
 	doc *Document
 }
 
+type Unmarshaler interface {
+	UnmarshalNodeJSON(n Node) error
+}
+
 func (n Node) ID() uint {
 	return n.id
 }
