@@ -58,7 +58,7 @@ func (n Node) TypeError(want Type) error {
 }
 
 // Lookup finds a node by path
-func (n Node) Lookup(path []string) Node {
+func (n Node) Lookup(path ...string) Node {
 	return n.With(n.Document().Lookup(n.id, path))
 }
 
