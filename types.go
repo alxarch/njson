@@ -86,80 +86,76 @@ const (
 	// vNumberUint = vNumber | NumberZeroDecimal | NumberParsed
 	// vNumberInt  = vNumber | NumberZeroDecimal | NumberSigned | NumberParsed
 )
+
+// Type flags
 const (
 	_ Info = 1 << (iota + 8)
-	// NumberSigned Info = 1 << (iota + 8)
-	// NumberZeroDecimal
-	// NumberParsed
-	// Unescaped
 	Unsafe
 	HasError Info = 1 << 15
 )
 
-// func (i Info) Unescaped() bool {
-// 	return i&Unescaped == Unescaped
-// }
-
+// Safe checks if Unsafe flag is set.
 func (i Info) Safe() bool {
 	return i&Unsafe == 0
 }
 
-// func (i Info) NumberParsed() bool {
-// 	const parsed = NumberParsed | vNumber
-// 	return i&parsed > NumberParsed
-// }
-
+// Type retutns the Type part of Info.
 func (i Info) Type() Type {
 	return Type(i)
 }
 
+// HasLen returns if an Info's type has length. (ie is Object or Array)
 func (i Info) HasLen() bool {
 	return i&(vObject|vArray) != 0
 }
+
+// IsNull checks if t is TypeNull
 func (t Type) IsNull() bool {
 	return t == TypeNull
 }
 
+// IsNull checks if i is TypeNull
 func (i Info) IsNull() bool {
 	return i == vNull
 }
+
+// IsArray checks if i is TypeArray
 func (i Info) IsArray() bool {
 	return i == vArray
 }
+
+// IsArray checks if t is TypeArray
 func (t Type) IsArray() bool {
 	return t == TypeArray
 }
+
+// IsValue checks if t matches TypeAnyValue
 func (t Type) IsValue() bool {
 	return t&TypeAnyValue != 0
 }
+
+// IsValue checks if i matches TypeAnyValue
 func (i Info) IsValue() bool {
 	const vAnyValue = Info(TypeAnyValue)
 	return i&vAnyValue != 0
 }
+
+// IsString checks if t is TypeString
 func (t Type) IsString() bool {
 	return t == TypeString
 }
+
+// IsString checks if i is TypeString
 func (i Info) IsString() bool {
 	return i&vString == vString
 }
 
-// func (i Info) IsTrue() bool {
-// 	return i == vTrue
-// }
-// func (i Info) IsFalse() bool {
-// 	return i == vFalse
-// }
-
-// func (i Info) ToUint() bool {
-// 	return i&vNumberInt == vNumberUint
-// }
-
-// func (i Info) ToInt() bool {
-// 	return i&vNumberUint == vNumberUint
-// }
+// IsNumber checks if i is TypeNumber
 func (i Info) IsNumber() bool {
 	return i&vNumber == vNumber
 }
+
+// IsObject checks if i is TypeObject
 func (i Info) IsObject() bool {
 	return i == vObject
 }

@@ -353,6 +353,7 @@ func (n *N) SetUint(u uint64) {
 	n.values = n.values[:0]
 
 }
+
 func (n *N) SetInt(i int64) {
 	if n == nil {
 		return
