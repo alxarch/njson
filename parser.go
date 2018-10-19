@@ -5,7 +5,7 @@ import (
 )
 
 type parser struct {
-	nodes  []N
+	nodes  []node
 	n      uint
 	unsafe Info
 	err    error
@@ -65,13 +65,13 @@ func (p *parser) abort(pos uint, typ Type, got, want interface{}) uint {
 }
 
 // node returns a node pointer. The pointer is valid until the next call to node()
-func (p *parser) node() *N {
+func (p *parser) node() *node {
 	if p.n < uint(len(p.nodes)) {
 		n := &p.nodes[p.n]
 		p.n++
 		return n
 	}
-	nodes := make([]N, 2*len(p.nodes)+1)
+	nodes := make([]node, 2*len(p.nodes)+1)
 	copy(nodes, p.nodes)
 	p.nodes = nodes
 	if p.n < uint(len(p.nodes)) {
@@ -419,7 +419,7 @@ readValue:
 }
 
 // Update document nodes and returned unused nodes
-func (p *parser) update(d *Document) []N {
+func (p *parser) update(d *Document) []node {
 	if p.n < uint(len(d.nodes)) {
 		nodes := d.nodes[p.n:]
 		d.nodes = d.nodes[:p.n]
@@ -432,7 +432,7 @@ func (p *parser) update(d *Document) []N {
 }
 
 // Garbage collect unused nodes' references to JSON source string
-func resetNodes(nodes []N) {
+func resetNodes(nodes []node) {
 	for i := range nodes {
 		n := &nodes[i]
 		n.raw = ""

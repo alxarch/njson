@@ -81,21 +81,22 @@ const (
 	vBoolean = Info(TypeBoolean)
 	vArray   = Info(TypeArray)
 	vObject  = Info(TypeObject)
-	// vFalse   = vBoolean
-	// vTrue    = vBoolean | IsTrue
-	// vNumberUint = vNumber | NumberZeroDecimal | NumberParsed
-	// vNumberInt  = vNumber | NumberZeroDecimal | NumberSigned | NumberParsed
 )
 
 // Type flags
 const (
 	_ Info = 1 << (iota + 8)
 	Unsafe
-	HasError Info = 1 << 15
+	Orphan
 )
 
-// Safe checks if Unsafe flag is set.
-func (i Info) Safe() bool {
+// IsOrhpan checks if IsOrhpan flag is set.
+func (i Info) IsOrhpan() bool {
+	return i&Orphan == Orphan
+}
+
+// IsSafe checks if Unsafe flag is set.
+func (i Info) IsSafe() bool {
 	return i&Unsafe == 0
 }
 

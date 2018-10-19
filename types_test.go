@@ -1,22 +1,20 @@
-package njson_test
+package njson
 
 import (
 	"testing"
-
-	"github.com/alxarch/njson"
 )
 
 func TestType_String(t *testing.T) {
-	for expect, typ := range map[string]njson.Type{
-		"InvalidToken":  njson.TypeInvalid,
-		"Number":        njson.TypeNumber,
-		"Array":         njson.TypeArray,
-		"Boolean":       njson.TypeBoolean,
-		"Object":        njson.TypeObject,
-		"Null":          njson.TypeNull,
-		"String":        njson.TypeString,
-		"AnyValue":      njson.TypeAnyValue,
-		"[Number Null]": njson.TypeNumber | njson.TypeNull,
+	for expect, typ := range map[string]Type{
+		"InvalidToken":  TypeInvalid,
+		"Number":        TypeNumber,
+		"Array":         TypeArray,
+		"Boolean":       TypeBoolean,
+		"Object":        TypeObject,
+		"Null":          TypeNull,
+		"String":        TypeString,
+		"AnyValue":      TypeAnyValue,
+		"[Number Null]": TypeNumber | TypeNull,
 	} {
 		if actual := typ.String(); actual != expect {
 			t.Errorf("Invalid string %s != %s", actual, expect)
@@ -25,26 +23,26 @@ func TestType_String(t *testing.T) {
 
 }
 func TestType_Types(t *testing.T) {
-	typ := njson.TypeNumber
+	typ := TypeNumber
 	ts := typ.Types()
 	if len(ts) != 1 {
 		t.Errorf("Invalid types: %s", ts)
 		return
 	}
-	if ts[0] != njson.TypeNumber {
+	if ts[0] != TypeNumber {
 		t.Errorf("Invalid types: %s", ts)
 	}
-	typ |= njson.TypeObject
+	typ |= TypeObject
 	ts = typ.Types()
 	if len(ts) != 2 {
 		t.Errorf("Invalid types: %s", ts)
 		return
 	}
-	if ts[1] != njson.TypeNumber {
+	if ts[1] != TypeNumber {
 		t.Errorf("Invalid types: %s", ts[0])
 	}
-	if ts[0] != njson.TypeObject {
+	if ts[0] != TypeObject {
 		t.Errorf("Invalid types: %s", ts[1])
 	}
-	// t.Error(njson.TypeError{njson.TypeString, typ})
+	// t.Error(TypeError{TypeString, typ})
 }

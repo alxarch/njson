@@ -10,14 +10,15 @@ import (
 
 // Document is a JSON document.
 type Document struct {
-	nodes []N
-	rev   uint // document revision incremented on every Reset/Close invalidating partials
+	nodes []node
+	rev   uint // document revision incremented on every Reset/Close invalidating nodes
 }
 
+// Lookup finds a node's id by path.
 func (d *Document) Lookup(id uint, path []string) uint {
 	var (
 		v *V
-		n *N
+		n *node
 	)
 lookup:
 	for _, key := range path {
@@ -52,102 +53,71 @@ lookup:
 	return id
 }
 
-// Null adds a new Null node to the document and returns it's id
-func (d *Document) Null() uint {
+// Null adds a new Null node to the document.
+func (d *Document) Null() Node {
 	id := uint(len(d.nodes))
-	d.nodes = append(d.nodes, N{
-		info: vNull,
-	})
-	return id
+	n := d.grow()
+	n.reset(vNull|Orphan, strNull, n.values[:0])
+	return Node{id, d.rev, d}
 }
 
-// False adds a new Boolean node with it's value set to false to the document and returns it's id
-func (d *Document) False() uint {
+// False adds a new Boolean node with it's value set to false to the document.
+func (d *Document) False() Node {
 	id := uint(len(d.nodes))
-	d.nodes = append(d.nodes, N{
-		info: vBoolean,
-		raw:  strFalse,
-	})
-	return id
+	n := d.grow()
+	n.reset(vBoolean|Orphan, strFalse, n.values[:0])
+	return Node{id, d.rev, d}
 }
 
-// True adds a new Boolean node with it's value set to true to the document and returns it's id
-func (d *Document) True() uint {
+// True adds a new Boolean node with it's value set to true to the document.
+func (d *Document) True() Node {
 	id := uint(len(d.nodes))
-	d.nodes = append(d.nodes, N{
-		info: vBoolean,
-		raw:  strTrue,
-	})
-	return id
+	n := d.grow()
+	n.reset(vBoolean|Orphan, strTrue, n.values[:0])
+	return Node{id, d.rev, d}
 }
 
-// TextRaw adds a new String node to the document and returns it's id.
-func (d *Document) TextRaw(s string) uint {
+// TextRaw adds a new String node to the document.
+func (d *Document) TextRaw(s string) Node {
 	id := uint(len(d.nodes))
-	d.nodes = append(d.nodes, N{
-		info: vString,
-		raw:  s,
-	})
-	return id
+	n := d.grow()
+	n.reset(vString|Orphan, s, n.values[:0])
+	return Node{id, d.rev, d}
 
 }
 
-// Text adds a new String node to the document escaping JSON unsafe characters and returns it's id.
-func (d *Document) Text(s string) uint {
+// Text adds a new String node to the document escaping JSON unsafe characters.
+func (d *Document) Text(s string) Node {
+	return d.TextRaw(strjson.Escaped(s, false, false))
+}
+
+// TextHTML adds a new String node to the document escaping HTML and JSON unsafe characters.
+func (d *Document) TextHTML(s string) Node {
+	return d.TextRaw(strjson.Escaped(s, true, false))
+}
+
+// Object adds a new empty Object node to the document.
+func (d *Document) Object() Node {
 	id := uint(len(d.nodes))
-	d.nodes = append(d.nodes, N{
-		info: vString,
-		raw:  strjson.Escaped(s, false, false),
-	})
-	return id
+	n := d.grow()
+	n.reset(vObject|Orphan, "", n.values[:0])
+	return Node{id, d.rev, d}
 }
 
-// TextHTML adds a new String node to the document escaping HTML and JSON unsafe characters and returns it's id.
-func (d *Document) TextHTML(s string) uint {
+// Array adds a new empty Array node to the document.
+func (d *Document) Array() Node {
 	id := uint(len(d.nodes))
-	d.nodes = append(d.nodes, N{
-		info: vString,
-		raw:  strjson.Escaped(s, true, false),
-	})
-	return id
+	n := d.grow()
+	n.reset(vArray|Orphan, "", n.values[:0])
+	return Node{id, d.rev, d}
 }
 
-// Object adds a new empty Object node to the document and returns it's id.
-func (d *Document) Object() uint {
+// Number adds a new Number node to the document.
+func (d *Document) Number(f float64) Node {
 	id := uint(len(d.nodes))
-	d.nodes = append(d.nodes, N{
-		info: vObject,
-	})
-	return id
-}
-
-// NewObject adds a new empty Object node to the document and returns a pointer to the node.
-func (d *Document) NewObject() Node {
-	return Node{d.Object(), d.rev, d}
-}
-
-// Array adds a new empty Array node to the document and returns it's id.
-func (d *Document) Array() uint {
-	id := uint(len(d.nodes))
-	d.nodes = append(d.nodes, N{
-		info: vArray,
-	})
-	return id
-}
-
-// NewArray adds a new empty Array node to the document and returns a pointer to the node.
-func (d *Document) NewArray() Node {
-	return Node{d.Array(), d.rev, d}
-}
-
-// Number adds a new Number node to the document and returns it's id.
-func (d *Document) Number(f float64) uint {
-	id := uint(len(d.nodes))
-	d.nodes = append(d.nodes, N{
-		info: vNumber,
-		raw:  numjson.FormatFloat(f, 64),
-	})
-	return id
+	n := d.grow()
+	n.reset(vNumber|Orphan, numjson.FormatFloat(f, 64), n.values[:0])
+	return Node{id, d.rev, d}
 }
 
 // Reset resets the document to empty.
@@ -158,7 +128,7 @@ func (d *Document) Reset() {
 }
 
 // get finds a node by id.
-func (d *Document) get(id uint) *N {
+func (d *Document) get(id uint) *node {
 	if d != nil && id < uint(len(d.nodes)) {
 		return &d.nodes[id]
 	}
@@ -181,7 +151,7 @@ func Blank() *Document {
 		return x.(*Document)
 	}
 	d := Document{
-		nodes: make([]N, 0, minNumNodes),
+		nodes: make([]node, 0, minNumNodes),
 	}
 	return &d
 }
@@ -244,6 +214,7 @@ func (d *Document) ToInterface(id uint) (interface{}, bool) {
 	}
 }
 
+// AppendJSON appends the JSON data of a specific node id to a byte slice.
 func (d *Document) AppendJSON(dst []byte, id uint) ([]byte, error) {
 	n := d.get(id)
 	if n == nil {
@@ -290,10 +261,34 @@ func (d *Document) AppendJSON(dst []byte, id uint) ([]byte, error) {
 
 }
 
-// Root returns the root partial of a Document
-func (d *Document) root() *N {
-	if len(d.nodes) > 0 {
-		return &d.nodes[0]
+func (d *Document) copy(other *Document, id uint) uint {
+	if d == nil {
+		return maxUint
 	}
-	return nil
+	n := other.get(id)
+	if n == nil {
+		return maxUint
+	}
+	if n.info.IsOrhpan() && other == d {
+		n.info &^= Orphan
+		return id
+	}
+	id = uint(len(d.nodes))
+	cp := d.grow()
+	values := cp.values[:cap(cp.values)]
+	*cp = node{
+		raw:  n.raw,
+		info: n.info,
+	}
+	n = cp
+	numV := uint(0)
+	for i := range n.values {
+		v := &n.values[i]
+		if id := d.copy(other, v.id); id < maxUint {
+			values = appendV(values, v.key, id, numV)
+			numV++
+		}
+	}
+	d.nodes[id].values = values[:numV]
+	return id
 }

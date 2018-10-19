@@ -1,14 +1,12 @@
-package njson_test
+package njson
 
 import (
 	"testing"
-
-	"github.com/alxarch/njson"
 )
 
 func TestTypeError(t *testing.T) {
-	n := &njson.N{}
-	err := n.TypeError(njson.TypeAnyValue)
+	n := &node{}
+	err := n.TypeError(TypeAnyValue)
 	if err.Error() != "Invalid type InvalidToken not in [String Object Array Number Boolean Null]" {
 		t.Errorf("Invalid error message %s", err)
 	}

@@ -4,7 +4,12 @@ import (
 	"encoding"
 	"encoding/json"
 	"io"
+	"math"
+	"strconv"
 	"sync"
+
+	"github.com/alxarch/njson/numjson"
+	"github.com/alxarch/njson/strjson"
 )
 
 // Node is a reference to a node in a JSON Document.
@@ -39,7 +44,7 @@ func (n Node) Document() *Document {
 	return nil
 }
 
-func (n Node) get() *N {
+func (n Node) get() *node {
 	return n.Document().get(n.id)
 }
 
@@ -49,22 +54,58 @@ func (n Node) AppendJSON(dst []byte) ([]byte, error) {
 }
 
 // Raw return the JSON string of a Node's value.
-func (n Node) Raw() string { return n.get().Raw() }
+// Object and Array nodes return an empty string.
+// The returned string is NOT safe to use if ParseUnsafe was used.
+func (n Node) Raw() string {
+	if n := n.get(); n != nil {
+		return n.raw
+	}
+	return ""
+}
 
-// Unescaped unescapes a String Node's value.
+// Unescaped unescapes the value of a String Node.
+// The returned string is safe to use even if ParseUnsafe was used.
 func (n Node) Unescaped() string { return n.get().Unescaped() }
 
 // ToFloat converts a node's value to float64.
-func (n Node) ToFloat() (float64, bool) { return n.get().ToFloat() }
+func (n Node) ToFloat() (float64, bool) {
+	if n := n.get(); n != nil {
+		f := numjson.ParseFloat(n.raw)
+		return f, f == f
+	}
+	return 0, false
+}
 
 // ToInt converts a node's value to int64.
-func (n Node) ToInt() (int64, bool) { return n.get().ToInt() }
+func (n Node) ToInt() (int64, bool) {
+	if n := n.get(); n != nil {
+		f := numjson.ParseFloat(n.raw)
+		return int64(f), math.MinInt64 <= f && f < math.MaxInt64 && math.Trunc(f) == f
+	}
+	return 0, false
+}
 
 // ToUint converts a node's  value to uint64.
-func (n Node) ToUint() (uint64, bool) { return n.get().ToUint() }
+func (n Node) ToUint() (uint64, bool) {
+	if n := n.get(); n != nil {
+		f := numjson.ParseFloat(n.raw)
+		return uint64(f), 0 <= f && f < math.MaxUint64 && math.Trunc(f) == f
+	}
+	return 0, false
+}
 
 // ToBool converts a Node to bool.
-func (n Node) ToBool() (bool, bool) { return n.get().ToBool() }
+func (n Node) ToBool() (bool, bool) {
+	if n := n.get(); n != nil && n.info == vBoolean {
+		switch n.raw {
+		case strTrue:
+			return true, true
+		case strFalse:
+			return false, true
+		}
+	}
+	return false, false
+}
 
 // Type returnsa a Node's type.
 func (n Node) Type() Type { return n.get().Type() }
@@ -74,7 +115,12 @@ func (n Node) Type() Type { return n.get().Type() }
 func (n Node) Bytes() []byte { return n.get().Bytes() }
 
 // Values returns a value iterator over an Array or Object values.
-func (n Node) Values() IterV { return n.get().Values() }
+func (n Node) Values() IterV {
+	if n := n.get(); n != nil {
+		return IterV{values: n.values}
+	}
+	return IterV{}
+}
 
 // TypeError returns an error for a type not matching a Node's type.
 func (n Node) TypeError(want Type) error {
@@ -157,6 +203,8 @@ func (n Node) WrapUnmarshalText(u encoding.TextUnmarshaler) (err error) {
 }
 
 // Get gets a Node by key.
+// If the key is not found the returned node's id
+// will be MaxID and the Node will behave as empty.
 func (n Node) Get(key string) Node {
 	return n.With(n.get().Get(key))
 }
@@ -171,45 +219,202 @@ func (n Node) Index(i int) Node {
 // Set assigns a Node to the key of an Object Node.
 // Since most keys need no escaping it doesn't escape the key.
 // If the key needs escaping use strjson.Escaped.
-func (n Node) Set(key string, value Node) { n.get().Set(key, value.ID()) }
+func (n Node) Set(key string, value Node) {
+	if nn := n.get(); nn != nil && nn.info.IsObject() {
+		id := n.doc.copy(value.Document(), value.ID())
+		if id < maxUint {
+			var v *V
+			for i := range nn.values {
+				v = &nn.values[i]
+				if v.key == key {
+					v.id = id
+					return
+				}
+			}
+			nn.values = append(nn.values, V{
+				id:  id,
+				key: key,
+			})
+		}
+	}
+}
+
+// Append appends a node id to an Array node's values.
+func (n Node) Append(value Node) {
+	if nn := n.get(); nn != nil && nn.info.IsArray() {
+		nn.values = append(nn.values, V{
+			id:  n.doc.copy(value.Document(), value.ID()),
+			key: "",
+		})
+	}
+}
+
+// TODO: Splice, Prepend
 
 // Slice reslices an Array node.
-func (n Node) Slice(i, j int) { n.get().Slice(i, j) }
+func (n Node) Slice(i, j int) {
+	if n := n.get(); n != nil && n.info == vArray && 0 <= i && i < j && j < len(n.values) {
+		n.values = n.values[i:j]
+	}
+}
+
+func (doc *Document) grow() (n *node) {
+	if len(doc.nodes) < cap(doc.nodes) {
+		doc.nodes = doc.nodes[:len(doc.nodes)+1]
+	} else {
+		doc.nodes = append(doc.nodes, node{})
+	}
+	return &doc.nodes[len(doc.nodes)-1]
+}
 
 // Replace replaces the value at offset i of an Array node.
-func (n Node) Replace(i int, r Node) { n.get().Replace(i, r.ID()) }
+// Replace makes a copy of the value to avoid recursion loops.
+func (n Node) Replace(i int, value Node) {
+	if nn := n.get(); nn != nil && nn.info.IsArray() && 0 <= i && i < len(nn.values) {
+		id := n.doc.copy(value.Document(), value.ID())
+		if id < maxUint {
+			nn.values[i] = V{id, ""}
+		}
+	}
+}
 
-// Remove removes the value at offset i of an Array or Object node.
-func (n *Node) Remove(i int) { n.get().Remove(i) }
+// Remove removes the value at offset i of an Array node.
+func (n Node) Remove(i int) {
+	if n := n.get(); n != nil && n.info == vArray && 0 <= i && i < len(n.values) {
+		if j := i + 1; 0 <= j && j < len(n.values) {
+			copy(n.values[i:], n.values[j:])
+		}
+		if j := len(n.values) - 1; 0 <= j && j < len(n.values) {
+			n.values[j] = V{}
+			n.values = n.values[:j]
+		}
+	}
+}
 
 // Del finds a key in an Object node's values and removes it.
-func (n Node) Del(key string) { n.get().Del(key) }
+func (n Node) Del(key string) {
+	if n := n.get(); n != nil && n.info == vObject {
+		for i := range n.values {
+			if n.values[i].key == key {
+				if j := len(n.values) - 1; 0 <= j && j < len(n.values) {
+					n.values[i] = n.values[j]
+					n.values[j] = V{}
+					n.values = n.values[:j]
+				}
+				return
+			}
+		}
+	}
+}
 
 // SetInt sets a Node's value to an integer.
-func (n Node) SetInt(i int64) { n.get().SetInt(i) }
+func (n Node) SetInt(i int64) {
+	if n := n.get(); n != nil {
+		n.reset(vNumber, strconv.FormatInt(i, 10), n.values[:0])
+	}
+
+}
 
 // SetUint sets a Node's value to an unsigned integer.
-func (n Node) SetUint(u uint64) { n.get().SetUint(u) }
+func (n Node) SetUint(u uint64) {
+	if n := n.get(); n != nil {
+		n.reset(vNumber, strconv.FormatUint(u, 10), n.values[:0])
+	}
+
+}
 
 // SetFloat sets a Node's value to a float number.
-func (n Node) SetFloat(f float64) { n.get().SetFloat(f) }
+func (n Node) SetFloat(f float64) {
+	if n := n.get(); n != nil {
+		n.reset(vNumber, numjson.FormatFloat(f, 64), n.values[:0])
+	}
+}
 
 // SetString sets a Node's value to a string escaping invalid JSON characters.
-func (n Node) SetString(s string) { n.get().SetString(s) }
+func (n Node) SetString(s string) {
+	if n := n.get(); n != nil {
+		n.reset(vString, strjson.Escaped(s, false, false), n.values[:0])
+	}
+}
 
 // SetStringHTML sets a Node's value to a string escaping invalid JSON and unsafe HTML characters.
-func (n Node) SetStringHTML(s string) { n.get().SetStringHTML(s) }
+func (n Node) SetStringHTML(s string) {
+	if n := n.get(); n != nil {
+		n.reset(vString, strjson.Escaped(s, true, false), n.values[:0])
+	}
+}
 
 // SetStringRaw sets a Node's value to a string without escaping.
 // Unless the provided string is guaranteed to not contain any JSON invalid characters,
 // JSON output from this Node will be invalid.
-func (n Node) SetStringRaw(s string) { n.get().SetStringRaw(s) }
+func (n Node) SetStringRaw(s string) {
+	if n := n.get(); n != nil {
+		n.reset(vString, s, n.values[:0])
+	}
+}
 
 // SetFalse sets a Node's value to false.
-func (n Node) SetFalse() { n.get().SetFalse() }
+func (n Node) SetFalse() {
+	if n := n.get(); n != nil {
+		n.reset(vBoolean, strFalse, n.values[:0])
+	}
+}
 
 // SetTrue sets a Node's value to true.
-func (n Node) SetTrue() { n.get().SetTrue() }
+func (n Node) SetTrue() {
+	if n := n.get(); n != nil {
+		n.reset(vBoolean, strTrue, n.values[:0])
+	}
+}
 
 // SetNull sets a Node's value to null.
-func (n Node) SetNull() { n.get().SetNull() }
+func (n Node) SetNull() {
+	if n := n.get(); n != nil {
+		n.reset(vNull, strNull, n.values[:0])
+	}
+}
+
+// IterV is an iterator over a node's values.
+type IterV struct {
+	*V
+	index  int
+	values []V
+}
+
+// Reset resets the iterator.
+func (i *IterV) Reset() {
+	i.index = 0
+	i.V = nil
+}
+
+// Close closes the iterator unlinking the values slice.
+func (i *IterV) Close() {
+	i.values = nil
+	i.index = -1
+	i.V = nil
+}
+
+// Next increments the iteration cursor and checks if the iterarion finished.
+func (i *IterV) Next() bool {
+	if 0 <= i.index && i.index < len(i.values) {
+		i.V = &i.values[i.index]
+		i.index++
+		return true
+	}
+	i.V = nil
+	// Set index to -1 so every Next() returns false until Reset() is called.
+	i.index = -1
+	return false
+}
+
+// Len returns the length of the values.
+func (i *IterV) Len() int {
+	return len(i.values)
+}
+
+// Index returns the current iteration index.
+// Before Next() is called for the first time it returns -1.
+// After the iteration has finished it returns -2.
+func (i *IterV) Index() int {
+	return i.index - 1
+}
