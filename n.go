@@ -7,7 +7,7 @@ import (
 // node is a JSON document node.
 // node's data is only valid until Document.Close() or Document.Reset().
 type node struct {
-	info   Info
+	info   info
 	raw    string
 	values []V
 }
@@ -49,7 +49,7 @@ func (n *node) Safe() string {
 		return n.raw
 	}
 	n.raw = scopy(n.raw)
-	n.info &^= Unsafe
+	n.info &^= infUnsafe
 	return n.raw
 }
 
@@ -65,7 +65,7 @@ const maxUint = ^(uint(0))
 
 // Index gets the id of an Array node's values at position i
 func (n *node) Index(i int) uint {
-	if n != nil && n.info == vArray && 0 <= i && i < len(n.values) {
+	if n != nil && n.info.IsArray() && 0 <= i && i < len(n.values) {
 		v := &n.values[i]
 		return v.id
 	}
@@ -74,7 +74,7 @@ func (n *node) Index(i int) uint {
 
 // Get finds a key in an Object node's values and returns it's id.
 func (n *node) Get(key string) uint {
-	if n != nil && n.info == vObject {
+	if n != nil && n.info.IsObject() {
 		var v *V
 		for i := range n.values {
 			v = &n.values[i]
@@ -98,17 +98,17 @@ func (n *node) TypeError(want Type) error {
 	return newTypeError(n.Type(), want)
 }
 
-func (n *node) set(info Info, raw string) {
-	n.info = info
+func (n *node) set(inf info, raw string) {
+	n.info = inf
 	n.raw = raw
 }
 
-func (n *node) reset(info Info, raw string, values []V) {
+func (n *node) reset(inf info, raw string, values []V) {
 	for i := range n.values {
 		n.values[i] = V{}
 	}
 	*n = node{
-		info:   info,
+		info:   inf,
 		raw:    raw,
 		values: values,
 	}

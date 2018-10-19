@@ -71,63 +71,58 @@ func (t Type) String() string {
 	}
 }
 
-// Info is a bitmask with type info for a node.
-type Info uint16
+// info is a bitmask with type info for a node.
+type info uint16
 
 const (
-	vString  = Info(TypeString)
-	vNumber  = Info(TypeNumber)
-	vNull    = Info(TypeNull)
-	vBoolean = Info(TypeBoolean)
-	vArray   = Info(TypeArray)
-	vObject  = Info(TypeObject)
+	vString  = info(TypeString)
+	vNumber  = info(TypeNumber)
+	vNull    = info(TypeNull)
+	vBoolean = info(TypeBoolean)
+	vArray   = info(TypeArray)
+	vObject  = info(TypeObject)
 )
 
 // Type flags
 const (
-	_ Info = 1 << (iota + 8)
-	Unsafe
-	Root
+	_ info = 1 << (iota + 8)
+	infUnsafe
+	infRoot
 )
 
 // IsRoot checks if IsRoot flag is set.
-func (i Info) IsRoot() bool {
-	return i&Root == Root
+func (i info) IsRoot() bool {
+	return i&infRoot == infRoot
 }
 
 // IsSafe checks if Unsafe flag is set.
-func (i Info) IsSafe() bool {
-	return i&Unsafe == 0
+func (i info) IsSafe() bool {
+	return i&infUnsafe == 0
 }
 
 // Type retutns the Type part of Info.
-func (i Info) Type() Type {
+func (i info) Type() Type {
 	return Type(i)
 }
 
 // HasLen returns if an Info's type has length. (ie is Object or Array)
-func (i Info) HasLen() bool {
+func (i info) HasLen() bool {
 	return i&(vObject|vArray) != 0
 }
 
-// IsNull checks if t is TypeNull
-func (t Type) IsNull() bool {
-	return t == TypeNull
-}
-
 // IsNull checks if i is TypeNull
-func (i Info) IsNull() bool {
+func (i info) IsNull() bool {
 	return i.Type() == TypeNull
 }
 
-// IsArray checks if i is TypeArray
-func (i Info) IsArray() bool {
-	return i.Type() == TypeArray
+// IsBoolean checks if i is TypeBoolean
+func (i info) IsBoolean() bool {
+	return i.Type() == TypeBoolean
 }
 
-// IsArray checks if t is TypeArray
-func (t Type) IsArray() bool {
-	return t == TypeArray
+// IsArray checks if i is TypeArray
+func (i info) IsArray() bool {
+	return i.Type() == TypeArray
 }
 
 // IsValue checks if t matches TypeAnyValue
@@ -136,27 +131,22 @@ func (t Type) IsValue() bool {
 }
 
 // IsValue checks if i matches TypeAnyValue
-func (i Info) IsValue() bool {
-	const vAnyValue = Info(TypeAnyValue)
+func (i info) IsValue() bool {
+	const vAnyValue = info(TypeAnyValue)
 	return i&vAnyValue != 0
 }
 
-// IsString checks if t is TypeString
-func (t Type) IsString() bool {
-	return t == TypeString
-}
-
 // IsString checks if i is TypeString
-func (i Info) IsString() bool {
+func (i info) IsString() bool {
 	return i.Type() == TypeString
 }
 
 // IsNumber checks if i is TypeNumber
-func (i Info) IsNumber() bool {
+func (i info) IsNumber() bool {
 	return i.Type() == TypeNumber
 }
 
 // IsObject checks if i is TypeObject
-func (i Info) IsObject() bool {
+func (i info) IsObject() bool {
 	return i.Type() == TypeObject
 }

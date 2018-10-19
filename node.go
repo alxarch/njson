@@ -96,7 +96,7 @@ func (n Node) ToUint() (uint64, bool) {
 
 // ToBool converts a Node to bool.
 func (n Node) ToBool() (bool, bool) {
-	if n := n.get(); n != nil && n.info.Type() == TypeBoolean {
+	if n := n.get(); n != nil && n.info.IsBoolean() {
 		switch n.raw {
 		case strTrue:
 			return true, true
@@ -255,7 +255,7 @@ func (n Node) Append(value Node) {
 
 // Slice reslices an Array node.
 func (n Node) Slice(i, j int) {
-	if n := n.get(); n != nil && n.info == vArray && 0 <= i && i < j && j < len(n.values) {
+	if n := n.get(); n != nil && n.info.IsArray() && 0 <= i && i < j && j < len(n.values) {
 		n.values = n.values[i:j]
 	}
 }
@@ -282,7 +282,7 @@ func (n Node) Replace(i int, value Node) {
 
 // Remove removes the value at offset i of an Array node.
 func (n Node) Remove(i int) {
-	if n := n.get(); n != nil && n.info == vArray && 0 <= i && i < len(n.values) {
+	if n := n.get(); n != nil && n.info.IsArray() && 0 <= i && i < len(n.values) {
 		if j := i + 1; 0 <= j && j < len(n.values) {
 			copy(n.values[i:], n.values[j:])
 		}
@@ -293,9 +293,27 @@ func (n Node) Remove(i int) {
 	}
 }
 
+func (n Node) Strip(key string) {
+	if nn := n.get(); nn != nil && nn.info.IsObject() {
+		for i := range nn.values {
+			v := &nn.values[i]
+			if key == v.key {
+				if j := len(nn.values) - 1; 0 <= j && j < len(nn.values) {
+					nn.values[i] = nn.values[j]
+					nn.values[j] = V{}
+					nn.values = nn.values[:j]
+				}
+			} else {
+				n.With(v.id).Strip(key)
+			}
+		}
+	}
+
+}
+
 // Del finds a key in an Object node's values and removes it.
 func (n Node) Del(key string) {
-	if n := n.get(); n != nil && n.info == vObject {
+	if n := n.get(); n != nil && n.info.IsObject() {
 		for i := range n.values {
 			if n.values[i].key == key {
 				if j := len(n.values) - 1; 0 <= j && j < len(n.values) {

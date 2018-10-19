@@ -7,7 +7,7 @@ import (
 type parser struct {
 	nodes  []node
 	n      uint
-	unsafe Info
+	unsafe info
 	err    error
 }
 
@@ -27,7 +27,7 @@ func (d *Document) Parse(s string) (Node, string, error) {
 	if nodes := p.update(d); len(nodes) > 0 {
 		resetNodes(nodes)
 	}
-	d.get(id).info |= Root
+	d.get(id).info |= infRoot
 	return Node{id, d.rev, d}, s, nil
 }
 
@@ -35,7 +35,7 @@ func (d *Document) Parse(s string) (Node, string, error) {
 // Make sure to call Document.Reset() or Document.Close() to avoid memory leaks.
 func (d *Document) ParseUnsafe(b []byte) (Node, []byte, error) {
 	p := d.parser()
-	p.unsafe = Unsafe
+	p.unsafe = infUnsafe
 	id := p.n
 	// n := p.node()
 	if pos := p.parseValue(b2s(b), 0); pos <= uint(len(b)) {
@@ -50,7 +50,7 @@ func (d *Document) ParseUnsafe(b []byte) (Node, []byte, error) {
 	if nodes := p.update(d); len(nodes) > 0 {
 		resetNodes(nodes)
 	}
-	d.get(id).info |= Root
+	d.get(id).info |= infRoot
 	return Node{id, d.rev, d}, b, nil
 }
 

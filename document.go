@@ -57,7 +57,7 @@ lookup:
 func (d *Document) Null() Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
-	n.reset(vNull|Root, strNull, n.values[:0])
+	n.reset(vNull|infRoot, strNull, n.values[:0])
 	return Node{id, d.rev, d}
 }
 
@@ -65,7 +65,7 @@ func (d *Document) Null() Node {
 func (d *Document) False() Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
-	n.reset(vBoolean|Root, strFalse, n.values[:0])
+	n.reset(vBoolean|infRoot, strFalse, n.values[:0])
 	return Node{id, d.rev, d}
 }
 
@@ -73,7 +73,7 @@ func (d *Document) False() Node {
 func (d *Document) True() Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
-	n.reset(vBoolean|Root, strTrue, n.values[:0])
+	n.reset(vBoolean|infRoot, strTrue, n.values[:0])
 	return Node{id, d.rev, d}
 }
 
@@ -81,7 +81,7 @@ func (d *Document) True() Node {
 func (d *Document) TextRaw(s string) Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
-	n.reset(vString|Root, s, n.values[:0])
+	n.reset(vString|infRoot, s, n.values[:0])
 	return Node{id, d.rev, d}
 
 }
@@ -100,7 +100,7 @@ func (d *Document) TextHTML(s string) Node {
 func (d *Document) Object() Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
-	n.reset(vObject|Root, "", n.values[:0])
+	n.reset(vObject|infRoot, "", n.values[:0])
 	return Node{id, d.rev, d}
 }
 
@@ -108,7 +108,7 @@ func (d *Document) Object() Node {
 func (d *Document) Array() Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
-	n.reset(vArray|Root, "", n.values[:0])
+	n.reset(vArray|infRoot, "", n.values[:0])
 	return Node{id, d.rev, d}
 }
 
@@ -116,7 +116,7 @@ func (d *Document) Array() Node {
 func (d *Document) Number(f float64) Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
-	n.reset(vNumber|Root, numjson.FormatFloat(f, 64), n.values[:0])
+	n.reset(vNumber|infRoot, numjson.FormatFloat(f, 64), n.values[:0])
 	return Node{id, d.rev, d}
 }
 
@@ -310,7 +310,7 @@ func (d *Document) copyOrAdopt(other *Document, id, to uint) uint {
 	}
 	if other == d {
 		if id != to && n.info.IsRoot() {
-			n.info &^= Root
+			n.info &^= infRoot
 			return id
 		}
 
