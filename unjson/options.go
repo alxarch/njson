@@ -15,53 +15,6 @@ type Options struct {
 	AllowInf   bool   // Allow ±Inf values for numbers
 }
 
-const (
-	offset64 = 14695981039346656037
-	prime64  = 1099511628211
-)
-
-var (
-	defaultOptionsHash = defaultOptions.hash()
-)
-
-// hashNew initializies a new fnv64a hash value.
-func hashNew() uint64 {
-	return offset64
-}
-
-// hashAddByte adds a byte to a fnv64a hash value, returning the updated hash.
-func hashAddByte(h uint64, b byte) uint64 {
-	h ^= uint64(b)
-	h *= prime64
-	return h
-}
-func hashAddUint64(h, n uint64) uint64 {
-	h ^= n
-	h *= prime64
-	return h
-}
-func (o *Options) hash() uint64 {
-	h := hashNew()
-	for _, c := range []byte(o.Tag) {
-		h = hashAddByte(h, c)
-	}
-	for _, c := range []byte(o.OmitMethod) {
-		h = hashAddByte(h, c)
-	}
-	if o.OmitEmpty {
-		h = hashAddByte(h, 'O')
-	}
-	if o.HTML {
-		h = hashAddByte(h, 'H')
-	}
-	if o.AllowInf {
-		h = hashAddByte(h, 'I')
-	}
-	if o.AllowNaN {
-		h = hashAddByte(h, 'N')
-	}
-	return h
-}
 func (o *Options) parseField(f reflect.StructField) (name string, omiempty, ok bool) {
 	p := fieldParser{}
 	if o != nil {
