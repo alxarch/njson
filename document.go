@@ -57,7 +57,7 @@ lookup:
 func (d *Document) Null() Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
-	n.reset(vNull|Orphan, strNull, n.values[:0])
+	n.reset(vNull|Root, strNull, n.values[:0])
 	return Node{id, d.rev, d}
 }
 
@@ -65,7 +65,7 @@ func (d *Document) Null() Node {
 func (d *Document) False() Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
-	n.reset(vBoolean|Orphan, strFalse, n.values[:0])
+	n.reset(vBoolean|Root, strFalse, n.values[:0])
 	return Node{id, d.rev, d}
 }
 
@@ -73,7 +73,7 @@ func (d *Document) False() Node {
 func (d *Document) True() Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
-	n.reset(vBoolean|Orphan, strTrue, n.values[:0])
+	n.reset(vBoolean|Root, strTrue, n.values[:0])
 	return Node{id, d.rev, d}
 }
 
@@ -81,7 +81,7 @@ func (d *Document) True() Node {
 func (d *Document) TextRaw(s string) Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
-	n.reset(vString|Orphan, s, n.values[:0])
+	n.reset(vString|Root, s, n.values[:0])
 	return Node{id, d.rev, d}
 
 }
@@ -100,7 +100,7 @@ func (d *Document) TextHTML(s string) Node {
 func (d *Document) Object() Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
-	n.reset(vObject|Orphan, "", n.values[:0])
+	n.reset(vObject|Root, "", n.values[:0])
 	return Node{id, d.rev, d}
 }
 
@@ -108,7 +108,7 @@ func (d *Document) Object() Node {
 func (d *Document) Array() Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
-	n.reset(vArray|Orphan, "", n.values[:0])
+	n.reset(vArray|Root, "", n.values[:0])
 	return Node{id, d.rev, d}
 }
 
@@ -116,7 +116,7 @@ func (d *Document) Array() Node {
 func (d *Document) Number(f float64) Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
-	n.reset(vNumber|Orphan, numjson.FormatFloat(f, 64), n.values[:0])
+	n.reset(vNumber|Root, numjson.FormatFloat(f, 64), n.values[:0])
 	return Node{id, d.rev, d}
 }
 
@@ -220,8 +220,8 @@ func (d *Document) AppendJSON(dst []byte, id uint) ([]byte, error) {
 	if n == nil {
 		return dst, newTypeError(TypeInvalid, TypeAnyValue)
 	}
-	switch n.info {
-	case vObject:
+	switch n.info.Type() {
+	case TypeObject:
 		dst = append(dst, delimBeginObject)
 		var err error
 		for i, v := range n.values {
@@ -237,7 +237,7 @@ func (d *Document) AppendJSON(dst []byte, id uint) ([]byte, error) {
 			}
 		}
 		dst = append(dst, delimEndObject)
-	case vArray:
+	case TypeArray:
 		dst = append(dst, delimBeginArray)
 		var err error
 		for i, v := range n.values {
@@ -250,7 +250,7 @@ func (d *Document) AppendJSON(dst []byte, id uint) ([]byte, error) {
 			}
 		}
 		dst = append(dst, delimEndArray)
-	case vString:
+	case TypeString:
 		dst = append(dst, delimString)
 		dst = append(dst, n.raw...)
 		dst = append(dst, delimString)
@@ -303,14 +303,14 @@ func (d *Document) ncopysafe(other *Document, n *node) uint {
 	return id
 }
 
-func (d *Document) copyOrAdopt(other *Document, id uint) uint {
+func (d *Document) copyOrAdopt(other *Document, id, to uint) uint {
 	n := other.get(id)
 	if n == nil {
 		return maxUint
 	}
 	if other == d {
-		if n.info.IsOrhpan() {
-			n.info &^= Orphan
+		if id != to && n.info.IsRoot() {
+			n.info &^= Root
 			return id
 		}
 

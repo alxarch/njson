@@ -69,3 +69,24 @@ func benchmarkD(src string) func(b *testing.B) {
 		_ = n
 	}
 }
+
+func TestDocument_Object(t *testing.T) {
+	d := Blank()
+	defer d.Close()
+	n := d.Object()
+	n.Set("foo", d.Text("bar"))
+	if data, err := n.AppendJSON(nil); err != nil {
+		t.Errorf("Unexpected error: %s", err)
+		return
+	} else if s := `{"foo":"bar"}`; string(data) != s {
+		t.Errorf("Invalid json: %s != %s", data, s)
+	}
+	n.Set("bar", n)
+	if data, err := n.AppendJSON(nil); err != nil {
+		t.Errorf("Unexpected error: %s", err)
+		return
+	} else if s := `{"foo":"bar","bar":{"foo":"bar"}}`; string(data) != s {
+		t.Errorf("Invalid json: %s != %s", data, s)
+	}
+
+}

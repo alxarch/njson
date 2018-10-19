@@ -2,6 +2,8 @@ package njson
 
 import (
 	"bytes"
+	"encoding/json"
+	"reflect"
 	"testing"
 )
 
@@ -198,150 +200,152 @@ func TestNodeToUint(t *testing.T) {
 	// }
 }
 
-// type customJSONUnmarshaler struct {
-// 	Foo int
-// }
+type customJSONUnmarshaler struct {
+	Foo int
+}
 
-// func (c *customJSONUnmarshaler) UnmarshalJSON(data []byte) error {
-// 	v := []int{0}
-// 	err := json.Unmarshal(data, &v)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	if len(v) > 0 {
-// 		c.Foo = v[0]
-// 	}
-// 	return nil
-// }
-// func TestNode_WrapUnmarshalJSON(t *testing.T) {
-// 	d := Parser{}
+func (c *customJSONUnmarshaler) UnmarshalJSON(data []byte) error {
+	v := []int{0}
+	err := json.Unmarshal(data, &v)
+	if err != nil {
+		return err
+	}
+	if len(v) > 0 {
+		c.Foo = v[0]
+	}
+	return nil
+}
+func TestNode_WrapUnmarshalJSON(t *testing.T) {
+	d := Blank()
+	defer d.Close()
+	{
+		c := customJSONUnmarshaler{}
+		if n, _, err := d.ParseUnsafe([]byte("[42]")); err != nil {
+			t.Errorf("Unexpected error: %s", err)
+		} else if err := n.WrapUnmarshalJSON(&c); err != nil {
+			t.Errorf("Unexpected error: %s", err)
+		} else if c.Foo != 42 {
+			t.Errorf("Unexpected value: %d", c.Foo)
+		}
 
-// 	{
-// 		c := customJSONUnmarshaler{}
-// 		if n, _, err := d.ParseUnsafe([]byte("[42]")); err != nil {
-// 			t.Errorf("Unexpected error: %s", err)
-// 		} else if err := n.WrapUnmarshalJSON(&c); err != nil {
-// 			t.Errorf("Unexpected error: %s", err)
-// 		} else if c.Foo != 42 {
-// 			t.Errorf("Unexpected value: %d", c.Foo)
-// 		}
+	}
+	{
+		c := customJSONUnmarshaler{}
+		if n, _, err := d.ParseUnsafe([]byte("[]")); err != nil {
+			t.Errorf("Unexpected error: %s", err)
+		} else if err := n.WrapUnmarshalJSON(&c); err != nil {
+			t.Errorf("Unexpected error: %s", err)
+		} else if c.Foo != 0 {
+			t.Errorf("Unexpected value: %d", c.Foo)
+		}
 
-// 	}
-// 	{
-// 		c := customJSONUnmarshaler{}
-// 		if n, _, err := d.ParseUnsafe([]byte("[]")); err != nil {
-// 			t.Errorf("Unexpected error: %s", err)
-// 		} else if err := n.WrapUnmarshalJSON(&c); err != nil {
-// 			t.Errorf("Unexpected error: %s", err)
-// 		} else if c.Foo != 0 {
-// 			t.Errorf("Unexpected value: %d", c.Foo)
-// 		}
+	}
+}
+func TestNode_Unescaped(t *testing.T) {
+	d := Blank()
+	defer d.Close()
+	if n, _, err := d.Parse(`"foo"`); err != nil {
+		t.Errorf("Unexpected error: %s", err)
+	} else if s := n.Unescaped(); s != "foo" {
+		t.Errorf("Unexpected value: %s", s)
+	}
+	if n, _, err := d.Parse(`42`); err != nil {
+		t.Errorf("Unexpected error: %s", err)
+	} else if s := n.Unescaped(); s != "" {
+		t.Errorf("Unexpected value: %s", s)
+	}
+	if n, _, err := d.Parse(`"foo\n"`); err != nil {
+		t.Errorf("Unexpected error: %s", err)
+	} else if s := n.Unescaped(); s != "foo\n" {
+		t.Errorf("Unexpected value: %s", s)
+	} else if s := n.Unescaped(); s != "foo\n" {
+		t.Errorf("Unexpected value: %s", s)
+	}
+	if n, _, err := d.Parse(`"foo\n"`); err != nil {
+		t.Errorf("Unexpected error: %s", err)
+	} else if s := n.Unescaped(); string(s) != "foo\n" {
+		t.Errorf("Unexpected value: %s", s)
+	} else if s := n.Unescaped(); string(s) != "foo\n" {
+		t.Errorf("Unexpected value: %s", s)
+	}
+	if n, _, err := d.Parse(`"foo"`); err != nil {
+		t.Errorf("Unexpected error: %s", err)
+	} else if s := n.Unescaped(); string(s) != "foo" {
+		t.Errorf("Unexpected value: %s", s)
+	}
+}
 
-// 	}
-// }
-// func TestNode_Unescaped(t *testing.T) {
-// 	d := Parser{}
-// 	if n, _, err := d.Parse(`"foo"`); err != nil {
-// 		t.Errorf("Unexpected error: %s", err)
-// 	} else if s := n.Unescaped(); s != "foo" {
-// 		t.Errorf("Unexpected value: %s", s)
-// 	}
-// 	if n, _, err := d.Parse(`42`); err != nil {
-// 		t.Errorf("Unexpected error: %s", err)
-// 	} else if s := n.Unescaped(); s != "" {
-// 		t.Errorf("Unexpected value: %s", s)
-// 	}
-// 	if n, _, err := d.Parse(`"foo\n"`); err != nil {
-// 		t.Errorf("Unexpected error: %s", err)
-// 	} else if s := n.Unescaped(); s != "foo\n" {
-// 		t.Errorf("Unexpected value: %s", s)
-// 	} else if s := n.Unescaped(); s != "foo\n" {
-// 		t.Errorf("Unexpected value: %s", s)
-// 	}
-// 	if n, _, err := d.Parse(`"foo\n"`); err != nil {
-// 		t.Errorf("Unexpected error: %s", err)
-// 	} else if s := n.Unescaped(); string(s) != "foo\n" {
-// 		t.Errorf("Unexpected value: %s", s)
-// 	} else if s := n.Unescaped(); string(s) != "foo\n" {
-// 		t.Errorf("Unexpected value: %s", s)
-// 	}
-// 	if n, _, err := d.Parse(`"foo"`); err != nil {
-// 		t.Errorf("Unexpected error: %s", err)
-// 	} else if s := n.Unescaped(); string(s) != "foo" {
-// 		t.Errorf("Unexpected value: %s", s)
-// 	}
-// }
+func TestNode_ToInterface(t *testing.T) {
+	d := Blank()
+	defer d.Close()
 
-// func TestNode_ToInterface(t *testing.T) {
-// 	d := Parser{}
+	if n, _, err := d.Parse(`"foo"`); err != nil {
+		t.Errorf("Unexpected error: %s", err)
+	} else if x, ok := n.ToInterface(); !ok {
+		t.Errorf("Failed to convert %v to interface.", n)
+	} else if !reflect.DeepEqual(x, "foo") {
+		t.Errorf("Unexpected value: %v", x)
+	}
 
-// 	if n, _, err := d.Parse(`"foo"`); err != nil {
-// 		t.Errorf("Unexpected error: %s", err)
-// 	} else if x, ok := n.ToInterface(); !ok {
-// 		t.Errorf("Failed to convert %v to interface.", n)
-// 	} else if !reflect.DeepEqual(x, "foo") {
-// 		t.Errorf("Unexpected value: %v", x)
-// 	}
+	if n, _, err := d.Parse(`42`); err != nil {
+		t.Errorf("Unexpected error: %s", err)
+	} else if x, ok := n.ToInterface(); !ok {
+		t.Errorf("Failed to convert %v to interface.", n)
+	} else if !reflect.DeepEqual(x, 42.0) {
+		t.Errorf("Unexpected value: %v", x)
+	}
 
-// 	if n, _, err := d.Parse(`42`); err != nil {
-// 		t.Errorf("Unexpected error: %s", err)
-// 	} else if x, ok := n.ToInterface(); !ok {
-// 		t.Errorf("Failed to convert %v to interface.", n)
-// 	} else if !reflect.DeepEqual(x, 42.0) {
-// 		t.Errorf("Unexpected value: %v", x)
-// 	}
+	if n, _, err := d.Parse(`["foo"]`); err != nil {
+		t.Errorf("Unexpected error: %s", err)
+	} else if x, ok := n.ToInterface(); !ok {
+		t.Errorf("Failed to convert %v to interface.", n)
+	} else if !reflect.DeepEqual(x, []interface{}{"foo"}) {
+		t.Errorf("Unexpected value: %v", x)
+	}
+	if n, _, err := d.Parse(`{}`); err != nil {
+		t.Errorf("Unexpected error: %s", err)
+	} else if x, ok := n.ToInterface(); !ok {
+		t.Errorf("Failed to convert %v to interface.", n)
+	} else if !reflect.DeepEqual(x, map[string]interface{}{}) {
+		t.Errorf("Unexpected value: %v", x)
+	}
+	if n, _, err := d.Parse(`{"answer": 42}`); err != nil {
+		t.Errorf("Unexpected error: %s", err)
+	} else if x, ok := n.ToInterface(); !ok {
+		t.Errorf("Failed to convert %v to interface.", n)
+	} else if !reflect.DeepEqual(x, map[string]interface{}{"answer": 42.0}) {
+		t.Errorf("Unexpected value: %v", x)
+	}
+	if n, _, err := d.Parse(`true`); err != nil {
+		t.Errorf("Unexpected error: %s", err)
+	} else if x, ok := n.ToInterface(); !ok {
+		t.Errorf("Failed to convert %v to interface.", n)
+	} else if !reflect.DeepEqual(x, true) {
+		t.Errorf("Unexpected value: %v", x)
+	}
+	if n, _, err := d.Parse(`false`); err != nil {
+		t.Errorf("Unexpected error: %s", err)
+	} else if x, ok := n.ToInterface(); !ok {
+		t.Errorf("Failed to convert %v to interface.", n)
+	} else if !reflect.DeepEqual(x, false) {
+		t.Errorf("Unexpected value: %v", x)
+	}
+	if n, _, err := d.Parse(`null`); err != nil {
+		t.Errorf("Unexpected error: %s", err)
+	} else if x, ok := n.ToInterface(); !ok {
+		t.Errorf("Failed to convert %v to interface.", n)
+	} else if !reflect.DeepEqual(x, nil) {
+		t.Errorf("Unexpected value: %v", x)
+	}
 
-// 	if n, _, err := d.Parse(`["foo"]`); err != nil {
-// 		t.Errorf("Unexpected error: %s", err)
-// 	} else if x, ok := n.ToInterface(); !ok {
-// 		t.Errorf("Failed to convert %v to interface.", n)
-// 	} else if !reflect.DeepEqual(x, []interface{}{"foo"}) {
-// 		t.Errorf("Unexpected value: %v", x)
-// 	}
-// 	if n, _, err := d.Parse(`{}`); err != nil {
-// 		t.Errorf("Unexpected error: %s", err)
-// 	} else if x, ok := n.ToInterface(); !ok {
-// 		t.Errorf("Failed to convert %v to interface.", n)
-// 	} else if !reflect.DeepEqual(x, map[string]interface{}{}) {
-// 		t.Errorf("Unexpected value: %v", x)
-// 	}
-// 	if n, _, err := d.Parse(`{"answer": 42}`); err != nil {
-// 		t.Errorf("Unexpected error: %s", err)
-// 	} else if x, ok := n.ToInterface(); !ok {
-// 		t.Errorf("Failed to convert %v to interface.", n)
-// 	} else if !reflect.DeepEqual(x, map[string]interface{}{"answer": 42.0}) {
-// 		t.Errorf("Unexpected value: %v", x)
-// 	}
-// 	if n, _, err := d.Parse(`true`); err != nil {
-// 		t.Errorf("Unexpected error: %s", err)
-// 	} else if x, ok := n.ToInterface(); !ok {
-// 		t.Errorf("Failed to convert %v to interface.", n)
-// 	} else if !reflect.DeepEqual(x, true) {
-// 		t.Errorf("Unexpected value: %v", x)
-// 	}
-// 	if n, _, err := d.Parse(`false`); err != nil {
-// 		t.Errorf("Unexpected error: %s", err)
-// 	} else if x, ok := n.ToInterface(); !ok {
-// 		t.Errorf("Failed to convert %v to interface.", n)
-// 	} else if !reflect.DeepEqual(x, false) {
-// 		t.Errorf("Unexpected value: %v", x)
-// 	}
-// 	if n, _, err := d.Parse(`null`); err != nil {
-// 		t.Errorf("Unexpected error: %s", err)
-// 	} else if x, ok := n.ToInterface(); !ok {
-// 		t.Errorf("Failed to convert %v to interface.", n)
-// 	} else if !reflect.DeepEqual(x, nil) {
-// 		t.Errorf("Unexpected value: %v", x)
-// 	}
-
-// 	if n, _, err := d.Parse(``); err == nil {
-// 		t.Errorf("Unexpected error: %s", err)
-// 	} else if x, ok := n.ToInterface(); ok {
-// 		t.Errorf("Failed to convert %v to interface.", n)
-// 	} else if !reflect.DeepEqual(x, nil) {
-// 		t.Errorf("Unexpected value: %v", x)
-// 	}
-// }
+	if n, _, err := d.Parse(``); err == nil {
+		t.Errorf("Unexpected error: %s", err)
+	} else if x, ok := n.ToInterface(); ok {
+		t.Errorf("Failed to convert %v to interface.", n)
+	} else if !reflect.DeepEqual(x, nil) {
+		t.Errorf("Unexpected value: %v", x)
+	}
+}
 
 func TestNode_PrintJSON(t *testing.T) {
 	d := Document{}

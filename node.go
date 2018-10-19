@@ -96,7 +96,7 @@ func (n Node) ToUint() (uint64, bool) {
 
 // ToBool converts a Node to bool.
 func (n Node) ToBool() (bool, bool) {
-	if n := n.get(); n != nil && n.info == vBoolean {
+	if n := n.get(); n != nil && n.info.Type() == TypeBoolean {
 		switch n.raw {
 		case strTrue:
 			return true, true
@@ -222,7 +222,7 @@ func (n Node) Index(i int) Node {
 func (n Node) Set(key string, value Node) {
 	if nn := n.get(); nn != nil && nn.info.IsObject() {
 		// Make a copy of the value if it's not Orphan to avoid recursion infinite loops.
-		id := n.doc.copyOrAdopt(value.Document(), value.ID())
+		id := n.doc.copyOrAdopt(value.Document(), value.ID(), n.id)
 		if id < maxUint {
 			var v *V
 			for i := range nn.values {
@@ -245,7 +245,7 @@ func (n Node) Append(value Node) {
 	if nn := n.get(); nn != nil && nn.info.IsArray() {
 		// Make a copy of the value if it's not Orphan to avoid recursion infinite loops.
 		nn.values = append(nn.values, V{
-			id:  n.doc.copyOrAdopt(value.Document(), value.ID()),
+			id:  n.doc.copyOrAdopt(value.Document(), value.ID(), n.id),
 			key: "",
 		})
 	}
@@ -273,7 +273,7 @@ func (doc *Document) grow() (n *node) {
 func (n Node) Replace(i int, value Node) {
 	if nn := n.get(); nn != nil && nn.info.IsArray() && 0 <= i && i < len(nn.values) {
 		// Make a copy of the value if it's not Orphan to avoid recursion infinite loops.
-		id := n.doc.copyOrAdopt(value.Document(), value.ID())
+		id := n.doc.copyOrAdopt(value.Document(), value.ID(), n.id)
 		if id < maxUint {
 			nn.values[i] = V{id, ""}
 		}

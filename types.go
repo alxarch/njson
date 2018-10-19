@@ -87,12 +87,12 @@ const (
 const (
 	_ Info = 1 << (iota + 8)
 	Unsafe
-	Orphan
+	Root
 )
 
-// IsOrhpan checks if IsOrhpan flag is set.
-func (i Info) IsOrhpan() bool {
-	return i&Orphan == Orphan
+// IsRoot checks if IsRoot flag is set.
+func (i Info) IsRoot() bool {
+	return i&Root == Root
 }
 
 // IsSafe checks if Unsafe flag is set.
@@ -117,12 +117,12 @@ func (t Type) IsNull() bool {
 
 // IsNull checks if i is TypeNull
 func (i Info) IsNull() bool {
-	return i == vNull
+	return i.Type() == TypeNull
 }
 
 // IsArray checks if i is TypeArray
 func (i Info) IsArray() bool {
-	return i == vArray
+	return i.Type() == TypeArray
 }
 
 // IsArray checks if t is TypeArray
@@ -148,15 +148,15 @@ func (t Type) IsString() bool {
 
 // IsString checks if i is TypeString
 func (i Info) IsString() bool {
-	return i&vString == vString
+	return i.Type() == TypeString
 }
 
 // IsNumber checks if i is TypeNumber
 func (i Info) IsNumber() bool {
-	return i&vNumber == vNumber
+	return i.Type() == TypeNumber
 }
 
 // IsObject checks if i is TypeObject
 func (i Info) IsObject() bool {
-	return i == vObject
+	return i.Type() == TypeObject
 }

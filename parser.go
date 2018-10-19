@@ -27,6 +27,7 @@ func (d *Document) Parse(s string) (Node, string, error) {
 	if nodes := p.update(d); len(nodes) > 0 {
 		resetNodes(nodes)
 	}
+	d.get(id).info |= Root
 	return Node{id, d.rev, d}, s, nil
 }
 
@@ -49,6 +50,7 @@ func (d *Document) ParseUnsafe(b []byte) (Node, []byte, error) {
 	if nodes := p.update(d); len(nodes) > 0 {
 		resetNodes(nodes)
 	}
+	d.get(id).info |= Root
 	return Node{id, d.rev, d}, b, nil
 }
 
