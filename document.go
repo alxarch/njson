@@ -14,8 +14,8 @@ type Document struct {
 	rev   uint // document revision incremented on every Reset/Close invalidating nodes
 }
 
-// Lookup finds a node's id by path.
-func (d *Document) Lookup(id uint, path []string) uint {
+// lookup finds a node's id by path.
+func (d *Document) lookup(id uint, path []string) uint {
 	var (
 		v *V
 		n *node
@@ -58,7 +58,7 @@ func (d *Document) Null() Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
 	n.reset(vNull|infRoot, strNull, n.values[:0])
-	return Node{id, d.rev, d}
+	return d.Node(id)
 }
 
 // False adds a new Boolean node with it's value set to false to the document.
@@ -66,7 +66,7 @@ func (d *Document) False() Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
 	n.reset(vBoolean|infRoot, strFalse, n.values[:0])
-	return Node{id, d.rev, d}
+	return d.Node(id)
 }
 
 // True adds a new Boolean node with it's value set to true to the document.
@@ -74,7 +74,7 @@ func (d *Document) True() Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
 	n.reset(vBoolean|infRoot, strTrue, n.values[:0])
-	return Node{id, d.rev, d}
+	return d.Node(id)
 }
 
 // TextRaw adds a new String node to the document.
@@ -82,7 +82,7 @@ func (d *Document) TextRaw(s string) Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
 	n.reset(vString|infRoot, s, n.values[:0])
-	return Node{id, d.rev, d}
+	return d.Node(id)
 
 }
 
@@ -101,7 +101,7 @@ func (d *Document) Object() Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
 	n.reset(vObject|infRoot, "", n.values[:0])
-	return Node{id, d.rev, d}
+	return d.Node(id)
 }
 
 // Array adds a new empty Array node to the document.
@@ -109,7 +109,7 @@ func (d *Document) Array() Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
 	n.reset(vArray|infRoot, "", n.values[:0])
-	return Node{id, d.rev, d}
+	return d.Node(id)
 }
 
 // Number adds a new Number node to the document.
@@ -117,7 +117,7 @@ func (d *Document) Number(f float64) Node {
 	id := uint(len(d.nodes))
 	n := d.grow()
 	n.reset(vNumber|infRoot, numjson.FormatFloat(f, 64), n.values[:0])
-	return Node{id, d.rev, d}
+	return d.Node(id)
 }
 
 // Reset resets the document to empty.
@@ -135,35 +135,18 @@ func (d *Document) get(id uint) *node {
 	return nil
 }
 
-// With returns a node with id set to id.
-func (d *Document) With(id uint) Node {
+// Node returns a node with id set to id.
+func (d *Document) Node(id uint) Node {
 	return Node{id, d.rev, d}
 }
 
-var docs sync.Pool
-
-const minNumNodes = 64
-
-// Blank returns a blank document from a pool.
-// Use Document.Close() to reset and return the document to the pool.
-func Blank() *Document {
-	if x := docs.Get(); x != nil {
-		return x.(*Document)
-	}
-	d := Document{
-		nodes: make([]node, 0, minNumNodes),
-	}
-	return &d
+// Root returns the document root node.
+func (d *Document) Root() Node {
+	return Node{0, d.rev, d}
 }
 
-// Close returns the document to the pool to be reused.
-func (d *Document) Close() {
-	d.Reset()
-	docs.Put(d)
-}
-
-// ToInterface converts a node to any combatible go value (many allocations on large trees).
-func (d *Document) ToInterface(id uint) (interface{}, bool) {
+// toInterface converts a node to any combatible go value (many allocations on large trees).
+func (d *Document) toInterface(id uint) (interface{}, bool) {
 	n := d.get(id)
 	if n == nil {
 		return nil, false
@@ -174,7 +157,7 @@ func (d *Document) ToInterface(id uint) (interface{}, bool) {
 		m := make(map[string]interface{}, len(n.values))
 		for _, v := range n.values {
 
-			if m[v.key], ok = d.ToInterface(v.id); !ok {
+			if m[v.key], ok = d.toInterface(v.id); !ok {
 				return nil, false
 			}
 		}
@@ -186,7 +169,7 @@ func (d *Document) ToInterface(id uint) (interface{}, bool) {
 			// Avoid bounds check
 			s = s[:len(n.values)]
 			for i, v := range n.values {
-				if s[i], ok = d.ToInterface(v.id); !ok {
+				if s[i], ok = d.toInterface(v.id); !ok {
 					return nil, false
 
 				}
@@ -214,8 +197,12 @@ func (d *Document) ToInterface(id uint) (interface{}, bool) {
 	}
 }
 
-// AppendJSON appends the JSON data of a specific node id to a byte slice.
-func (d *Document) AppendJSON(dst []byte, id uint) ([]byte, error) {
+// AppendJSON appends the JSON data of the document root node to a byte slice.
+func (d *Document) AppendJSON(dst []byte) ([]byte, error) {
+	return d.appendJSON(dst, 0)
+}
+
+func (d *Document) appendJSON(dst []byte, id uint) ([]byte, error) {
 	n := d.get(id)
 	if n == nil {
 		return dst, newTypeError(TypeInvalid, TypeAnyValue)
@@ -231,7 +218,7 @@ func (d *Document) AppendJSON(dst []byte, id uint) ([]byte, error) {
 			dst = append(dst, delimString)
 			dst = append(dst, v.key...)
 			dst = append(dst, delimString, delimNameSeparator)
-			dst, err = d.AppendJSON(dst, v.id)
+			dst, err = d.appendJSON(dst, v.id)
 			if err != nil {
 				return dst, err
 			}
@@ -244,7 +231,7 @@ func (d *Document) AppendJSON(dst []byte, id uint) ([]byte, error) {
 			if i > 0 {
 				dst = append(dst, delimValueSeparator)
 			}
-			dst, err = d.AppendJSON(dst, v.id)
+			dst, err = d.appendJSON(dst, v.id)
 			if err != nil {
 				return dst, err
 			}
@@ -318,4 +305,53 @@ func (d *Document) copyOrAdopt(other *Document, id, to uint) uint {
 		return d.ncopysafe(other, n)
 	}
 	return d.ncopy(other, n)
+}
+
+func (d *Document) grow() (n *node) {
+	if len(d.nodes) < cap(d.nodes) {
+		d.nodes = d.nodes[:len(d.nodes)+1]
+	} else {
+		d.nodes = append(d.nodes, node{})
+	}
+	return &d.nodes[len(d.nodes)-1]
+}
+
+// Pool is a pool of document objects
+type Pool struct {
+	docs sync.Pool
+}
+
+const minNumNodes = 64
+
+// Get returns a blank document from the pool
+func (pool *Pool) Get() *Document {
+	if x := pool.docs.Get(); x != nil {
+		return x.(*Document)
+	}
+	d := Document{
+		nodes: make([]node, 0, minNumNodes),
+	}
+	return &d
+}
+
+// Put returns a document to the pool
+func (pool *Pool) Put(d *Document) {
+	if d == nil {
+		return
+	}
+	d.Reset()
+	pool.docs.Put(d)
+}
+
+var defaultPool Pool
+
+// Blank returns a blank document from the default pool.
+// Use Document.Close() to reset and return the document to the pool.
+func Blank() *Document {
+	return defaultPool.Get()
+}
+
+// Close resets and returns the document to the default pool to be reused.
+func (d *Document) Close() {
+	defaultPool.Put(d)
 }

@@ -45,12 +45,15 @@ func (n Node) Document() *Document {
 }
 
 func (n Node) get() *node {
-	return n.Document().get(n.id)
+	if n.doc != nil && n.doc.rev == n.rev && n.id < uint(len(n.doc.nodes)) {
+		return &n.doc.nodes[n.id]
+	}
+	return nil
 }
 
 // AppendJSON appends a node's JSON data to a byte slice.
 func (n Node) AppendJSON(dst []byte) ([]byte, error) {
-	return n.Document().AppendJSON(dst, n.id)
+	return n.Document().appendJSON(dst, n.id)
 }
 
 // Raw return the JSON string of a Node's value.
@@ -112,7 +115,9 @@ func (n Node) Type() Type { return n.get().Type() }
 
 // Bytes returns a Node's JSON string as bytes.
 // The slice is NOT a copy of the string's data and SHOULD not be modified.
-func (n Node) Bytes() []byte { return n.get().Bytes() }
+func (n Node) Bytes() []byte {
+	return n.get().Bytes()
+}
 
 // Values returns a value iterator over an Array or Object values.
 func (n Node) Values() IterV {
@@ -124,17 +129,17 @@ func (n Node) Values() IterV {
 
 // TypeError returns an error for a type not matching a Node's type.
 func (n Node) TypeError(want Type) error {
-	return n.get().TypeError(want)
+	return typeError{n.get().Type(), want}
 }
 
 // Lookup finds a node by path
 func (n Node) Lookup(path ...string) Node {
-	return n.With(n.Document().Lookup(n.id, path))
+	return n.With(n.Document().lookup(n.id, path))
 }
 
 // ToInterface converts a Node to a generic interface{}.
 func (n Node) ToInterface() (interface{}, bool) {
-	return n.Document().ToInterface(n.id)
+	return n.Document().toInterface(n.id)
 }
 
 var bufferpool = &sync.Pool{
@@ -185,7 +190,7 @@ func (n Node) WrapUnmarshalJSON(u json.Unmarshaler) (err error) {
 		return u.UnmarshalJSON(s2b(node.raw))
 	}
 	data := bufferpool.Get().([]byte)
-	data, err = n.Document().AppendJSON(data[:0], n.id)
+	data, err = n.Document().appendJSON(data[:0], n.id)
 	if err == nil {
 		err = u.UnmarshalJSON(data)
 	}
@@ -260,15 +265,6 @@ func (n Node) Slice(i, j int) {
 	}
 }
 
-func (doc *Document) grow() (n *node) {
-	if len(doc.nodes) < cap(doc.nodes) {
-		doc.nodes = doc.nodes[:len(doc.nodes)+1]
-	} else {
-		doc.nodes = append(doc.nodes, node{})
-	}
-	return &doc.nodes[len(doc.nodes)-1]
-}
-
 // Replace replaces the value at offset i of an Array node.
 func (n Node) Replace(i int, value Node) {
 	if nn := n.get(); nn != nil && nn.info.IsArray() && 0 <= i && i < len(nn.values) {
@@ -293,6 +289,7 @@ func (n Node) Remove(i int) {
 	}
 }
 
+// Strip recursively deletes a key from a node.
 func (n Node) Strip(key string) {
 	if nn := n.get(); nn != nil && nn.info.IsObject() {
 		for i := range nn.values {

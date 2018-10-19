@@ -55,10 +55,10 @@ func (n *node) Safe() string {
 
 // Bytes returns a node's JSON string as bytes
 func (n *node) Bytes() []byte {
-	if n != nil {
-		return s2b(n.raw)
+	if n == nil {
+		return nil
 	}
-	return nil
+	return s2b(n.raw)
 }
 
 const maxUint = ^(uint(0))

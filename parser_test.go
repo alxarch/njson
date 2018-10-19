@@ -57,7 +57,7 @@ func testParse(t *testing.T, input, output string) {
 	p, tail, err := d.Parse(input)
 	if err != nil {
 		t.Error(input, err)
-	} else if out, _ := d.AppendJSON(nil, p.id); string(out) != output {
+	} else if out, _ := d.appendJSON(nil, p.id); string(out) != output {
 		t.Errorf("Invalid root:\nexpect: %s\nactual: %s", output, out)
 	} else if strings.TrimSpace(tail) != "" {
 		t.Errorf("Tail not empty: %q", tail)
