@@ -7,6 +7,7 @@ import (
 
 var fNaN = math.NaN()
 
+// ParseFloat parses a float number from a string.
 func ParseFloat(s string) float64 {
 	var (
 		i      uint

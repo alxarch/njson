@@ -5,11 +5,12 @@ import (
 	"strconv"
 )
 
+// AppendFloat float appends the string of a float to a byte slice following rules commonly used by JSON formatters.
 func AppendFloat(dst []byte, f float64, bits int) []byte {
 	abs := math.Abs(f)
 	fmt := byte('f')
-	if (bits == 32 && (abs < 1e-6 || abs >= 1e21)) ||
-		(bits == 64 && (abs < 1e-6 || abs >= 1e21)) {
+	if abs != 0 && ((bits == 32 && (abs < 1e-6 || abs >= 1e21)) ||
+		(bits == 64 && (abs < 1e-6 || abs >= 1e21))) {
 		fmt = 'e'
 	}
 	dst = strconv.AppendFloat(dst, f, fmt, -1, 64)
@@ -26,6 +27,7 @@ func AppendFloat(dst []byte, f float64, bits int) []byte {
 	return dst
 }
 
+// FormatFloat returns the string of a float following rules commonly used by JSON formatters.
 func FormatFloat(f float64, bits int) string {
 	b := make([]byte, 0, 64)
 	b = AppendFloat(b, f, bits)
