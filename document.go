@@ -261,34 +261,61 @@ func (d *Document) AppendJSON(dst []byte, id uint) ([]byte, error) {
 
 }
 
-func (d *Document) copy(other *Document, id uint) uint {
-	if d == nil {
-		return maxUint
-	}
-	n := other.get(id)
-	if n == nil {
-		return maxUint
-	}
-	if n.info.IsOrhpan() && other == d {
-		n.info &^= Orphan
-		return id
-	}
-	id = uint(len(d.nodes))
+func (d *Document) ncopy(other *Document, n *node) uint {
+	id := uint(len(d.nodes))
 	cp := d.grow()
 	values := cp.values[:cap(cp.values)]
 	*cp = node{
 		raw:  n.raw,
 		info: n.info,
 	}
-	n = cp
 	numV := uint(0)
 	for i := range n.values {
 		v := &n.values[i]
-		if id := d.copy(other, v.id); id < maxUint {
-			values = appendV(values, v.key, id, numV)
+		n := other.get(v.id)
+		if n != nil {
+			values = appendV(values, v.key, d.ncopy(other, n), numV)
 			numV++
 		}
 	}
 	d.nodes[id].values = values[:numV]
 	return id
+}
+
+func (d *Document) ncopysafe(other *Document, n *node) uint {
+	id := uint(len(d.nodes))
+	cp := d.grow()
+	values := cp.values[:cap(cp.values)]
+	*cp = node{
+		raw:  scopy(n.raw),
+		info: n.info,
+	}
+	numV := uint(0)
+	for i := range n.values {
+		v := &n.values[i]
+		n := other.get(v.id)
+		if n != nil {
+			values = appendV(values, scopy(v.key), d.ncopysafe(other, n), numV)
+			numV++
+		}
+	}
+	d.nodes[id].values = values[:numV]
+	return id
+}
+
+func (d *Document) copyOrAdopt(other *Document, id uint) uint {
+	n := other.get(id)
+	if n == nil {
+		return maxUint
+	}
+	if other == d {
+		if n.info.IsOrhpan() {
+			n.info &^= Orphan
+			return id
+		}
+
+	} else if !n.info.IsSafe() {
+		return d.ncopysafe(other, n)
+	}
+	return d.ncopy(other, n)
 }
