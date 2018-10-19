@@ -212,7 +212,7 @@ func (d sliceDecoder) decode(v reflect.Value, n njson.Node) (err error) {
 			v.SetLen(size)
 		}
 		for values.Next() {
-			err = d.decoder.decode(v.Index(values.Index()-1), n.With(values.ID()))
+			err = d.decoder.decode(v.Index(values.Index()), n.With(values.ID()))
 			if err != nil {
 				v.SetLen(values.Index())
 				break
