@@ -23,8 +23,8 @@ func (d *Document) lookup(id uint, path []string) uint {
 lookup:
 	for _, key := range path {
 		if n = d.get(id); n != nil {
-			switch n.info {
-			case vObject:
+			switch n.info.Type() {
+			case TypeObject:
 				for i := range n.values {
 					v = &n.values[i]
 					if v.key == key {
@@ -32,7 +32,7 @@ lookup:
 						continue lookup
 					}
 				}
-			case vArray:
+			case TypeArray:
 				i := 0
 				for _, c := range []byte(key) {
 					if c -= '0'; 0 <= c && c <= 9 {

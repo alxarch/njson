@@ -63,39 +63,16 @@ func (n *node) Bytes() []byte {
 
 const maxUint = ^(uint(0))
 
-// Index gets the id of an Array node's values at position i
-func (n *node) Index(i int) uint {
-	if n != nil && n.info.IsArray() && 0 <= i && i < len(n.values) {
-		v := &n.values[i]
-		return v.id
-	}
-	return maxUint
-}
-
-// Get finds a key in an Object node's values and returns it's id.
-func (n *node) Get(key string) uint {
-	if n != nil && n.info.IsObject() {
-		var v *V
-		for i := range n.values {
-			v = &n.values[i]
-			if v.key == key {
-				return v.id
-			}
-		}
-	}
-	return maxUint
-}
-
 func (n *node) Type() Type {
-	if n != nil {
-		return n.info.Type()
+	if n == nil {
+		return TypeInvalid
 	}
-	return TypeInvalid
+	return n.info.Type()
 }
 
 // TypeError creates an error for the Node's type.
 func (n *node) TypeError(want Type) error {
-	return newTypeError(n.Type(), want)
+	return typeError{n.Type(), want}
 }
 
 func (n *node) set(inf info, raw string) {

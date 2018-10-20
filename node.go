@@ -111,7 +111,12 @@ func (n Node) ToBool() (bool, bool) {
 }
 
 // Type returnsa a Node's type.
-func (n Node) Type() Type { return n.get().Type() }
+func (n Node) Type() Type {
+	if n := n.get(); n != nil {
+		return n.info.Type()
+	}
+	return TypeInvalid
+}
 
 // Bytes returns a Node's JSON string as bytes.
 // The slice is NOT a copy of the string's data and SHOULD not be modified.
@@ -172,7 +177,7 @@ func (n Node) PrintJSON(w io.Writer) (int, error) {
 func (n Node) WrapUnmarshalJSON(u json.Unmarshaler) (err error) {
 	node := n.get()
 	if node == nil {
-		return node.TypeError(TypeAnyValue)
+		return typeError{TypeInvalid, TypeAnyValue}
 	}
 
 	switch node.info.Type() {
@@ -185,7 +190,7 @@ func (n Node) WrapUnmarshalJSON(u json.Unmarshaler) (err error) {
 			return u.UnmarshalJSON([]byte{delimBeginObject, delimEndObject})
 		}
 	case TypeInvalid:
-		return node.TypeError(TypeAnyValue)
+		return typeError{TypeInvalid, TypeAnyValue}
 	default:
 		return u.UnmarshalJSON(s2b(node.raw))
 	}
@@ -204,21 +209,35 @@ func (n Node) WrapUnmarshalText(u encoding.TextUnmarshaler) (err error) {
 	if node != nil && node.info.IsString() {
 		return u.UnmarshalText(node.Bytes())
 	}
-	return node.TypeError(TypeAnyValue)
+	return node.TypeError(TypeString)
 }
 
 // Get gets a Node by key.
 // If the key is not found the returned node's id
 // will be MaxID and the Node will behave as empty.
 func (n Node) Get(key string) Node {
-	return n.With(n.get().Get(key))
+	if nn := n.get(); nn != nil && nn.info.IsObject() {
+		for i := range nn.values {
+			if key == nn.values[i].key {
+				n.id = nn.values[i].id
+				return n
+			}
+		}
+	}
+	n.id = maxUint
+	return n
 }
 
 // Index gets the Node at offset i of an Array.
 // If the index is out of bounds the returned node's id
 // will be MaxID and the Node will behave as empty.
 func (n Node) Index(i int) Node {
-	return n.With(n.get().Index(i))
+	if nn := n.get(); nn != nil && nn.info.IsArray() && 0 <= i && i < len(nn.values) {
+		n.id = nn.values[i].id
+	} else {
+		n.id = maxUint
+	}
+	return n
 }
 
 // Set assigns a Node to the key of an Object Node.
@@ -246,13 +265,15 @@ func (n Node) Set(key string, value Node) {
 }
 
 // Append appends a node id to an Array node's values.
-func (n Node) Append(value Node) {
+func (n Node) Append(values ...Node) {
 	if nn := n.get(); nn != nil && nn.info.IsArray() {
 		// Make a copy of the value if it's not Orphan to avoid recursion infinite loops.
-		nn.values = append(nn.values, V{
-			id:  n.doc.copyOrAdopt(value.Document(), value.ID(), n.id),
-			key: "",
-		})
+		for _, v := range values {
+			nn.values = append(nn.values, V{
+				id:  n.doc.copyOrAdopt(v.Document(), v.ID(), n.id),
+				key: "",
+			})
+		}
 	}
 }
 
@@ -299,16 +320,20 @@ func (n Node) Strip(key string) {
 					nn.values[i] = nn.values[j]
 					nn.values[j] = V{}
 					nn.values = nn.values[:j]
+					for j := i; 0 <= j && j < len(nn.values); j++ {
+						n.With(nn.values[j].id).Strip(key)
+					}
 				}
-			} else {
-				n.With(v.id).Strip(key)
+				return
 			}
+			n.With(v.id).Strip(key)
 		}
 	}
 
 }
 
 // Del finds a key in an Object node's values and removes it.
+// It does not keep the order of keys.
 func (n Node) Del(key string) {
 	if n := n.get(); n != nil && n.info.IsObject() {
 		for i := range n.values {
@@ -349,16 +374,12 @@ func (n Node) SetFloat(f float64) {
 
 // SetString sets a Node's value to a string escaping invalid JSON characters.
 func (n Node) SetString(s string) {
-	if n := n.get(); n != nil {
-		n.reset(vString, strjson.Escaped(s, false, false), n.values[:0])
-	}
+	n.SetStringRaw(strjson.Escaped(s, false, false))
 }
 
 // SetStringHTML sets a Node's value to a string escaping invalid JSON and unsafe HTML characters.
 func (n Node) SetStringHTML(s string) {
-	if n := n.get(); n != nil {
-		n.reset(vString, strjson.Escaped(s, true, false), n.values[:0])
-	}
+	n.SetStringRaw(strjson.Escaped(s, true, false))
 }
 
 // SetStringRaw sets a Node's value to a string without escaping.

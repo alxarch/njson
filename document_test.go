@@ -90,3 +90,67 @@ func TestDocument_Object(t *testing.T) {
 	}
 
 }
+
+func TestDocument_Create(t *testing.T) {
+	d := Document{}
+	n := d.Null()
+	assertEqual(t, n.get(), &node{
+		info:   vNull | infRoot,
+		raw:    strNull,
+		values: nil,
+	})
+	n = d.Text("foo")
+	assertEqual(t, n.get(), &node{
+		info:   vString | infRoot,
+		raw:    "foo",
+		values: nil,
+	})
+	n = d.TextHTML("<p>Foo</p>")
+	assertEqual(t, n.get(), &node{
+		info:   vString | infRoot,
+		raw:    `\u003cp\u003eFoo\u003c\/p\u003e`,
+		values: nil,
+	})
+	n = d.Number(42)
+	assertEqual(t, n.get(), &node{
+		info:   vNumber | infRoot,
+		raw:    `42`,
+		values: nil,
+	})
+	n = d.Array()
+	assertEqual(t, n.get(), &node{
+		info:   vArray | infRoot,
+		raw:    ``,
+		values: nil,
+	})
+	n = d.Object()
+	assertEqual(t, n.get(), &node{
+		info:   vObject | infRoot,
+		raw:    ``,
+		values: nil,
+	})
+	n = d.True()
+	assertEqual(t, n.get(), &node{
+		info:   vBoolean | infRoot,
+		raw:    `true`,
+		values: nil,
+	})
+	n = d.False()
+	assertEqual(t, n.get(), &node{
+		info:   vBoolean | infRoot,
+		raw:    `false`,
+		values: nil,
+	})
+
+}
+
+func Test_DocumentReset(t *testing.T) {
+	d := new(Document)
+	n := d.Text("foo")
+	assertEqual(t, n.Document(), d)
+	d.Reset()
+	if n.Document() != nil {
+		t.Errorf("Node document not nil after reset")
+	}
+
+}
