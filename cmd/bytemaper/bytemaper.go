@@ -93,7 +93,7 @@ func toHex(c byte) byte {
 	case 0 <= c && c <= 9:
 		return c + '0'
 	case 10 <= c && c <= 15:
-		return c + 'A' - 10
+		return c + 'a' - 10
 	default:
 		return 0xff
 	}

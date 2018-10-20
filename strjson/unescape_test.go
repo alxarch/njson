@@ -10,7 +10,11 @@ func TestUnescaped(t *testing.T) {
 		if e := Unescaped(u); e != s {
 			t.Errorf("Invalid unescape:\nexpect: %q %d\nactual: %q %d", s, utf8.RuneCountInString(s), e, utf8.RuneCountInString(e))
 		}
+		if e := AppendUnescaped(nil, u); string(e) != s {
+			t.Errorf("Invalid unescape:\nexpect: %q %d\nactual: %q %d", s, utf8.RuneCountInString(s), e, utf8.RuneCount(e))
+		}
 	}
+	test("", "")
 	test("\\uD834\\uDD1E", "𝄞")
 	test("goo\\u0002!", "goo\x02!")
 	test("goo\\n", "goo\n")

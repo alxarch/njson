@@ -9,6 +9,9 @@ import (
 // It allocates a new string so if possible use AppendEscaped for best performance.
 func Escaped(s string, HTML bool, quoted bool) string {
 	if len(s) == 0 {
+		if quoted {
+			return `""`
+		}
 		return ""
 	}
 	var (
@@ -70,7 +73,7 @@ escape:
 		} else if e == 0 {
 			b.Write([]byte{'\\', 'u', '0', '0',
 				toHex(c >> 4),
-				toHex(c),
+				toHex(c & 0x0F),
 			})
 		} else {
 			b.Write([]byte{'\\', e})
@@ -166,7 +169,7 @@ const (
 )
 
 func escapeByte(dst []byte, c byte) []byte {
-	return append(dst, '\\', 'u', '0', '0', toHex(c>>4), toHex(c))
+	return append(dst, '\\', 'u', '0', '0', toHex(c>>4), toHex(c&0x0F))
 }
 
 func escapeUTF8(dst []byte, r rune) []byte {
@@ -176,7 +179,4 @@ func escapeUTF8(dst []byte, r rune) []byte {
 		toHex(byte(r)>>4),
 		toHex(byte(r)&0x0F),
 	)
-}
-func escapeError(dst []byte) []byte {
-	return append(dst, '\\', 'u', 'F', 'F', 'F', 'D')
 }
