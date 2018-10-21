@@ -96,9 +96,9 @@ func appendV(values []V, key string, id, i uint) []V {
 	return tmp
 }
 
-func (p *parser) eof(typ Type) (pos uint) {
+func (p *parser) eof(typ Type, pos uint) uint {
 	p.err = eof(typ)
-	return maxUint
+	return pos
 }
 
 func (p *parser) parseValue(s string, pos uint) uint {
@@ -142,7 +142,7 @@ func (p *parser) parseValue(s string, pos uint) uint {
 			return p.abort(pos, TypeAnyValue, c, "any value")
 		}
 	}
-	return p.eof(TypeAnyValue)
+	return p.eof(TypeAnyValue, pos)
 readNumber:
 	info |= vNumber
 	for i := uint(0); i < uint(len(s)); i++ {
@@ -189,7 +189,7 @@ readString:
 			goto done
 		}
 	}
-	return p.eof(TypeString)
+	return p.eof(TypeString, pos-1)
 readTrue:
 	info |= vBoolean
 	if len(s) >= 4 {
@@ -199,7 +199,7 @@ readTrue:
 		}
 		return p.abort(pos, TypeBoolean, s, strTrue)
 	}
-	return p.eof(TypeBoolean)
+	return p.eof(TypeBoolean, pos)
 readFalse:
 	info |= vBoolean
 	if len(s) >= 5 {
@@ -209,7 +209,7 @@ readFalse:
 		}
 		return p.abort(pos, TypeBoolean, s, strFalse)
 	}
-	return p.eof(TypeBoolean)
+	return p.eof(TypeBoolean, pos)
 readNull:
 	info |= vNull
 	if len(s) >= 4 {
@@ -219,7 +219,7 @@ readNull:
 		}
 		return p.abort(pos, TypeNull, s, strNull)
 	}
-	return p.eof(TypeNull)
+	return p.eof(TypeNull, pos)
 done:
 	n := p.node()
 	n.set(info, s)
@@ -256,7 +256,7 @@ func (p *parser) parseArray(s string, pos uint) uint {
 			goto readValue
 		}
 	}
-	return p.eof(TypeArray)
+	return p.eof(TypeArray, pos)
 readValue:
 	values = appendV(values, "", p.n, numV)
 	numV++
@@ -293,7 +293,7 @@ readValue:
 			}
 		}
 	}
-	return p.eof(TypeArray)
+	return p.eof(TypeArray, pos)
 
 }
 
@@ -328,7 +328,7 @@ func (p *parser) parseObject(s string, pos uint) uint {
 			}
 		}
 	}
-	return p.eof(TypeObject)
+	return p.eof(TypeObject, pos)
 
 	// Current pos is at the opening quote of a key.
 readKey:
@@ -361,14 +361,14 @@ readKey:
 					}
 					// Space
 				}
-				return p.eof(TypeObject)
+				return p.eof(TypeObject, pos)
 			case delimEscape:
 				i++
 			}
 		}
 		// end of input reached
 	}
-	return p.eof(TypeObject)
+	return p.eof(TypeObject, pos+i)
 
 readValue:
 	// We're at ':' after key
@@ -391,7 +391,7 @@ readValue:
 					return p.abort(pos, TypeObject, c, delimString)
 				}
 			}
-			return p.eof(TypeObject)
+			return p.eof(TypeObject, pos)
 		case delimEndObject:
 			if numV < uint(len(n.values)) {
 				values = n.values[:numV]
@@ -416,11 +416,11 @@ readValue:
 			}
 		}
 	}
-	return p.eof(TypeObject)
+	return p.eof(TypeObject, pos)
 
 }
 
-// Update document nodes and returned unused nodes
+// Update document nodes and return unused nodes
 func (p *parser) update(d *Document) []node {
 	if p.n < uint(len(d.nodes)) {
 		nodes := d.nodes[p.n:]

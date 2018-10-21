@@ -91,3 +91,39 @@ func TestParser_Parse(t *testing.T) {
 		})
 	}
 }
+
+func Test_parseInvalidInput(t *testing.T) {
+	type testCase struct {
+		input string
+		err   error
+		tail  string
+	}
+	for _, tt := range []testCase{
+		{`{foo:1}`, abort(1, TypeObject, 'f', []rune{'}', '"'}), `foo:1}`},
+		{`fals`, eof(TypeBoolean), `fals`},
+		{`falso`, abort(0, TypeBoolean, `falso`, strFalse), `falso`},
+		{`a`, abort(0, TypeAnyValue, 'a', "any value"), `a`},
+		{`{"foo":b}`, abort(7, TypeAnyValue, 'b', "any value"), `b}`},
+		{`{"foo"`, eof(TypeObject), ``},
+		{`{"foo`, eof(TypeObject), ``},
+		{`{"foo"}`, abort(6, TypeObject, '}', delimNameSeparator), `}`},
+		{`{"foo":1`, eof(TypeObject), ``},
+		{`{`, eof(TypeObject), ``},
+		{`[`, eof(TypeArray), ``},
+		{`[1}`, abort(2, TypeArray, '}', []rune{delimValueSeparator, delimEndArray}), `}`},
+		{`[1 `, eof(TypeArray), ``},
+		{`["foo`, eof(TypeString), `foo`},
+		{`tru`, eof(TypeBoolean), `tru`},
+		{`truz`, abort(0, TypeBoolean, `truz`, strTrue), `truz`},
+		{`nul`, eof(TypeNull), `nul`},
+		{`nulz`, abort(0, TypeNull, `nulz`, strNull), `nulz`},
+	} {
+		d := Document{}
+		n, tail, err := d.Parse(tt.input)
+		e, _ := err.(*parseError)
+		assertEqual(t, e.Error(), tt.err.Error())
+		assertEqual(t, tail, tt.tail)
+		assertEqual(t, n, Node{0, 0, nil})
+	}
+
+}

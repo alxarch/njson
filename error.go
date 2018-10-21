@@ -26,33 +26,33 @@ type parseError struct {
 	typ  Type
 }
 
-func (e parseError) Err() error {
+func (e *parseError) Error() string {
+	if e == nil {
+		return fmt.Sprintf("%v", error(nil))
+	}
 	if e.pos == -1 {
-		return fmt.Errorf("Unexpected end of input while scanning %s %q %q", e.typ.String(), e.got, e.want)
+		return fmt.Sprintf("Unexpected end of input while scanning %s", e.typ.String())
 	}
 	if e.got == nil {
-		return nil
-	}
-	if e.typ == TypeInvalid {
-		return fmt.Errorf("Invalid parser state at position %d %v %v", e.pos, e.got, e.want)
+		return fmt.Sprintf("Invalid parser state at position %d %v", e.pos, e.want)
 	}
 	if e.want != nil {
-		return fmt.Errorf("Invalid token %q != %q at position %d while scanning %s", e.got, e.want, e.pos, e.typ.String())
+		return fmt.Sprintf("Invalid token %q != %q at position %d while scanning %s", e.got, e.want, e.pos, e.typ.String())
 	}
-	return fmt.Errorf("Invalid token %q at position %d while scanning %s", e.got, e.pos, e.typ.String())
+	return fmt.Sprintf("Invalid token %q at position %d while scanning %s", e.got, e.pos, e.typ.String())
 }
 
 func eof(typ Type) error {
-	return parseError{
+	return &parseError{
 		pos: -1,
 		typ: typ,
-	}.Err()
+	}
 }
 func abort(pos int, typ Type, got interface{}, want interface{}) error {
-	return parseError{
+	return &parseError{
 		pos:  pos,
 		typ:  typ,
 		got:  got,
 		want: want,
-	}.Err()
+	}
 }
