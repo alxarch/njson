@@ -199,11 +199,10 @@ func (d *Document) toInterface(id uint) (interface{}, bool) {
 
 // AppendJSON appends the JSON data of the document root node to a byte slice.
 func (d *Document) AppendJSON(dst []byte) ([]byte, error) {
-	return d.appendJSON(dst, 0)
+	return d.appendJSON(dst, d.get(0))
 }
 
-func (d *Document) appendJSON(dst []byte, id uint) ([]byte, error) {
-	n := d.get(id)
+func (d *Document) appendJSON(dst []byte, n *node) ([]byte, error) {
 	if n == nil {
 		return dst, newTypeError(TypeInvalid, TypeAnyValue)
 	}
@@ -218,7 +217,7 @@ func (d *Document) appendJSON(dst []byte, id uint) ([]byte, error) {
 			dst = append(dst, delimString)
 			dst = append(dst, v.key...)
 			dst = append(dst, delimString, delimNameSeparator)
-			dst, err = d.appendJSON(dst, v.id)
+			dst, err = d.appendJSON(dst, d.get(v.id))
 			if err != nil {
 				return dst, err
 			}
@@ -231,7 +230,7 @@ func (d *Document) appendJSON(dst []byte, id uint) ([]byte, error) {
 			if i > 0 {
 				dst = append(dst, delimValueSeparator)
 			}
-			dst, err = d.appendJSON(dst, v.id)
+			dst, err = d.appendJSON(dst, d.get(v.id))
 			if err != nil {
 				return dst, err
 			}

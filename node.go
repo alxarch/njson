@@ -53,7 +53,10 @@ func (n Node) get() *node {
 
 // AppendJSON appends a node's JSON data to a byte slice.
 func (n Node) AppendJSON(dst []byte) ([]byte, error) {
-	return n.Document().appendJSON(dst, n.id)
+	if nn := n.get(); nn != nil {
+		return n.doc.appendJSON(dst, nn)
+	}
+	return nil, &typeError{TypeInvalid, TypeAnyValue}
 }
 
 // Raw return the JSON string of a Node's value.
@@ -195,7 +198,7 @@ func (n Node) WrapUnmarshalJSON(u json.Unmarshaler) (err error) {
 		return u.UnmarshalJSON(s2b(node.raw))
 	}
 	data := bufferpool.Get().([]byte)
-	data, err = n.Document().appendJSON(data[:0], n.id)
+	data, err = n.AppendJSON(data[:0])
 	if err == nil {
 		err = u.UnmarshalJSON(data)
 	}
