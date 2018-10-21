@@ -50,7 +50,7 @@ func eof(typ Type) error {
 }
 func abort(pos int, typ Type, got interface{}, want interface{}) error {
 	return parseError{
-		pos:  -1,
+		pos:  pos,
 		typ:  typ,
 		got:  got,
 		want: want,

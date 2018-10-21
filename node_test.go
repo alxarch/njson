@@ -549,13 +549,12 @@ func TestNode_Append(t *testing.T) {
 	n := d.Array()
 	n.Append(d.Text("foo"), d.Text("bar"), d.Text("baz"))
 	data, err := n.AppendJSON(nil)
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err)
-		return
-	}
-	if string(data) != `["foo","bar","baz"]` {
-		t.Errorf("Invalid append result: %s", data)
-	}
+	assertNoError(t, err)
+	assertEqual(t, string(data), `["foo","bar","baz"]`)
+	n.Append()
+	data, err = n.AppendJSON(nil)
+	assertNoError(t, err)
+	assertEqual(t, string(data), `["foo","bar","baz"]`)
 	n.Slice(0, 2)
 	data, err = n.AppendJSON(nil)
 	if err != nil {
@@ -608,6 +607,12 @@ func TestNode_Values(t *testing.T) {
 	assertEqual(t, iterKeys, []string{"foo", "bar", "baz"})
 	assertEqual(t, iterValues, []int64{1, 2, 3})
 	assertEqual(t, iterIndices, []int{0, 1, 2})
+	assertEqual(t, v.Next(), false)
+	v.Reset()
+	assertEqual(t, v.Next(), true)
+	v.Close()
+	assertEqual(t, v.Next(), false)
+	assertEqual(t, v.values, []V(nil))
 
 }
 func assertEqual(t *testing.T, a, b interface{}) {
@@ -644,4 +649,40 @@ func TestNode_SetX(t *testing.T) {
 	n.SetStringHTML("<p>foo</p>")
 	assertEqual(t, n.Raw(), `\u003cp\u003efoo\u003c\/p\u003e`)
 	assertEqual(t, n.Type(), TypeString)
+	n = d.Object()
+	n.Set("foo", d.Text("bar"))
+	n.Set("foo", d.Text("baz"))
+	assertEqual(t, n.Get("foo").Raw(), "baz")
+
+}
+
+func TestNode_Empty(t *testing.T) {
+	n := Node{}
+	assertEqual(t, n.Type(), TypeInvalid)
+	assertEqual(t, n.Bytes(), ([]byte)(nil))
+	assertEqual(t, n.get(), (*node)(nil))
+	{
+		n, ok := n.ToUint()
+		assertEqual(t, n, uint64(0))
+		assertEqual(t, ok, false)
+	}
+	{
+		n, ok := n.ToFloat()
+		assertEqual(t, n, float64(0))
+		assertEqual(t, ok, false)
+	}
+	{
+		n, ok := n.ToInt()
+		assertEqual(t, n, int64(0))
+		assertEqual(t, ok, false)
+	}
+	{
+		b, ok := n.ToBool()
+		assertEqual(t, b, false)
+		assertEqual(t, ok, false)
+	}
+	{
+		n := n.Get("foo")
+		assertEqual(t, n.ID(), uint(maxUint))
+	}
 }

@@ -154,3 +154,52 @@ func Test_DocumentReset(t *testing.T) {
 	}
 
 }
+
+func assertNoError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+}
+func TestDocument_ParseUnsafe(t *testing.T) {
+	d := Document{}
+	data := []byte(`["foo"]`)
+	n, _, err := d.ParseUnsafe(data)
+	assertNoError(t, err)
+	raw := n.Index(0).Raw()
+	assertEqual(t, raw, "foo")
+	d2 := Document{}
+	obj := d2.Object()
+	obj.Set("foo", n)
+	b, err := obj.AppendJSON(nil)
+	assertNoError(t, err)
+	assertEqual(t, string(b), `{"foo":["foo"]}`)
+	data[2] = 'b'
+	data[3] = 'a'
+	data[4] = 'z'
+	assertEqual(t, raw, "baz")
+	b, err = obj.AppendJSON(nil)
+	assertNoError(t, err)
+	assertEqual(t, string(b), `{"foo":["foo"]}`)
+
+}
+
+func TestDocument_ncopy(t *testing.T) {
+	d := new(Document)
+	n := d.Object()
+	n.Set("foo", d.Text("bar"))
+	assertEqual(t, len(d.nodes), 2)
+	id := d.ncopy(d, d.get(0))
+	assertEqual(t, id, uint(2))
+	assertEqual(t, len(d.nodes), 4)
+	other := new(Document)
+	other.Object()
+	id = d.ncopy(other, other.get(0))
+	assertEqual(t, id, uint(4))
+	assertEqual(t, len(d.nodes), 5)
+	n.Set("bar", other.Root())
+	data, err := n.AppendJSON(nil)
+	assertNoError(t, err)
+	assertEqual(t, string(data), `{"foo":"bar","bar":{}}`)
+
+}

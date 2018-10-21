@@ -296,7 +296,7 @@ func (d *Document) copyOrAdopt(other *Document, id, to uint) uint {
 		return maxUint
 	}
 	if other == d {
-		if id != to && n.info.IsRoot() {
+		if id != to && n.info.IsRoot() && id != 0 {
 			n.info &^= infRoot
 			return id
 		}

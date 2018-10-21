@@ -239,7 +239,7 @@ func (p *parser) parseArray(s string, pos uint) uint {
 		values []V
 		numV   uint
 	)
-	n.set(vArray, "")
+	n.set(vArray|p.unsafe, "")
 	// Skip space after '['
 	for ; pos < uint(len(s)); pos++ {
 		c = s[pos]
@@ -307,7 +307,7 @@ func (p *parser) parseObject(s string, pos uint) uint {
 		numV   uint
 		i      uint
 	)
-	n.set(vObject, "")
+	n.set(vObject|p.unsafe, "")
 	// Skip space after opening '{'
 	for ; pos < uint(len(s)); pos++ {
 		c = s[pos]

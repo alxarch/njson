@@ -27,7 +27,3 @@ func s2b(s string) []byte {
 func scopy(s string) string {
 	return string(s2b(s))
 }
-
-// func b2sEqual(b []byte, s string) bool {
-// 	return b2s(b) == s
-// }

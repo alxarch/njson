@@ -47,9 +47,8 @@ func benchmarkUnsafe(src string) func(b *testing.B) {
 	return func(b *testing.B) {
 		b.SetBytes(int64(len(src)))
 		for i := 0; i < b.N; i++ {
-			if _, _, err := p.ParseUnsafe(data); err != nil {
-				b.Errorf("Parse error: %s", err)
-			}
+			p.Reset()
+			p.ParseUnsafe(data)
 		}
 	}
 }

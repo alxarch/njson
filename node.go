@@ -248,6 +248,8 @@ func (n Node) Set(key string, value Node) {
 		// Make a copy of the value if it's not Orphan to avoid recursion infinite loops.
 		id := n.doc.copyOrAdopt(value.Document(), value.ID(), n.id)
 		if id < maxUint {
+			// copyOrAdopt might grow nodes array invalidating nn pointer
+			nn = &n.doc.nodes[n.id]
 			var v *V
 			for i := range nn.values {
 				v = &nn.values[i]
@@ -266,14 +268,19 @@ func (n Node) Set(key string, value Node) {
 
 // Append appends a node id to an Array node's values.
 func (n Node) Append(values ...Node) {
+	if len(values) == 0 {
+		return
+	}
 	if nn := n.get(); nn != nil && nn.info.IsArray() {
-		// Make a copy of the value if it's not Orphan to avoid recursion infinite loops.
+		vv := nn.values
 		for _, v := range values {
-			nn.values = append(nn.values, V{
+			vv = append(vv, V{
 				id:  n.doc.copyOrAdopt(v.Document(), v.ID(), n.id),
 				key: "",
 			})
 		}
+		// copyOrAdopt might grow nodes array invalidating nn pointer
+		n.doc.nodes[n.id].values = vv
 	}
 }
 
@@ -292,7 +299,8 @@ func (n Node) Replace(i int, value Node) {
 		// Make a copy of the value if it's not Orphan to avoid recursion infinite loops.
 		id := n.doc.copyOrAdopt(value.Document(), value.ID(), n.id)
 		if id < maxUint {
-			nn.values[i] = V{id, ""}
+			// copyOrAdopt might grow nodes array invalidating nn pointer
+			n.doc.nodes[n.id].values[i] = V{id, ""}
 		}
 	}
 }
