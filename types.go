@@ -99,15 +99,13 @@ func (i info) IsRoot() bool {
 func (i info) IsSafe() bool {
 	return i&infUnsafe == 0
 }
+func (i info) Flags() info {
+	return i & 0xFF00
+}
 
 // Type retutns the Type part of Info.
 func (i info) Type() Type {
 	return Type(i)
-}
-
-// HasLen returns if an Info's type has length. (ie is Object or Array)
-func (i info) HasLen() bool {
-	return i&(vObject|vArray) != 0
 }
 
 // IsNull checks if i is TypeNull
@@ -130,10 +128,11 @@ func (t Type) IsValue() bool {
 	return t&TypeAnyValue != 0
 }
 
+const infAnyValue = info(TypeAnyValue)
+
 // IsValue checks if i matches TypeAnyValue
 func (i info) IsValue() bool {
-	const vAnyValue = info(TypeAnyValue)
-	return i&vAnyValue != 0
+	return i&infAnyValue != 0
 }
 
 // IsString checks if i is TypeString

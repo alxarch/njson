@@ -360,7 +360,7 @@ func (n Node) Del(key string) {
 // SetInt sets a Node's value to an integer.
 func (n Node) SetInt(i int64) {
 	if n := n.get(); n != nil {
-		n.reset(vNumber, strconv.FormatInt(i, 10), n.values[:0])
+		n.reset(vNumber|n.info.Flags(), strconv.FormatInt(i, 10), n.values[:0])
 	}
 
 }
@@ -368,7 +368,7 @@ func (n Node) SetInt(i int64) {
 // SetUint sets a Node's value to an unsigned integer.
 func (n Node) SetUint(u uint64) {
 	if n := n.get(); n != nil {
-		n.reset(vNumber, strconv.FormatUint(u, 10), n.values[:0])
+		n.reset(vNumber|n.info.Flags(), strconv.FormatUint(u, 10), n.values[:0])
 	}
 
 }
@@ -376,7 +376,7 @@ func (n Node) SetUint(u uint64) {
 // SetFloat sets a Node's value to a float number.
 func (n Node) SetFloat(f float64) {
 	if n := n.get(); n != nil {
-		n.reset(vNumber, numjson.FormatFloat(f, 64), n.values[:0])
+		n.reset(vNumber|n.info.Flags(), numjson.FormatFloat(f, 64), n.values[:0])
 	}
 }
 
@@ -395,28 +395,28 @@ func (n Node) SetStringHTML(s string) {
 // JSON output from this Node will be invalid.
 func (n Node) SetStringRaw(s string) {
 	if n := n.get(); n != nil {
-		n.reset(vString, s, n.values[:0])
+		n.reset(vString|n.info.Flags(), s, n.values[:0])
 	}
 }
 
 // SetFalse sets a Node's value to false.
 func (n Node) SetFalse() {
 	if n := n.get(); n != nil {
-		n.reset(vBoolean, strFalse, n.values[:0])
+		n.reset(vBoolean|n.info.Flags(), strFalse, n.values[:0])
 	}
 }
 
 // SetTrue sets a Node's value to true.
 func (n Node) SetTrue() {
 	if n := n.get(); n != nil {
-		n.reset(vBoolean, strTrue, n.values[:0])
+		n.reset(vBoolean|n.info.Flags(), strTrue, n.values[:0])
 	}
 }
 
 // SetNull sets a Node's value to null.
 func (n Node) SetNull() {
 	if n := n.get(); n != nil {
-		n.reset(vNull, strNull, n.values[:0])
+		n.reset(vNull|n.info.Flags(), strNull, n.values[:0])
 	}
 }
 

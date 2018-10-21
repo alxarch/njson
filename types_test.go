@@ -46,3 +46,15 @@ func TestType_Types(t *testing.T) {
 	}
 	// t.Error(TypeError{TypeString, typ})
 }
+
+func TestType_IsValue(t *testing.T) {
+	assertEqual(t, TypeNumber.IsValue(), true)
+	assertEqual(t, TypeObject.IsValue(), true)
+	assertEqual(t, TypeString.IsValue(), true)
+	assertEqual(t, TypeArray.IsValue(), true)
+	assertEqual(t, TypeBoolean.IsValue(), true)
+	assertEqual(t, TypeNull.IsValue(), true)
+	assertEqual(t, TypeAnyValue.IsValue(), true)
+	assertEqual(t, TypeInvalid.IsValue(), false)
+	assertEqual(t, Type(1<<7).IsValue(), false)
+}

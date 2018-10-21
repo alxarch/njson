@@ -117,6 +117,9 @@ func Test_parseInvalidInput(t *testing.T) {
 		{`truz`, abort(0, TypeBoolean, `truz`, strTrue), `truz`},
 		{`nul`, eof(TypeNull), `nul`},
 		{`nulz`, abort(0, TypeNull, `nulz`, strNull), `nulz`},
+		{`{"foo":"bar","bar":baz}`, abort(19, TypeAnyValue, 'b', "any value"), `baz}`},
+		{`{"foo":"bar",}`, abort(13, TypeObject, '}', delimString), `}`},
+		{`{"foo":"bar", `, eof(TypeObject), ``},
 	} {
 		d := Document{}
 		n, tail, err := d.Parse(tt.input)
