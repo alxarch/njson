@@ -24,9 +24,7 @@ func (d *Document) Parse(s string) (Node, string, error) {
 	if p.err != nil {
 		return Node{}, s, p.err
 	}
-	if nodes := p.update(d); len(nodes) > 0 {
-		resetNodes(nodes)
-	}
+	d.nodes = p.nodes[:p.n]
 	d.get(id).info |= infRoot
 	return Node{id, d.rev, d}, s, nil
 }
@@ -46,10 +44,7 @@ func (d *Document) ParseUnsafe(b []byte) (Node, []byte, error) {
 	if p.err != nil {
 		return Node{}, b, p.err
 	}
-	// Free references to previous JSON source
-	if nodes := p.update(d); len(nodes) > 0 {
-		resetNodes(nodes)
-	}
+	d.nodes = p.nodes[:p.n]
 	d.get(id).info |= infRoot
 	return Node{id, d.rev, d}, b, nil
 }
@@ -418,30 +413,6 @@ readValue:
 	}
 	return p.eof(TypeObject, pos)
 
-}
-
-// Update document nodes and return unused nodes
-func (p *parser) update(d *Document) []node {
-	if p.n < uint(len(d.nodes)) {
-		nodes := d.nodes[p.n:]
-		d.nodes = d.nodes[:p.n]
-		return nodes
-	} else if p.n <= uint(cap(p.nodes)) {
-		d.nodes = p.nodes[:p.n]
-	}
-	return nil
-
-}
-
-// Garbage collect unused nodes' references to JSON source string
-func resetNodes(nodes []node) {
-	for i := range nodes {
-		n := &nodes[i]
-		n.raw = ""
-		for i := range n.values {
-			n.values[i] = V{}
-		}
-	}
 }
 
 const (

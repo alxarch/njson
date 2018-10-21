@@ -127,3 +127,12 @@ func Test_parseInvalidInput(t *testing.T) {
 	}
 
 }
+func TestDocument_ParseResetParse(t *testing.T) {
+	d := Document{}
+	d.Parse(`{"foo":"bar","bar":"baz"}`)
+	assertEqual(t, len(d.nodes), 3)
+	d.Reset()
+	d.Parse(`"foo"`)
+	assertEqual(t, len(d.nodes), 1)
+	assertEqual(t, d.nodes[0].raw, "foo")
+}
