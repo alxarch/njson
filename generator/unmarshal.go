@@ -330,7 +330,6 @@ func CanUnmarshal(t types.Type) bool {
 	case *types.Chan, *types.Tuple, *types.Signature:
 		return false
 	default:
-		println("Unknown type: ", typ)
 		return false
 	}
 
