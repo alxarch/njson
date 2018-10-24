@@ -132,19 +132,19 @@ func AppendUnescaped(dst []byte, s string) []byte {
 		return dst
 	}
 	var (
-		n   int
-		buf []byte
+		n      int
+		offset = len(dst)
+		buf    []byte
 	)
-	if n = len(dst) + len(s); cap(dst) < n {
-		if buf = make([]byte, n); len(buf) >= len(dst) {
-			copy(buf[:len(dst)], dst)
-			buf = buf[len(dst):]
-		}
+	if n = offset + len(s); cap(dst) < n {
+		buf = make([]byte, n)
+		copy(buf, dst)
 		dst = buf
+		buf = buf[offset:]
 	} else {
 		buf = dst[len(dst):cap(dst)]
 	}
-	if n = Unescape(buf, s); 0 <= n && n <= cap(dst) {
+	if n = Unescape(buf, s) + offset; 0 <= n && n <= cap(dst) {
 		return dst[:n]
 	}
 	return nil
