@@ -1,9 +1,11 @@
 package generator_test
 
 import (
+	"bytes"
 	"net/url"
 	"testing"
 
+	"github.com/alxarch/njson/generator"
 	"github.com/alxarch/njson/njsontest"
 )
 
@@ -55,4 +57,33 @@ func TestParams_(t *testing.T) {
 		OK: false,
 	}))
 
+}
+
+func TestGenerator(t *testing.T) {
+	g, err := generator.NewFromFile("foo.go", `package foo
+
+import "time"
+
+type Foo struct {
+	Name string
+	Tags []string
+	Time time.Time
+	ID int
+
+}
+
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.WriteAppender("Foo"); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.WriteUnmarshaler("Foo"); err != nil {
+		t.Fatal(err)
+	}
+	buf := bytes.NewBuffer(nil)
+	if err := g.PrintTo(buf); err != nil {
+		t.Fatal(err)
+	}
 }

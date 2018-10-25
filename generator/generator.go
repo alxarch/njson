@@ -25,9 +25,6 @@ import (
 	"github.com/alxarch/meta"
 )
 
-// TODO: handle json.Unmarshaler
-// TODO: handle njson.Unmarshaler
-// TODO: handle encoding.TextUnmarshaler
 // TODO: handle flag combinations (ie if tag key is not json don't use UnmarshalJSON)
 
 // Generator is a source code generator for njson unmarshal methods.
@@ -56,30 +53,47 @@ func (g *Generator) AllStructs() (all []string) {
 	return
 }
 
-func newGenerator(path, targetPkg string, filter func(os.FileInfo) bool) (g *Generator, err error) {
-	mode := parser.ParseComments | parser.DeclarationErrors
-	p, err := meta.ParsePackage(targetPkg, path, filter, mode, func(f *ast.File) bool {
-		return !IsGeneratedByNJSON(f)
-	})
-	if err != nil {
-		return
-	}
-	g = new(Generator)
-	g.Package = p
-	g.logger = log.New(ioutil.Discard, "", 0)
-	return
-}
-
-// New creates a new Generator for a package named targetPkg and parses the specified path.
-func New(path string, targetPkg string, options ...Option) (*Generator, error) {
-	var filter func(os.FileInfo) bool
-	if !strings.HasSuffix(targetPkg, "_test") {
-		filter = meta.IgnoreTestFiles
-	}
-	g, err := newGenerator(path, targetPkg, filter)
+// NewFromFile creates a new Generator for a package named targetPkg and parses the specified file.
+func NewFromFile(filename string, src interface{}, options ...Option) (*Generator, error) {
+	p := meta.NewParser(parser.ParseComments | parser.DeclarationErrors)
+	name, err := p.ParseFile(filename, src)
 	if err != nil {
 		return nil, err
 	}
+	pkg, err := p.Package(name, name, func(f *ast.File) bool {
+		return !IsGeneratedByNJSON(f)
+	})
+	if err != nil {
+		return nil, err
+	}
+	g := new(Generator)
+	g.Package = pkg
+	g.logger = log.New(ioutil.Discard, "", 0)
+	for _, opt := range options {
+		opt(g)
+	}
+	return g, nil
+}
+
+// NewFromDir creates a new Generator for a package named targetPkg and parses the specified path.
+func NewFromDir(path, name string, options ...Option) (*Generator, error) {
+	var filter func(os.FileInfo) bool
+	if !strings.HasSuffix(name, "_test") {
+		filter = meta.IgnoreTestFiles
+	}
+	p := meta.NewParser(parser.ParseComments | parser.DeclarationErrors)
+	if err := p.ParseDir(path, filter); err != nil {
+		return nil, err
+	}
+	pkg, err := p.Package(name, name, func(f *ast.File) bool {
+		return !IsGeneratedByNJSON(f)
+	})
+	if err != nil {
+		return nil, err
+	}
+	g := new(Generator)
+	g.Package = pkg
+	g.logger = log.New(ioutil.Discard, "", 0)
 	for _, opt := range options {
 		opt(g)
 	}
@@ -114,7 +128,7 @@ func (g *Generator) Import(imports ...*types.Package) {
 		g.imports = make(map[string]*types.Package, len(imports))
 	}
 	for _, pkg := range imports {
-		if pkg.Path() != g.Package.Path() {
+		if pkg.Path() != g.Path() {
 			g.imports[pkg.Path()] = pkg
 		}
 	}

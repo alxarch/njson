@@ -49,6 +49,20 @@ func (g *Generator) WriteUnmarshaler(typeName string) (err error) {
 	return
 }
 
+func (g *Generator) isTime(t types.Type) bool {
+	if pkg := g.FindImport("time"); pkg != nil {
+		return types.Identical(t, pkg.Scope().Lookup("Time").Type())
+	}
+	return false
+}
+
+func (g *Generator) isDuration(t types.Type) bool {
+	if pkg := g.FindImport("time"); pkg != nil {
+		return types.Identical(t, pkg.Scope().Lookup("Duration").Type())
+	}
+	return false
+}
+
 // TypeUnmarshaler returns the code block for unmarshaling a type.
 func (g *Generator) TypeUnmarshaler(t types.Type) (code meta.Code) {
 	if t == nil {
@@ -57,6 +71,10 @@ func (g *Generator) TypeUnmarshaler(t types.Type) (code meta.Code) {
 
 	pt := types.NewPointer(t)
 	switch {
+	case g.isTime(t):
+		return g.TimeUnmarshaler(t)
+	case g.isDuration(t):
+		return g.DurationUnmarshaler(t)
 	case types.Implements(pt, typNodeJSONUnmarshaler):
 		return g.NodeJSONUnmarshaler(t)
 	case types.Implements(pt, typJSONUnmarshaler):
@@ -188,15 +206,50 @@ func (g *Generator) NodeJSONUnmarshaler(t types.Type) (code meta.Code) {
 func (g *Generator) JSONUnmarshaler(t types.Type) (code meta.Code) {
 	return g.Code(`
 	if err := n.WrapUnmarshalJSON(r); err != nil {
-		return nil
+		return err
 	}
 	`)
+}
+
+// TimeUnmarshaler generates code to unmarshal time.Time values.
+func (g *Generator) TimeUnmarshaler(t types.Type) (code meta.Code) {
+	return g.Code(`
+	if t, err := time.Parse(time.RFC3339, n.Raw()); err != nil {
+		return err
+	} else {
+		*r = t
+	}
+	`).Import(types.NewPackage("time", "time"))
+}
+
+// DurationUnmarshaler generates code to unmarshal time.Time values.
+func (g *Generator) DurationUnmarshaler(t types.Type) (code meta.Code) {
+	return g.Code(`
+	switch n.Type() {
+	case njson.Number:
+		if f, ok := n.ToNumber(); ok {
+			*r = time.Duration(f)
+		} else {
+			return errors.New("Invalid JSON number")
+		}
+	case njson.String:
+		if t, err := time.ParseDuration(n.Raw()); err != nil {
+			return err
+		} else {
+			*r = t
+		}
+	default:
+		return n.TypeError(njson.TypeNumber|njson.TypeString)
+	}
+	`).Import(types.NewPackage("time", "time"))
 }
 
 // TextUnmarshaler generates code to wrap the UnmarshalText method of a value.
 func (g *Generator) TextUnmarshaler(t types.Type) (code meta.Code) {
 	return g.Code(`
-	return n.WrapUnmarshalText(r)
+	if err := n.WrapUnmarshalText(r); err != nil {
+		return err
+	}
 	`)
 }
 

@@ -192,6 +192,10 @@ func (n Node) WrapUnmarshalJSON(u json.Unmarshaler) (err error) {
 		if len(node.values) == 0 {
 			return u.UnmarshalJSON([]byte{delimBeginObject, delimEndObject})
 		}
+	case TypeString:
+		if node.raw == "" {
+			return u.UnmarshalJSON([]byte{delimString, delimString})
+		}
 	case TypeInvalid:
 		return typeError{TypeInvalid, TypeAnyValue}
 	default:
