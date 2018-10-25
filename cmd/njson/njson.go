@@ -77,7 +77,7 @@ func main() {
 		*generateUnmarshal = true
 	}
 
-	g, err := generator.New(*targetPath, targetPkg, options...)
+	g, err := generator.NewFromDir(*targetPath, targetPkg, options...)
 	if err != nil {
 		logger.Fatal(err)
 	}
