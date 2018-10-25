@@ -13,7 +13,7 @@ func AppendFloat(dst []byte, f float64, bits int) []byte {
 		(bits == 64 && (abs < 1e-6 || abs >= 1e21))) {
 		fmt = 'e'
 	}
-	dst = strconv.AppendFloat(dst, f, fmt, -1, 64)
+	dst = strconv.AppendFloat(dst, f, fmt, -1, bits)
 	if fmt == 'e' {
 		if i := len(dst) - 4; 0 <= i && i < len(dst) {
 			if buf := dst[i:]; len(buf) == 4 && buf[0] == 'e' && buf[1] == '-' && buf[2] == '0' {
