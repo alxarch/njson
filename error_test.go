@@ -12,17 +12,13 @@ func TestTypeError(t *testing.T) {
 	}
 }
 
-func Test_parseError(t *testing.T) {
+func Test_ParseError(t *testing.T) {
 	var err error
-	err = (*parseError)(nil)
+	err = (*ParseError)(nil)
 	assertEqual(t, err.Error(), "<nil>")
-	err = eof(TypeString)
+	err = UnexpectedEOF(TypeString)
 	assertEqual(t, err.Error(), "Unexpected end of input while scanning String")
-	err = abort(2, TypeInvalid, nil, "bar")
-	assertEqual(t, err.Error(), "Invalid parser state at position 2 bar")
-	err = &parseError{'?', []rune{'"', '}'}, 2, TypeString}
+	err = &ParseError{'?', []rune{'"', '}'}, 2, TypeString}
 	assertEqual(t, err.Error(), "Invalid token '?' != ['\"' '}'] at position 2 while scanning String")
-	err = &parseError{'?', nil, 2, TypeString}
-	assertEqual(t, err.Error(), "Invalid token '?' at position 2 while scanning String")
 
 }

@@ -19,37 +19,40 @@ func (e typeError) Error() string {
 	return fmt.Sprintf("Invalid type %s not in %v", e.Type, e.Want.Types())
 }
 
-type parseError struct {
+// ParseError signifies an invalid token in JSON data
+type ParseError struct {
 	got  interface{}
 	want interface{}
 	pos  int
 	typ  Type
 }
 
-func (e *parseError) Error() string {
+// Type returns type of value that was being parsed when the error occured.
+func (e *ParseError) Type() Type {
+	return e.typ
+}
+
+// Pos returns the offset at which the error occured
+func (e *ParseError) Pos() int {
+	return e.pos
+}
+
+func (e *ParseError) Error() string {
 	if e == nil {
 		return fmt.Sprintf("%v", error(nil))
 	}
-	if e.pos == -1 {
-		return fmt.Sprintf("Unexpected end of input while scanning %s", e.typ.String())
-	}
-	if e.got == nil {
-		return fmt.Sprintf("Invalid parser state at position %d %v", e.pos, e.want)
-	}
-	if e.want != nil {
-		return fmt.Sprintf("Invalid token %q != %q at position %d while scanning %s", e.got, e.want, e.pos, e.typ.String())
-	}
-	return fmt.Sprintf("Invalid token %q at position %d while scanning %s", e.got, e.pos, e.typ.String())
+	return fmt.Sprintf("Invalid token %q != %q at position %d while scanning %s", e.got, e.want, e.pos, e.typ.String())
 }
 
-func eof(typ Type) error {
-	return &parseError{
-		pos: -1,
-		typ: typ,
-	}
+// UnexpectedEOF signifies incomplete JSON data
+type UnexpectedEOF Type
+
+func (e UnexpectedEOF) Error() string {
+	return fmt.Sprintf("Unexpected end of input while scanning %s", Type(e).String())
 }
+
 func abort(pos int, typ Type, got interface{}, want interface{}) error {
-	return &parseError{
+	return &ParseError{
 		pos:  pos,
 		typ:  typ,
 		got:  got,

@@ -11,6 +11,7 @@ func TestParseQuick(t *testing.T) {
 	s := largeJSON
 	testParse(t, s, s)
 }
+
 func TestParse(t *testing.T) {
 	for in, out := range map[string]string{
 		mediumJSONFormatted: mediumJSON,
@@ -100,33 +101,36 @@ func Test_parseInvalidInput(t *testing.T) {
 	}
 	for _, tt := range []testCase{
 		{`{foo:1}`, abort(1, TypeObject, 'f', []rune{'}', '"'}), `foo:1}`},
-		{`fals`, eof(TypeBoolean), `fals`},
+		{`fals`, UnexpectedEOF(TypeBoolean), `fals`},
 		{`falso`, abort(0, TypeBoolean, `falso`, strFalse), `falso`},
 		{`a`, abort(0, TypeAnyValue, 'a', "any value"), `a`},
 		{`{"foo":b}`, abort(7, TypeAnyValue, 'b', "any value"), `b}`},
-		{`{"foo"`, eof(TypeObject), ``},
-		{`{"foo`, eof(TypeObject), ``},
+		{`{"foo"`, UnexpectedEOF(TypeObject), ``},
+		{`{"foo`, UnexpectedEOF(TypeObject), ``},
 		{`{"foo"}`, abort(6, TypeObject, '}', delimNameSeparator), `}`},
-		{`{"foo":1`, eof(TypeObject), ``},
-		{`{`, eof(TypeObject), ``},
-		{`[`, eof(TypeArray), ``},
+		{`{"foo":1`, UnexpectedEOF(TypeObject), ``},
+		{`{`, UnexpectedEOF(TypeObject), ``},
+		{`[`, UnexpectedEOF(TypeArray), ``},
 		{`[1}`, abort(2, TypeArray, '}', []rune{delimValueSeparator, delimEndArray}), `}`},
-		{`[1 `, eof(TypeArray), ``},
-		{`["foo`, eof(TypeString), `foo`},
-		{`tru`, eof(TypeBoolean), `tru`},
+		{`[1 `, UnexpectedEOF(TypeArray), ``},
+		{`["foo`, UnexpectedEOF(TypeString), `foo`},
+		{`tru`, UnexpectedEOF(TypeBoolean), `tru`},
 		{`truz`, abort(0, TypeBoolean, `truz`, strTrue), `truz`},
-		{`nul`, eof(TypeNull), `nul`},
+		{`nul`, UnexpectedEOF(TypeNull), `nul`},
 		{`nulz`, abort(0, TypeNull, `nulz`, strNull), `nulz`},
 		{`{"foo":"bar","bar":baz}`, abort(19, TypeAnyValue, 'b', "any value"), `baz}`},
 		{`{"foo":"bar",}`, abort(13, TypeObject, '}', delimString), `}`},
-		{`{"foo":"bar", `, eof(TypeObject), ``},
+		{`{"foo":"bar", `, UnexpectedEOF(TypeObject), ``},
 	} {
 		d := Document{}
 		n, tail, err := d.Parse(tt.input)
-		e, _ := err.(*parseError)
-		assertEqual(t, e.Error(), tt.err.Error())
-		assertEqual(t, tail, tt.tail)
+		// e, _ := err.(*ParseError)
+		assertEqual(t, err.Error(), tt.err.Error())
 		assertEqual(t, n, Node{0, 0, nil})
+		if e, ok := err.(*ParseError); ok {
+			assertEqual(t, tail, "")
+			assertEqual(t, tt.input[e.Pos():], tt.tail)
+		}
 	}
 
 }

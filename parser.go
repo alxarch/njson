@@ -10,21 +10,27 @@ type parser struct {
 	err   error
 }
 
-// Parse parses a JSON string and returns the root node as a Partial.
+// Parse parses a JSON string and returns the root node
 func (d *Document) Parse(s string) (Node, string, error) {
 	p := d.parser()
 	id := p.n
-	if pos := p.parseValue(s, 0); pos <= uint(len(s)) {
-		s = s[pos:]
-	} else {
-		s = ""
-	}
-	if p.err != nil {
+	pos := p.parseValue(s, 0)
+	switch p.err.(type) {
+	case nil:
+		d.nodes = p.nodes[:p.n]
+		d.get(id).info |= infRoot
+		// Return tail of input string
+		if pos < uint(len(s)) {
+			return Node{id, d.rev, d}, s[pos:], nil
+		}
+		return Node{id, d.rev, d}, "", nil
+	case UnexpectedEOF:
+		// Return input as is. Caller can append more data and re-parse.
 		return Node{}, s, p.err
+	default:
+		return Node{}, "", p.err
+
 	}
-	d.nodes = p.nodes[:p.n]
-	d.get(id).info |= infRoot
-	return Node{id, d.rev, d}, s, nil
 }
 
 func (d *Document) parser() parser {
@@ -70,7 +76,7 @@ func appendV(values []V, key string, id, i uint) []V {
 }
 
 func (p *parser) eof(typ Type, pos uint) uint {
-	p.err = eof(typ)
+	p.err = UnexpectedEOF(typ)
 	return pos
 }
 

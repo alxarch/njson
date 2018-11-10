@@ -3,6 +3,7 @@ package njson
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -614,6 +615,12 @@ func TestNode_Values(t *testing.T) {
 	assertEqual(t, v.Next(), false)
 	assertEqual(t, v.values, []V(nil))
 
+}
+func assert(t *testing.T, ok bool, msg string, a ...interface{}) {
+	t.Helper()
+	if !ok {
+		t.Fatalf("Assertion failed: %s", fmt.Sprintf(msg, a...))
+	}
 }
 func assertEqual(t *testing.T, a, b interface{}) {
 	t.Helper()
