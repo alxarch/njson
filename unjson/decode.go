@@ -229,7 +229,7 @@ type textDecoder struct{}
 
 func (textDecoder) decode(v reflect.Value, n njson.Node) error {
 	if n.Type() == njson.TypeString {
-		return v.Interface().(encoding.TextUnmarshaler).UnmarshalText(n.Bytes())
+		return n.WrapUnmarshalText(v.Interface().(encoding.TextUnmarshaler))
 	}
 	return n.TypeError(njson.TypeString)
 }
