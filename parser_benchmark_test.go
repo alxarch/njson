@@ -41,26 +41,6 @@ func BenchmarkParse(b *testing.B) {
 	b.Run("canada.json", benchmark(canadaJSON))
 
 }
-func benchmarkUnsafe(src string) func(b *testing.B) {
-	data := []byte(src)
-	p := Document{}
-	return func(b *testing.B) {
-		b.SetBytes(int64(len(src)))
-		for i := 0; i < b.N; i++ {
-			p.Reset()
-			p.ParseUnsafe(data)
-		}
-	}
-}
-func BenchmarkParseUnsafe(b *testing.B) {
-	b.Run("unsafe-small.json", benchmarkUnsafe(smallJSON))
-	b.Run("unsafe-medium.min.json", benchmarkUnsafe(mediumJSON))
-	b.Run("unsafe-medium.json", benchmarkUnsafe(mediumJSONFormatted))
-	b.Run("unsafe-large.json", benchmarkUnsafe(largeJSON))
-	b.Run("unsafe-twitter.json", benchmarkUnsafe(twitterJSON))
-	b.Run("unsafe-canada.json", benchmarkUnsafe(canadaJSON))
-
-}
 
 var (
 	largeJSON           string

@@ -86,7 +86,6 @@ const (
 // Type flags
 const (
 	_ info = 1 << (iota + 8)
-	infUnsafe
 	infRoot
 )
 
@@ -95,10 +94,6 @@ func (i info) IsRoot() bool {
 	return i&infRoot == infRoot
 }
 
-// IsSafe checks if Unsafe flag is set.
-func (i info) IsSafe() bool {
-	return i&infUnsafe == 0
-}
 func (i info) Flags() info {
 	return i & 0xFF00
 }

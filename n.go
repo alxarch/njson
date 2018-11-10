@@ -33,32 +33,9 @@ func (v *V) ID() uint {
 // The returned string is safe to use even if ParseUnsafe was used.
 func (n *node) Unescaped() string {
 	if n != nil && n.info.IsString() {
-		return strjson.Unescaped(n.Safe())
+		return strjson.Unescaped(n.raw)
 	}
 	return ""
-}
-
-// Safe returns a safe copy of a node's value JSON string.
-// Object and Array nodes return an empty string.
-// The returned string is safe to use even if ParseUnsafe was used.
-func (n *node) Safe() string {
-	if n == nil || n.raw == "" {
-		return ""
-	}
-	if n.info.IsSafe() {
-		return n.raw
-	}
-	n.raw = scopy(n.raw)
-	n.info &^= infUnsafe
-	return n.raw
-}
-
-// Bytes returns a node's JSON string as bytes
-func (n *node) Bytes() []byte {
-	if n == nil {
-		return nil
-	}
-	return s2b(n.raw)
 }
 
 const maxUint = ^(uint(0))

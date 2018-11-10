@@ -268,26 +268,26 @@ func (d *Document) ncopy(other *Document, n *node) uint {
 	return id
 }
 
-func (d *Document) ncopysafe(other *Document, n *node) uint {
-	id := uint(len(d.nodes))
-	cp := d.grow()
-	values := cp.values[:cap(cp.values)]
-	*cp = node{
-		raw:  scopy(n.raw),
-		info: n.info,
-	}
-	numV := uint(0)
-	for i := range n.values {
-		v := &n.values[i]
-		n := other.get(v.id)
-		if n != nil {
-			values = appendV(values, scopy(v.key), d.ncopysafe(other, n), numV)
-			numV++
-		}
-	}
-	d.nodes[id].values = values[:numV]
-	return id
-}
+// func (d *Document) ncopysafe(other *Document, n *node) uint {
+// 	id := uint(len(d.nodes))
+// 	cp := d.grow()
+// 	values := cp.values[:cap(cp.values)]
+// 	*cp = node{
+// 		raw:  scopy(n.raw),
+// 		info: n.info,
+// 	}
+// 	numV := uint(0)
+// 	for i := range n.values {
+// 		v := &n.values[i]
+// 		n := other.get(v.id)
+// 		if n != nil {
+// 			values = appendV(values, scopy(v.key), d.ncopysafe(other, n), numV)
+// 			numV++
+// 		}
+// 	}
+// 	d.nodes[id].values = values[:numV]
+// 	return id
+// }
 
 func (d *Document) copyOrAdopt(other *Document, id, to uint) uint {
 	n := other.get(id)
@@ -299,9 +299,6 @@ func (d *Document) copyOrAdopt(other *Document, id, to uint) uint {
 			n.info &^= infRoot
 			return id
 		}
-
-	} else if !n.info.IsSafe() {
-		return d.ncopysafe(other, n)
 	}
 	return d.ncopy(other, n)
 }

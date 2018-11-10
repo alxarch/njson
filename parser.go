@@ -5,17 +5,15 @@ import (
 )
 
 type parser struct {
-	nodes  []node
-	n      uint
-	unsafe info
-	err    error
+	nodes []node
+	n     uint
+	err   error
 }
 
 // Parse parses a JSON string and returns the root node as a Partial.
 func (d *Document) Parse(s string) (Node, string, error) {
 	p := d.parser()
 	id := p.n
-	// n := p.node()
 	if pos := p.parseValue(s, 0); pos <= uint(len(s)) {
 		s = s[pos:]
 	} else {
@@ -27,26 +25,6 @@ func (d *Document) Parse(s string) (Node, string, error) {
 	d.nodes = p.nodes[:p.n]
 	d.get(id).info |= infRoot
 	return Node{id, d.rev, d}, s, nil
-}
-
-// ParseUnsafe parses a JSON buffer without copying it to a string and returns the root node as a Partial.
-// Make sure to call Document.Reset() or Document.Close() to avoid memory leaks.
-func (d *Document) ParseUnsafe(b []byte) (Node, []byte, error) {
-	p := d.parser()
-	p.unsafe = infUnsafe
-	id := p.n
-	// n := p.node()
-	if pos := p.parseValue(b2s(b), 0); pos <= uint(len(b)) {
-		b = b[pos:]
-	} else {
-		b = nil
-	}
-	if p.err != nil {
-		return Node{}, b, p.err
-	}
-	d.nodes = p.nodes[:p.n]
-	d.get(id).info |= infRoot
-	return Node{id, d.rev, d}, b, nil
 }
 
 func (d *Document) parser() parser {
@@ -99,7 +77,7 @@ func (p *parser) eof(typ Type, pos uint) uint {
 func (p *parser) parseValue(s string, pos uint) uint {
 	var (
 		c    byte
-		info = p.unsafe
+		info info
 	)
 
 	for ; pos < uint(len(s)); pos++ {
@@ -234,7 +212,7 @@ func (p *parser) parseArray(s string, pos uint) uint {
 		values []V
 		numV   uint
 	)
-	n.set(vArray|p.unsafe, "")
+	n.set(vArray, "")
 	// Skip space after '['
 	for ; pos < uint(len(s)); pos++ {
 		c = s[pos]
@@ -302,7 +280,7 @@ func (p *parser) parseObject(s string, pos uint) uint {
 		numV   uint
 		i      uint
 	)
-	n.set(vObject|p.unsafe, "")
+	n.set(vObject, "")
 	// Skip space after opening '{'
 	for ; pos < uint(len(s)); pos++ {
 		c = s[pos]

@@ -30,45 +30,6 @@ func Benchmark_parser(b *testing.B) {
 		d.Parse(mediumJSON)
 	}
 }
-func BenchmarkParseD(b *testing.B) {
-	b.Run("small.json", benchmarkD(smallJSON))
-	b.Run("medium.min.json", benchmarkD(mediumJSON))
-	b.Run("medium.json", benchmarkD(mediumJSONFormatted))
-	b.Run("large.json", benchmarkD(largeJSON))
-	b.Run("twitter.json", benchmarkD(twitterJSON))
-	b.Run("canada.json", benchmarkD(canadaJSON))
-
-}
-
-func benchmarkD(src string) func(b *testing.B) {
-	d := Document{}
-
-	return func(b *testing.B) {
-		d.Reset()
-		n, tail, err := d.Parse(src)
-		if err != nil {
-			b.Errorf("Parse error: %s", err)
-			return
-		}
-		if strings.TrimSpace(tail) != "" {
-			b.Errorf("Non empty tail: %d", len(tail))
-			return
-		}
-		if n.get() == nil {
-			b.Errorf("Nil root")
-			return
-		}
-		b.ReportAllocs()
-		b.SetBytes(int64(len(src)))
-		b.ResetTimer()
-
-		for i := 0; i < b.N; i++ {
-			d.Reset()
-			n, tail, err = d.Parse(src)
-		}
-		_ = n
-	}
-}
 
 func TestDocument_Object(t *testing.T) {
 	d := Blank()
@@ -161,29 +122,6 @@ func assertNoError(t *testing.T, err error) {
 		t.Fatalf("Unexpected error: %s", err)
 	}
 }
-func TestDocument_ParseUnsafe(t *testing.T) {
-	d := Document{}
-	data := []byte(`["foo"]`)
-	n, _, err := d.ParseUnsafe(data)
-	assertNoError(t, err)
-	raw := n.Index(0).Raw()
-	assertEqual(t, raw, "foo")
-	d2 := Document{}
-	obj := d2.Object()
-	obj.Set("foo", n)
-	b, err := obj.AppendJSON(nil)
-	assertNoError(t, err)
-	assertEqual(t, string(b), `{"foo":["foo"]}`)
-	data[2] = 'b'
-	data[3] = 'a'
-	data[4] = 'z'
-	assertEqual(t, raw, "baz")
-	b, err = obj.AppendJSON(nil)
-	assertNoError(t, err)
-	assertEqual(t, string(b), `{"foo":["foo"]}`)
-
-}
-
 func TestDocument_ncopy(t *testing.T) {
 	d := new(Document)
 	n := d.Object()

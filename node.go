@@ -121,12 +121,6 @@ func (n Node) Type() Type {
 	return TypeInvalid
 }
 
-// Bytes returns a Node's JSON string as bytes.
-// The slice is NOT a copy of the string's data and SHOULD not be modified.
-func (n Node) Bytes() []byte {
-	return n.get().Bytes()
-}
-
 // Values returns a value iterator over an Array or Object values.
 func (n Node) Values() IterV {
 	if n := n.get(); n != nil {
@@ -199,7 +193,7 @@ func (n Node) WrapUnmarshalJSON(u json.Unmarshaler) (err error) {
 	case TypeInvalid:
 		return typeError{TypeInvalid, TypeAnyValue}
 	default:
-		return u.UnmarshalJSON(s2b(node.raw))
+		return u.UnmarshalJSON([]byte(node.raw))
 	}
 	data := bufferpool.Get().([]byte)
 	data, err = n.AppendJSON(data[:0])
@@ -214,7 +208,7 @@ func (n Node) WrapUnmarshalJSON(u json.Unmarshaler) (err error) {
 func (n Node) WrapUnmarshalText(u encoding.TextUnmarshaler) (err error) {
 	node := n.get()
 	if node != nil && node.info.IsString() {
-		return u.UnmarshalText(node.Bytes())
+		return u.UnmarshalText([]byte(node.raw))
 	}
 	return node.TypeError(TypeString)
 }

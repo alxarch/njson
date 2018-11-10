@@ -220,7 +220,7 @@ func TestNode_WrapUnmarshalJSON(t *testing.T) {
 	defer d.Close()
 	{
 		c := customJSONUnmarshaler{}
-		if n, _, err := d.ParseUnsafe([]byte("[42]")); err != nil {
+		if n, _, err := d.Parse("[42]"); err != nil {
 			t.Errorf("Unexpected error: %s", err)
 		} else if err := n.WrapUnmarshalJSON(&c); err != nil {
 			t.Errorf("Unexpected error: %s", err)
@@ -231,7 +231,7 @@ func TestNode_WrapUnmarshalJSON(t *testing.T) {
 	}
 	{
 		c := customJSONUnmarshaler{}
-		if n, _, err := d.ParseUnsafe([]byte("[]")); err != nil {
+		if n, _, err := d.Parse("[]"); err != nil {
 			t.Errorf("Unexpected error: %s", err)
 		} else if err := n.WrapUnmarshalJSON(&c); err != nil {
 			t.Errorf("Unexpected error: %s", err)
@@ -242,7 +242,7 @@ func TestNode_WrapUnmarshalJSON(t *testing.T) {
 	}
 	{
 		c := customJSONUnmarshaler{}
-		if n, _, err := d.ParseUnsafe([]byte(`{}`)); err != nil {
+		if n, _, err := d.Parse(`{}`); err != nil {
 			t.Errorf("Unexpected error: %s", err)
 		} else if err := n.WrapUnmarshalJSON(&c); err == nil {
 			t.Errorf("Expected error got nil")
@@ -293,7 +293,7 @@ func TestNode_WrapUnmarshalText(t *testing.T) {
 	defer d.Close()
 	{
 		c := customTextUnmarshaler{}
-		if n, _, err := d.ParseUnsafe([]byte(`"foo"`)); err != nil {
+		if n, _, err := d.Parse(`"foo"`); err != nil {
 			t.Errorf("Unexpected error: %s", err)
 		} else if err := n.WrapUnmarshalText(&c); err != nil {
 			t.Errorf("Unexpected error: %s", err)
@@ -303,7 +303,7 @@ func TestNode_WrapUnmarshalText(t *testing.T) {
 	}
 	{
 		c := customTextUnmarshaler{}
-		n, _, err := d.ParseUnsafe([]byte(`{}`))
+		n, _, err := d.Parse(`{}`)
 		if err != nil {
 			t.Errorf("Unexpected error: %s", err)
 		}
@@ -659,7 +659,7 @@ func TestNode_SetX(t *testing.T) {
 func TestNode_Empty(t *testing.T) {
 	n := Node{}
 	assertEqual(t, n.Type(), TypeInvalid)
-	assertEqual(t, n.Bytes(), ([]byte)(nil))
+	assertEqual(t, n.Raw(), "")
 	assertEqual(t, n.get(), (*node)(nil))
 	{
 		n, ok := n.ToUint()
