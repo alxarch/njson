@@ -49,7 +49,7 @@ func (g *Generator) OmiterType() (string, *types.Interface) {
 	return g.omiter.Method(0).Name(), g.omiter
 }
 
-// TypeOmiter returns the code block to check if a value should be omited
+// TypeOmiter returns the code block to check if a value should be omitted
 func (g *Generator) TypeOmiter(typ types.Type, block meta.Code) meta.Code {
 	cond := ""
 	if method, omiter := g.OmiterType(); types.Implements(typ, omiter) {

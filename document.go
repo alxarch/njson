@@ -196,29 +196,9 @@ func (d *Document) toInterface(id uint) (interface{}, bool) {
 	}
 	switch n.info.Type() {
 	case TypeObject:
-		ok := false
-		m := make(map[string]interface{}, len(n.values))
-		for _, v := range n.values {
-
-			if m[v.key], ok = d.toInterface(v.id); !ok {
-				return nil, false
-			}
-		}
-		return m, true
+		return d.toInterfaceMap(n.values)
 	case TypeArray:
-		s := make([]interface{}, len(n.values))
-		if len(n.values) == len(s) {
-			ok := false
-			// Avoid bounds check
-			s = s[:len(n.values)]
-			for i, v := range n.values {
-				if s[i], ok = d.toInterface(v.id); !ok {
-					return nil, false
-
-				}
-			}
-		}
-		return s, true
+		return d.toInterfaceSlice(n.values)
 	case TypeString:
 		return strjson.Unescaped(n.raw), true
 	case TypeBoolean:
@@ -238,6 +218,34 @@ func (d *Document) toInterface(id uint) (interface{}, bool) {
 	default:
 		return nil, false
 	}
+}
+
+func (d *Document) toInterfaceMap(values []V) (interface{}, bool) {
+	var (
+		m  = make(map[string]interface{}, len(values))
+		ok bool
+	)
+	for _, v := range values {
+		m[v.key], ok = d.toInterface(v.id)
+		if !ok {
+			return nil, false
+		}
+	}
+	return m, true
+}
+
+func (d *Document) toInterfaceSlice(values []V) ([]interface{}, bool) {
+	var (
+		x  = make([]interface{}, len(values))
+		ok bool
+	)
+	for i, v := range values {
+		x[i], ok = d.toInterface(v.id)
+		if !ok {
+			return nil, false
+		}
+	}
+	return x, true
 }
 
 // AppendJSON appends the JSON data of the document root node to a byte slice.

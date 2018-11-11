@@ -27,12 +27,12 @@ type ParseError struct {
 	typ  Type
 }
 
-// Type returns type of value that was being parsed when the error occured.
+// Type returns type of value that was being parsed when the error ocurred.
 func (e *ParseError) Type() Type {
 	return e.typ
 }
 
-// Pos returns the offset at which the error occured
+// Pos returns the offset at which the error ocurred
 func (e *ParseError) Pos() int {
 	return e.pos
 }

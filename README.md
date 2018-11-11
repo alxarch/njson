@@ -1,3 +1,7 @@
+[![Build Status](https://travis-ci.org/alxarch/njson.svg)](https://travis-ci.org/alxarch/njson)
+[![GoDoc](https://godoc.org/github.com/alxarch/njson?status.svg)](http://godoc.org/github.com/alxarch/njson)
+[![Go Report](https://goreportcard.com/badge/github.com/alxarch/njson)](https://goreportcard.com/report/github.com/alxarch/njson)
+[![codecov](https://codecov.io/gh/alxarch/njson/branch/master/graph/badge.svg)](https://codecov.io/gh/alxarch/njson)
 # njson
 
 High performance parsing and manipulation of JSON documents for Go.
