@@ -41,12 +41,19 @@ func (n Node) Document() *Document {
 	if n.doc != nil && n.doc.rev == n.rev {
 		return n.doc
 	}
+	// Unlink invalid Document reference
+	n.doc = nil
 	return nil
 }
 
 func (n Node) get() *node {
-	if n.doc != nil && n.doc.rev == n.rev && n.id < uint(len(n.doc.nodes)) {
-		return &n.doc.nodes[n.id]
+	if n.doc != nil && n.doc.rev == n.rev {
+		if n.id < uint(len(n.doc.nodes)) {
+			return &n.doc.nodes[n.id]
+		}
+	} else {
+		// Unlink invalid Document reference
+		n.doc = nil
 	}
 	return nil
 }
@@ -59,9 +66,8 @@ func (n Node) AppendJSON(dst []byte) ([]byte, error) {
 	return nil, &typeError{TypeInvalid, TypeAnyValue}
 }
 
-// Raw return the JSON string of a Node's value.
+// Raw returns the JSON string of a Node's value.
 // Object and Array nodes return an empty string.
-// The returned string is NOT safe to use if ParseUnsafe was used.
 func (n Node) Raw() string {
 	if n := n.get(); n != nil {
 		return n.raw
@@ -70,7 +76,6 @@ func (n Node) Raw() string {
 }
 
 // Unescaped unescapes the value of a String Node.
-// The returned string is safe to use even if ParseUnsafe was used.
 func (n Node) Unescaped() string {
 	if n := n.get(); n != nil && n.info.IsString() {
 		return strjson.Unescaped(n.raw)

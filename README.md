@@ -21,25 +21,28 @@ Inspired by [`github.com/valyala/fastjson`](https://github.com/valyala/fastjson)
 ## Usage
 
 ```go
-    import "github.com/alxarch/njson"
 
-    d := njson.Document{}
+	d := njson.Document{}
 
-    root, tail, err := d.Parse(`{"answer":42, {"foo": {"bar": "baz"}}}`)
-    answer, ok := root.Get("answer").ToInt()
-    if ok {
-        fmt.Println("answer is", answer)
-    }
-    n := root.Lookup("foo", "bar").
-    bar, ok := n.ToString()
-    if ok {
-        fmt.Println("bar is", bar)
-    }
-    bar.SetString("foo")
+	root, _, _ := d.Parse(`{"answer":42, "foo": {"bar": "baz"}}`)
 
-    data := root.AppendJSON(nil)
-    fmt.Println(string(data)) // {"answer":42, {"foo": {"bar": "foo"}}}
+	answer, _ := root.Get("answer").ToInt()
+	fmt.Println(answer)
 
+	n := root.Lookup("foo", "bar")
+	bar := n.Unescaped()
+	fmt.Println(bar)
+
+	n.SetString("Hello, 世界")
+
+	data := make([]byte, 64)
+	data, _ = root.AppendJSON(data[:0])
+	fmt.Println(string(data))
+
+	// Output:
+	// 42
+	// baz
+	// {"answer":42,"foo":{"bar":"Hello, 世界"}}
 
 ```
 
