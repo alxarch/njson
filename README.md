@@ -6,17 +6,17 @@ Inspired by [`github.com/valyala/fastjson`](https://github.com/valyala/fastjson)
 
 ## Features
 
-    * Does *not* try to be a 'drop-in' replacement for `encoding/json`
-    * Deserialize arbitrary JSON input to a DOM tree
-    * Manipulate DOM tree
-    * Path lookups
-    * Lazy unescape and number conversions for faster parsing
-    * Reserialze to JSON data
-    * Iterate over tree
-    * Documents can be reused to avoid allocations
-    * Fast, fast, fast
-    * [WIP] Support for `reflect` based struct Marshal/Unmarshal via `github.com/alxarch/njson/unjson` package
-    * [WIP] CLI tool for Marshal/Unmarshal generated code via `github.com/alxarch/njson/cmd/njson` package
+  - Does *not* try to be a 'drop-in' replacement for `encoding/json`
+  - Deserialize arbitrary JSON input to a DOM tree
+  - Manipulate DOM tree
+  - Path lookups
+  - Lazy unescape and number conversions for faster parsing
+  - Reserialze to JSON data
+  - Iterate over tree
+  - Documents can be reused to avoid allocations
+  - Fast, fast, fast
+  - [WIP] Support for `reflect` based struct Marshal/Unmarshal via `github.com/alxarch/njson/unjson` package
+  - [WIP] CLI tool for Marshal/Unmarshal generated code via `github.com/alxarch/njson/cmd/njson` package
 
 ## Usage
 
