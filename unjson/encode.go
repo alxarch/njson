@@ -76,7 +76,7 @@ func newTypeEncoder(typ reflect.Type, options *Options) (*typeEncoder, error) {
 	case m.typ.Implements(typTextMarshaler):
 		m.encoder = textEncoder{}
 	default:
-		d, err := newEncoder(m.typ, options)
+		d, err := newEncoder(m.typ, options, cache{})
 		if err != nil {
 			return nil, err
 		}
@@ -85,7 +85,7 @@ func newTypeEncoder(typ reflect.Type, options *Options) (*typeEncoder, error) {
 	return &m, nil
 }
 
-func newEncoder(typ reflect.Type, options *Options) (encoder, error) {
+func newEncoder(typ reflect.Type, options *Options, codecs cache) (encoder, error) {
 	if typ == nil {
 		return nil, errInvalidType
 	}
@@ -99,13 +99,13 @@ func newEncoder(typ reflect.Type, options *Options) (encoder, error) {
 	}
 	switch typ.Kind() {
 	case reflect.Ptr:
-		return newPtrEncoder(typ, options)
+		return newPtrEncoder(typ, options, codecs)
 	case reflect.Struct:
-		return cachedCodec(typ, options)
+		return newStructCodec(typ, options, codecs)
 	case reflect.Slice:
-		return newSliceEncoder(typ, options)
+		return newSliceEncoder(typ, options, codecs)
 	case reflect.Map:
-		return newMapEncoder(typ, options)
+		return newMapEncoder(typ, options, codecs)
 	case reflect.Interface:
 		if typ.NumMethod() == 0 {
 			return interfaceEncoder{}, nil
@@ -189,9 +189,9 @@ type mapEncoder struct {
 	keys    encoder
 }
 
-func newMapEncoder(typ reflect.Type, options *Options) (mapEncoder, error) {
+func newMapEncoder(typ reflect.Type, options *Options, codecs cache) (*mapEncoder, error) {
 	if typ.Kind() != reflect.Map {
-		return mapEncoder{}, errInvalidType
+		return nil, errInvalidType
 	}
 
 	var keys encoder
@@ -200,20 +200,23 @@ func newMapEncoder(typ reflect.Type, options *Options) (mapEncoder, error) {
 	} else if typ.Key().Kind() == reflect.String {
 		keys = stringEncoder(options.HTML)
 	} else {
-		return mapEncoder{}, errInvalidType
+		return nil, errInvalidType
 	}
-	enc, err := newEncoder(typ.Elem(), options)
+	me := new(mapEncoder)
+	codecs[typ] = me
+	enc, err := codecs.encoder(typ.Elem(), options)
 	if err != nil {
-		return mapEncoder{}, err
+		return nil, err
 	}
-	return mapEncoder{
+	*me = mapEncoder{
 		typ:     typ,
 		keys:    keys,
 		encoder: enc,
-	}, nil
+	}
+	return me, nil
 }
 
-func (d mapEncoder) encode(out []byte, v reflect.Value) ([]byte, error) {
+func (d *mapEncoder) encode(out []byte, v reflect.Value) ([]byte, error) {
 	if v.IsNil() {
 		return append(out, strNull...), nil
 	}
@@ -239,15 +242,15 @@ type ptrEncoder struct {
 	encoder encoder
 }
 
-func newPtrEncoder(typ reflect.Type, options *Options) (ptrEncoder, error) {
-	enc, err := newEncoder(typ.Elem(), options)
+func newPtrEncoder(typ reflect.Type, options *Options, codecs cache) (*ptrEncoder, error) {
+	pe := new(ptrEncoder)
+	codecs[typ] = pe
+	enc, err := codecs.encoder(typ.Elem(), options)
 	if err != nil {
-		return ptrEncoder{}, err
+		return nil, err
 	}
-	return ptrEncoder{
-		// typ:     typ.Elem(),
-		encoder: enc,
-	}, nil
+	pe.encoder = enc
+	return pe, nil
 }
 
 func (d ptrEncoder) encode(b []byte, v reflect.Value) ([]byte, error) {
@@ -261,17 +264,18 @@ type sliceEncoder struct {
 	encoder encoder
 }
 
-func newSliceEncoder(typ reflect.Type, options *Options) (sliceEncoder, error) {
-	enc, err := newEncoder(typ.Elem(), options)
+func newSliceEncoder(typ reflect.Type, options *Options, codecs cache) (*sliceEncoder, error) {
+	se := new(sliceEncoder)
+	codecs[typ] = se
+	enc, err := codecs.encoder(typ.Elem(), options)
 	if err != nil {
-		return sliceEncoder{}, err
+		return nil, err
 	}
-	return sliceEncoder{
-		encoder: enc,
-	}, nil
+	se.encoder = enc
+	return se, nil
 }
 
-func (e sliceEncoder) encode(out []byte, v reflect.Value) ([]byte, error) {
+func (e *sliceEncoder) encode(out []byte, v reflect.Value) ([]byte, error) {
 	out = append(out, delimBeginArray)
 	if !v.IsNil() {
 		var (
@@ -320,12 +324,12 @@ type floatEncoder struct {
 	allowNan bool
 }
 
-func newFloatEncoder(bits int, options *Options) (floatEncoder, error) {
+func newFloatEncoder(bits int, options *Options) (*floatEncoder, error) {
 	e := floatEncoder{bits, options.AllowInf, options.AllowNaN}
-	return e, nil
+	return &e, nil
 }
 
-func (e floatEncoder) encode(out []byte, v reflect.Value) ([]byte, error) {
+func (e *floatEncoder) encode(out []byte, v reflect.Value) ([]byte, error) {
 	f := v.Float()
 	if math.IsInf(f, 0) {
 		if e.allowInf {

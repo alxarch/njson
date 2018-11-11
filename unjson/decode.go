@@ -59,8 +59,6 @@ var (
 // njsonDecoder implements the Decoder interface for types implementing njson.Unmarshaler
 type njsonDecoder struct{}
 
-var _ Decoder = njsonDecoder{}
-
 func (njsonDecoder) Decode(x interface{}, n njson.Node) error {
 	if x, ok := x.(njson.Unmarshaler); ok {
 		return x.UnmarshalNodeJSON(n)
@@ -74,8 +72,6 @@ func (njsonDecoder) decode(v reflect.Value, n njson.Node) error {
 
 // jsonDecoder implements the Decoder interface for types implementing json.Unmarshaller
 type jsonDecoder struct{}
-
-var _ Decoder = jsonDecoder{}
 
 func (jsonDecoder) Decode(x interface{}, n njson.Node) (err error) {
 
@@ -118,7 +114,7 @@ func newTypeDecoder(typ reflect.Type, options *Options) (*typeDecoder, error) {
 		c.decoder = textDecoder{}
 	default:
 		typ = typ.Elem()
-		d, err := newDecoder(typ, options)
+		d, err := newDecoder(typ, options, cache{})
 		if err != nil {
 			return nil, err
 		}
@@ -127,7 +123,7 @@ func newTypeDecoder(typ reflect.Type, options *Options) (*typeDecoder, error) {
 	return &c, nil
 }
 
-func newDecoder(typ reflect.Type, options *Options) (decoder, error) {
+func newDecoder(typ reflect.Type, options *Options, codecs cache) (decoder, error) {
 	if typ == nil {
 		return nil, errInvalidType
 	}
@@ -142,13 +138,13 @@ func newDecoder(typ reflect.Type, options *Options) (decoder, error) {
 
 	switch typ.Kind() {
 	case reflect.Ptr:
-		return newPtrDecoder(typ, options)
+		return newPtrDecoder(typ, options, codecs)
 	case reflect.Struct:
-		return cachedCodec(typ, options)
+		return newStructCodec(typ, options, codecs)
 	case reflect.Slice:
-		return newSliceDecoder(typ, options)
+		return newSliceDecoder(typ, options, codecs)
 	case reflect.Map:
-		return newMapDecoder(typ, options)
+		return newMapDecoder(typ, options, codecs)
 	case reflect.Interface:
 		if typ.NumMethod() == 0 {
 			return interfaceDecoder{}, nil
@@ -169,32 +165,25 @@ func newDecoder(typ reflect.Type, options *Options) (decoder, error) {
 	}
 }
 
-type stringDecoder struct{}
-
-var _ decoder = stringDecoder{}
-
-func (stringDecoder) decode(v reflect.Value, n njson.Node) error {
-	v.SetString(n.Unescaped())
-	return nil
-}
-
 type sliceDecoder struct {
 	typ     reflect.Type
 	decoder decoder
 }
 
-func newSliceDecoder(typ reflect.Type, options *Options) (sliceDecoder, error) {
-	dec, err := newDecoder(typ.Elem(), options)
-	if err != nil {
-		return sliceDecoder{}, err
+func newSliceDecoder(typ reflect.Type, options *Options, codecs cache) (*sliceDecoder, error) {
+	sd := sliceDecoder{
+		typ: typ,
 	}
-	return sliceDecoder{
-		typ:     typ,
-		decoder: dec,
-	}, nil
+	codecs[typ] = &sd
+	dec, err := codecs.decoder(typ.Elem(), options)
+	if err != nil {
+		return nil, err
+	}
+	sd.decoder = dec
+	return &sd, nil
 }
 
-func (d sliceDecoder) decode(v reflect.Value, n njson.Node) (err error) {
+func (d *sliceDecoder) decode(v reflect.Value, n njson.Node) (err error) {
 	switch n.Type() {
 	case njson.TypeNull:
 		if !v.IsNil() {
@@ -225,15 +214,6 @@ func (d sliceDecoder) decode(v reflect.Value, n njson.Node) (err error) {
 	return nil
 }
 
-type textDecoder struct{}
-
-func (textDecoder) decode(v reflect.Value, n njson.Node) error {
-	if n.Type() == njson.TypeString {
-		return n.WrapUnmarshalText(v.Interface().(encoding.TextUnmarshaler))
-	}
-	return n.TypeError(njson.TypeString)
-}
-
 type mapDecoder struct {
 	typ       reflect.Type
 	keys      decoder
@@ -242,41 +222,35 @@ type mapDecoder struct {
 	zeroValue reflect.Value
 }
 
-func newMapDecoder(typ reflect.Type, options *Options) (*mapDecoder, error) {
-	if typ.Kind() != reflect.Map {
-		return nil, errInvalidType
+func newMapDecoder(typ reflect.Type, options *Options, codecs cache) (*mapDecoder, error) {
+	key := typ.Key()
+	el := typ.Elem()
+	md := mapDecoder{
+		typ:       typ,
+		zeroKey:   reflect.Zero(key),
+		zeroValue: reflect.Zero(el),
 	}
-
-	var keys decoder
-	if typ.Key().Implements(typTextUnmarshaler) {
-		keys = textDecoder{}
-	} else if typ.Key().Kind() == reflect.String {
-		keys = stringDecoder{}
+	if key.Implements(typTextUnmarshaler) {
+		md.keys = textDecoder{}
+	} else if key.Kind() == reflect.String {
+		md.keys = stringDecoder{}
 	} else {
 		return nil, errInvalidType
 	}
-	dec, err := newDecoder(typ.Elem(), options)
+	// First cache the decoder to avoid recursion issues
+	codecs[typ] = &md
+	dec, err := codecs.decoder(el, options)
 	if err != nil {
 		return nil, err
 	}
-	// enc, err := newEncoder(typ.Elem(), options)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	return &mapDecoder{
-		typ:       typ,
-		zeroKey:   reflect.Zero(typ.Key()),
-		zeroValue: reflect.Zero(typ.Elem()),
-		keys:      keys,
-		decoder:   dec,
-	}, nil
+	md.decoder = dec
+	return &md, nil
 }
 func (d *mapDecoder) decode(v reflect.Value, n njson.Node) (err error) {
 	switch n.Type() {
 	case njson.TypeNull:
 		return
 	case njson.TypeObject:
-		// key := reflect.New(d.typ.Key()).Elem()
 		val := reflect.New(d.typ.Elem()).Elem()
 		for i := n.Values(); i.Next(); {
 			val.Set(d.zeroValue)
@@ -298,19 +272,21 @@ type ptrDecoder struct {
 	typ     reflect.Type
 }
 
-func newPtrDecoder(typ reflect.Type, options *Options) (ptrDecoder, error) {
-	dec, err := newDecoder(typ.Elem(), options)
-	if err != nil {
-		return ptrDecoder{}, err
+func newPtrDecoder(typ reflect.Type, options *Options, codecs cache) (*ptrDecoder, error) {
+	pd := ptrDecoder{
+		typ:  typ.Elem(),
+		zero: reflect.Zero(typ),
 	}
-	return ptrDecoder{
-		typ:     typ.Elem(),
-		decoder: dec,
-		zero:    reflect.Zero(typ),
-	}, nil
+	codecs[typ] = &pd
+	dec, err := codecs.decoder(pd.typ, options)
+	if err != nil {
+		return nil, err
+	}
+	pd.decoder = dec
+	return &pd, nil
 }
 
-func (d ptrDecoder) decode(v reflect.Value, n njson.Node) error {
+func (d *ptrDecoder) decode(v reflect.Value, n njson.Node) error {
 	switch n.Type() {
 	case njson.TypeNull:
 		v.Set(d.zero)
@@ -321,6 +297,13 @@ func (d ptrDecoder) decode(v reflect.Value, n njson.Node) error {
 		}
 		return d.decoder.decode(v.Elem(), n)
 	}
+}
+
+type stringDecoder struct{}
+
+func (stringDecoder) decode(v reflect.Value, n njson.Node) error {
+	v.SetString(n.Unescaped())
+	return nil
 }
 
 type interfaceDecoder struct{}
@@ -386,4 +369,13 @@ func (floatDecoder) decode(v reflect.Value, n njson.Node) (err error) {
 		return nil
 	}
 	return n.TypeError(njson.TypeNumber)
+}
+
+type textDecoder struct{}
+
+func (textDecoder) decode(v reflect.Value, n njson.Node) error {
+	if n.Type() == njson.TypeString {
+		return n.WrapUnmarshalText(v.Interface().(encoding.TextUnmarshaler))
+	}
+	return n.TypeError(njson.TypeString)
 }

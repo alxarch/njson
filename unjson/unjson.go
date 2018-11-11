@@ -37,7 +37,7 @@ func UnmarshalFromString(s string, x interface{}) (err error) {
 		return
 	}
 	p := njson.Blank()
-	n, s, err := p.Parse(s)
+	n, _, err := p.Parse(s)
 	if err == nil {
 		err = d.Decode(x, n)
 	}

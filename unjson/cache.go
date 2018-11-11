@@ -15,38 +15,43 @@ var (
 	unmarshalCache     = map[cacheKey]Decoder{}
 	marshalCacheLock   sync.RWMutex
 	marshalCache       = map[cacheKey]Encoder{}
-	codecCacheLock     sync.RWMutex
-	codecCache         = map[cacheKey]dencoder{}
 )
 
-type dencoder interface {
-	encoder
-	decoder
-}
+type cache map[reflect.Type]interface{}
 
-func cachedCodec(typ reflect.Type, options *Options) (c dencoder, err error) {
-	if typ == nil || typ.Kind() != reflect.Struct {
-		return nil, errInvalidType
+func (c cache) codec(typ reflect.Type) *structCodec {
+	if x := c[typ]; x != nil {
+		if c, ok := x.(*structCodec); ok {
+			return c
+		}
 	}
-	key := cacheKey{typ, defaultOptions}
-	if options == nil {
-		options = &defaultOptions
-	} else {
-		key.options = *options
+	return nil
+}
+func (c cache) encoder(typ reflect.Type, options *Options) (encoder, error) {
+	if x := c[typ]; x != nil {
+		if e, ok := x.(encoder); ok {
+			return e, nil
+		}
 	}
-	codecCacheLock.RLock()
-	c, ok := codecCache[key]
-	codecCacheLock.RUnlock()
-	if ok {
-		return
+	enc, err := newEncoder(typ, options, c)
+	if err != nil {
+		return nil, err
 	}
-	if c, err = newStructCodec(typ, options); err != nil {
-		return
+	c[typ] = enc
+	return enc, nil
+}
+func (c cache) decoder(typ reflect.Type, options *Options) (decoder, error) {
+	if x := c[typ]; x != nil {
+		if e, ok := x.(decoder); ok {
+			return e, nil
+		}
 	}
-	codecCacheLock.Lock()
-	codecCache[key] = c
-	codecCacheLock.Unlock()
-	return
+	dec, err := newDecoder(typ, options, c)
+	if err != nil {
+		return nil, err
+	}
+	c[typ] = dec
+	return dec, nil
 }
 
 func cachedDecoder(typ reflect.Type, options *Options) (u Decoder, err error) {

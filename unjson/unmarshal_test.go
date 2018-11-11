@@ -30,53 +30,28 @@ func TestUnmarshalBasic(t *testing.T) {
 func TestDecoderNilPointer(t *testing.T) {
 	src := `{"Foo":1,"Bar":2,"Baz":3}`
 	type A struct{ Foo, Bar, Baz int }
-	var a *A = nil
+	var a *A
 	err := UnmarshalFromString(src, &a)
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err)
-		return
-	}
-	if a == nil {
-		t.Errorf("Nil unmarshall")
-		return
-
-	}
-	if a.Foo != 1 {
-		t.Errorf("Invalid unmarshal Foo: %d", a.Foo)
-	}
-	if a.Bar != 2 {
-		t.Errorf("Invalid unmarshal Bar: %d", a.Bar)
-	}
-	if a.Baz != 3 {
-		t.Errorf("Invalid unmarshal Baz: %d", a.Baz)
-	}
+	assertNoError(t, err)
+	assert(t, a != nil, "Nil unmarshall")
+	assertEqual(t, *a, A{
+		Foo: 1,
+		Bar: 2,
+		Baz: 3,
+	})
 }
 func TestDecoderEmptyPointer(t *testing.T) {
 	src := `{"Foo":1,"Bar":2,"Baz":3}`
 	type A struct{ Foo, Bar, Baz int }
 	a := &A{}
 	err := UnmarshalFromString(src, &a)
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err)
-		return
-	}
-	if a == nil {
-		t.Errorf("Nil unmarshall")
-		return
-
-	}
-	if a.Foo != 1 {
-		t.Errorf("Invalid unmarshal Foo: %d", a.Foo)
-		return
-	}
-	if a.Bar != 2 {
-		t.Errorf("Invalid unmarshal Bar: %d", a.Bar)
-		return
-	}
-	if a.Baz != 3 {
-		t.Errorf("Invalid unmarshal Baz: %d", a.Baz)
-		return
-	}
+	assertNoError(t, err)
+	assert(t, a != nil, "Nil unmarshall")
+	assertEqual(t, *a, A{
+		Foo: 1,
+		Bar: 2,
+		Baz: 3,
+	})
 }
 
 func TestUnmarshalInterface(t *testing.T) {
@@ -87,78 +62,57 @@ func TestUnmarshalInterface(t *testing.T) {
 		t.Errorf("Unexpected error: %s", err)
 		return
 	}
-	if m, ok := v.(map[string]interface{}); !ok {
-		t.Errorf("Unexpected type: %v", v)
-		return
-	} else {
-		for k, n := range map[string]int{
-			"foo": 1,
-			"bar": 2,
-			"baz": 3,
-		} {
-			if f, ok := m[k].(float64); !ok {
-				t.Errorf("Invalid decode %q not set %v", k, m[k])
-			} else if f != float64(n) {
-				t.Errorf("Invalid decode: %q %f", k, f)
-			}
-		}
-	}
+	m, ok := v.(map[string]interface{})
+	assert(t, ok, "Unexpected type: %v", v)
+	assertEqual(t, m, map[string]interface{}{
+		"foo": 1.0,
+		"bar": 2.0,
+		"baz": 3.0,
+	})
 
 }
 func TestUnmarshalMapInterface(t *testing.T) {
 	v := map[string]interface{}{}
 	src := `{"foo":1,"bar":2,"baz":3}`
 	err := UnmarshalFromString(src, &v)
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err)
-		return
-	}
+	assertNoError(t, err)
 
 }
 func TestUnmarshalMap(t *testing.T) {
 	v := map[string]int{}
 	src := `{"foo":1,"bar":2,"baz":3}`
-	if err := UnmarshalFromString(src, &v); err != nil {
-		t.Errorf("Unexpected error: %s", err)
-		return
-	}
-	for k, n := range map[string]int{
+	err := UnmarshalFromString(src, &v)
+	assertNoError(t, err)
+	assertEqual(t, v, map[string]int{
 		"foo": 1,
 		"bar": 2,
 		"baz": 3,
-	} {
-		if nn, ok := v[k]; !ok {
-			t.Errorf("Invalid decode %q not set %v", k, v)
-		} else if nn != n {
-			t.Errorf("Invalid decode: %q %d", k, nn)
-		}
-	}
+	})
 }
 
 func TestUnmarshal(t *testing.T) {
 	src := `{"foo":["bar"],"bar":23,"baz":{"foo":21.2, "bar": null}}`
-	v := struct {
+	type baz struct {
+		Foo float64     `json:"foo"`
+		Bar interface{} `json:"bar"`
+	}
+	type foo struct {
 		Foo []string `json:"foo"`
 		Bar *float64 `json:"bar"`
-		Baz struct {
-			Foo float64     `json:"foo"`
-			Bar interface{} `json:"bar"`
-		} `json:"baz"`
-	}{}
+		Baz baz      `json:"baz"`
+	}
+	v := foo{}
 	err := UnmarshalFromString(src, &v)
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err)
-		return
-	}
-	if len(v.Foo) != 1 || v.Foo[0] != "bar" {
-		t.Errorf("Invalid decode foo: %v", v.Foo)
-	}
-	if v.Bar == nil || *v.Bar != 23 {
-		t.Errorf("Invalid decode bar: %#v", v.Bar)
-	}
-	if v.Baz.Foo != 21.2 {
-		t.Errorf("Invalid decode baz: %f", v.Baz.Foo)
-	}
+	assertNoError(t, err)
+	f := 23.0
+	assertEqual(t, v, foo{
+		Foo: []string{"bar"},
+		Bar: &f,
+		Baz: baz{
+			Foo: 21.2,
+			Bar: (interface{})(nil),
+		},
+	})
 
 }
 
@@ -179,19 +133,15 @@ func TestUnmarshalEmbeddedFields(t *testing.T) {
 		Bar string
 	}
 	b := B{}
-	if err := UnmarshalFromString(`{"Foo":"foo","Bar":"bar"}`, &b); err != nil {
-		t.Errorf("Unexcpected error: %s", err)
-		return
-	}
-	if b.Foo != "foo" {
-		t.Errorf("Invalid b.Foo: %q", b.Foo)
-		return
-	}
-	if b.Bar != "bar" {
-		t.Errorf("Invalid b.Bar: %q", b.Bar)
-		return
-	}
 
+	err := UnmarshalFromString(`{"Foo":"foo","Bar":"bar"}`, &b)
+	assertNoError(t, err)
+	assertEqual(t, b, B{
+		A: A{
+			Foo: "foo",
+		},
+		Bar: "bar",
+	})
 }
 
 func TestUnmarshalFromString(t *testing.T) {

@@ -9,6 +9,7 @@ import (
 type structCodec struct {
 	fields    []codec
 	zeroValue reflect.Value
+	typ       reflect.Type
 }
 
 func (c *structCodec) Add(f codec) {
@@ -34,7 +35,7 @@ type codec struct {
 	omit omiter
 }
 
-// omit checks if a value should be omited
+// omit checks if a value should be omitted
 func (c *structCodec) omit(v reflect.Value) bool {
 	for i := range c.fields {
 		field := &c.fields[i]
@@ -77,7 +78,7 @@ func (c *structCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
 	return b, nil
 }
 
-func (c *structCodec) merge(typ reflect.Type, options *Options, index []int) error {
+func (c *structCodec) merge(typ reflect.Type, options *Options, index []int, codecs cache) error {
 	if typ == nil {
 		return nil
 	}
@@ -104,7 +105,7 @@ func (c *structCodec) merge(typ reflect.Type, options *Options, index []int) err
 			}
 			if t.Kind() == reflect.Struct {
 				// embedded struct
-				if err := c.merge(t, options, index); err != nil {
+				if err := c.merge(t, options, index, codecs); err != nil {
 					return err
 				}
 				continue
@@ -114,11 +115,12 @@ func (c *structCodec) merge(typ reflect.Type, options *Options, index []int) err
 		if ff := c.Get(tag); ff != nil && cmpIndex(ff.index, index) != -1 {
 			continue
 		}
-		u, err := newDecoder(field.Type, options)
+
+		u, err := codecs.decoder(field.Type, options)
 		if err != nil {
 			return err
 		}
-		m, err := newEncoder(field.Type, options)
+		m, err := codecs.encoder(field.Type, options)
 		if err != nil {
 			return err
 		}
@@ -139,24 +141,29 @@ func (c *structCodec) merge(typ reflect.Type, options *Options, index []int) err
 		})
 	}
 	return nil
-
 }
 
-func newStructCodec(typ reflect.Type, options *Options) (*structCodec, error) {
+func newStructCodec(typ reflect.Type, options *Options, codecs cache) (*structCodec, error) {
 	if typ.Kind() == reflect.Ptr {
 		typ = typ.Elem()
 	}
 	if typ.Kind() != reflect.Struct {
 		return nil, errInvalidType
 	}
-	d := &structCodec{
+
+	if c := codecs.codec(typ); c != nil {
+		return c, nil
+	}
+	c := &structCodec{
+		typ:       typ,
 		fields:    make([]codec, 0, typ.NumField()),
 		zeroValue: reflect.Zero(typ),
 	}
-	if err := d.merge(typ, options, nil); err != nil {
+	codecs[typ] = c
+	if err := c.merge(typ, options, nil, codecs); err != nil {
 		return nil, err
 	}
-	return d, nil
+	return c, nil
 }
 
 func fieldByIndex(v reflect.Value, index []int) reflect.Value {
