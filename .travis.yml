@@ -11,6 +11,7 @@ script:
   - GOOS=windows go build
 
   # run tests on a standard platform
+  - go generate ./internal/generator
   - go test -v ./... -coverprofile=coverage.txt -covermode=atomic
   - go test -v ./... -race
 
