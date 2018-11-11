@@ -7,11 +7,9 @@ import (
 func TestIsDigit(t *testing.T) {
 	for i := 0; i < 255; i++ {
 		want := '0' <= i && i <= '9'
-		t.Run(string([]byte{byte(i)}), func(t *testing.T) {
-			if got := isDigit(byte(i)); got != want {
-				t.Errorf("IsDigit() = %v, want %v", got, want)
-			}
-		})
+		if isDigit(byte(i)) != want {
+			t.Fatalf("IsDigit(%c) != %t", i, want)
+		}
 	}
 }
 
@@ -50,10 +48,8 @@ func TestIsSpaceASCII(t *testing.T) {
 		case '\r', '\n', ' ', '\t':
 			want = true
 		}
-		t.Run(string([]byte{byte(i)}), func(t *testing.T) {
-			if got := isSpace(byte(i)); got != want {
-				t.Errorf("IsSpaceASCII() = %v, want %v", got, want)
-			}
-		})
+		if isSpace(byte(i)) != want {
+			t.Fatalf("isSpave(%c) != %t", i, want)
+		}
 	}
 }
