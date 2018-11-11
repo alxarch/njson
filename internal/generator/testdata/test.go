@@ -1,7 +1,7 @@
 package testdata
 
 import "time"
-import "github.com/alxarch/njson/generator/testdata/internal/foo"
+import "github.com/alxarch/njson/cmd/njson/internal/generator/testdata/internal/foo"
 
 type Bar struct {
 	Baz string
