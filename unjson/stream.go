@@ -75,7 +75,7 @@ func NewLineEncoder(w io.Writer) *LineEncoder {
 // Encode encodes a value to a new JSON line on the stream.
 func (e *LineEncoder) Encode(x interface{}) (err error) {
 	if e.Encoder == nil {
-		e.buffer, err = MarshalTo(e.buffer[:0], x)
+		e.buffer, err = AppendJSON(e.buffer[:0], x)
 	} else {
 		e.buffer, err = e.Encoder.Encode(e.buffer[:0], x)
 	}

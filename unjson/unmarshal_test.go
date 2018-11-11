@@ -1,12 +1,10 @@
-package unjson_test
+package unjson
 
 import (
 	"reflect"
 	"testing"
 
 	"github.com/alxarch/njson"
-
-	"github.com/alxarch/njson/unjson"
 )
 
 func TestUnmarshalBasic(t *testing.T) {
@@ -14,39 +12,26 @@ func TestUnmarshalBasic(t *testing.T) {
 	type A struct{ Foo, Bar, Baz int }
 	a := A{}
 
-	dec, err := unjson.TypeDecoder(reflect.TypeOf(&a), "")
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err)
-		return
-	}
+	dec, err := TypeDecoder(reflect.TypeOf(&a), "")
+	assertNoError(t, err)
 	d := njson.Blank()
 	defer d.Close()
 	n, _, err := d.Parse(src)
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err)
-		return
-	}
+	assertNoError(t, err)
 	err = dec.Decode(&a, n)
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err)
-		return
-	}
-	if a.Foo != 1 {
-		t.Errorf("Invalid unmarshal Foo: %d", a.Foo)
-	}
-	if a.Bar != 2 {
-		t.Errorf("Invalid unmarshal Bar: %d", a.Bar)
-	}
-	if a.Baz != 3 {
-		t.Errorf("Invalid unmarshal Baz: %d", a.Baz)
-	}
+	assertNoError(t, err)
+	assertEqual(t, a, A{
+		Foo: 1,
+		Bar: 2,
+		Baz: 3,
+	})
 }
 
 func TestDecoderNilPointer(t *testing.T) {
 	src := `{"Foo":1,"Bar":2,"Baz":3}`
 	type A struct{ Foo, Bar, Baz int }
 	var a *A = nil
-	err := unjson.UnmarshalFromString(src, &a)
+	err := UnmarshalFromString(src, &a)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
@@ -70,7 +55,7 @@ func TestDecoderEmptyPointer(t *testing.T) {
 	src := `{"Foo":1,"Bar":2,"Baz":3}`
 	type A struct{ Foo, Bar, Baz int }
 	a := &A{}
-	err := unjson.UnmarshalFromString(src, &a)
+	err := UnmarshalFromString(src, &a)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
@@ -97,7 +82,7 @@ func TestDecoderEmptyPointer(t *testing.T) {
 func TestUnmarshalInterface(t *testing.T) {
 	src := `{"foo":1,"bar":2,"baz":3}`
 	var v interface{}
-	err := unjson.UnmarshalFromString(src, &v)
+	err := UnmarshalFromString(src, &v)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
@@ -123,7 +108,7 @@ func TestUnmarshalInterface(t *testing.T) {
 func TestUnmarshalMapInterface(t *testing.T) {
 	v := map[string]interface{}{}
 	src := `{"foo":1,"bar":2,"baz":3}`
-	err := unjson.UnmarshalFromString(src, &v)
+	err := UnmarshalFromString(src, &v)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
@@ -133,7 +118,7 @@ func TestUnmarshalMapInterface(t *testing.T) {
 func TestUnmarshalMap(t *testing.T) {
 	v := map[string]int{}
 	src := `{"foo":1,"bar":2,"baz":3}`
-	if err := unjson.UnmarshalFromString(src, &v); err != nil {
+	if err := UnmarshalFromString(src, &v); err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
 	}
@@ -160,7 +145,7 @@ func TestUnmarshal(t *testing.T) {
 			Bar interface{} `json:"bar"`
 		} `json:"baz"`
 	}{}
-	err := unjson.UnmarshalFromString(src, &v)
+	err := UnmarshalFromString(src, &v)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
@@ -194,7 +179,7 @@ func TestUnmarshalEmbeddedFields(t *testing.T) {
 		Bar string
 	}
 	b := B{}
-	if err := unjson.UnmarshalFromString(`{"Foo":"foo","Bar":"bar"}`, &b); err != nil {
+	if err := UnmarshalFromString(`{"Foo":"foo","Bar":"bar"}`, &b); err != nil {
 		t.Errorf("Unexcpected error: %s", err)
 		return
 	}
@@ -234,7 +219,7 @@ func TestUnmarshalFromString(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := unjson.UnmarshalFromString(tt.args.s, tt.args.x); (err != nil) != tt.wantErr {
+			if err := UnmarshalFromString(tt.args.s, tt.args.x); (err != nil) != tt.wantErr {
 				t.Errorf("UnmarshalFromString(%v) Unexpected error: %v", tt.args.x, err)
 				return
 			}

@@ -5,10 +5,10 @@ import (
 	"strings"
 )
 
+// Options holds options for an Encoder/Decoder
 type Options struct {
-	Tag       string
-	OmitEmpty bool
-	// FieldParser           // If nil DefaultFieldParser is used
+	Tag        string
+	OmitEmpty  bool   // Force omitempty on all fields
 	OmitMethod string // Method name for checking if a value is empty
 	HTML       bool   // Escape HTML-safe
 	AllowNaN   bool   // Allow NaN values for numbers
@@ -31,9 +31,6 @@ func (o Options) normalize() Options {
 	if o.Tag == "" {
 		o.Tag = defaultTag
 	}
-	// if o.FloatPrecision <= 0 {
-	// 	o.FloatPrecision = defaultOptions.FloatPrecision
-	// }
 	if o.OmitMethod == "" {
 		o.OmitMethod = defaultOmitMethod
 	}
@@ -46,11 +43,9 @@ const (
 )
 
 var (
-	defaultFieldParser = NewFieldParser(defaultTag, false)
-	defaultOptions     = Options{
-		Tag:       defaultTag,
-		OmitEmpty: false,
-		// FloatPrecision: -1,
+	defaultOptions = Options{
+		Tag:        defaultTag,
+		OmitEmpty:  false,
 		OmitMethod: defaultOmitMethod,
 		HTML:       false,
 		AllowInf:   false,
@@ -58,24 +53,14 @@ var (
 	}
 )
 
+// DefaultOptions returns the default options for an Encoder/Decoder
 func DefaultOptions() Options {
 	return defaultOptions
-}
-
-type FieldParser interface {
-	parseField(f reflect.StructField) (name string, omitempty, ok bool)
 }
 
 type fieldParser struct {
 	Key       string // Tag key to use for encoder/decoder
 	OmitEmpty bool   // Force omitempty on all fields
-}
-
-func NewFieldParser(key string, omitempty bool) FieldParser {
-	if key == "" {
-		key = defaultTag
-	}
-	return fieldParser{key, omitempty}
 }
 
 func (o fieldParser) parseField(field reflect.StructField) (tag string, omitempty bool, ok bool) {

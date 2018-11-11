@@ -1,10 +1,7 @@
-package unjson_test
+package unjson
 
 import (
-	"encoding/json"
 	"testing"
-
-	"github.com/alxarch/njson/unjson"
 )
 
 func TestMarshal(t *testing.T) {
@@ -12,18 +9,9 @@ func TestMarshal(t *testing.T) {
 		Foo string
 		Bar string
 	}{"foo", "bar"}
-	data, err := unjson.MarshalTo(nil, v)
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err)
-		return
-	}
-	switch string(data) {
-	case `{"Bar":"bar","Foo":"foo"}`, `{"Foo":"foo","Bar":"bar"}`:
-	default:
-		expect, _ := json.Marshal(v)
-		t.Errorf("Invalid marshal:\nactual: %s\nexpect: %s", data, expect)
-		return
-	}
+	data, err := AppendJSON(nil, v)
+	assertNoError(t, err)
+	assertEqual(t, string(data), `{"Foo":"foo","Bar":"bar"}`)
 }
 
 func TestMarshalPtr(t *testing.T) {
@@ -31,18 +19,9 @@ func TestMarshalPtr(t *testing.T) {
 		Foo string `json:"foo"`
 		Bar string
 	}{"foo", "bar"}
-	data, err := unjson.MarshalTo(nil, &v)
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err)
-		return
-	}
-	switch string(data) {
-	case `{"Bar":"bar","foo":"foo"}`, `{"foo":"foo","Bar":"bar"}`:
-	default:
-		expect, _ := json.Marshal(v)
-		t.Errorf("Invalid marshal:\nactual: %s\nexpect: %s", data, expect)
-		return
-	}
+	data, err := AppendJSON(nil, &v)
+	assertNoError(t, err)
+	assertEqual(t, string(data), `{"foo":"foo","Bar":"bar"}`)
 }
 
 func TestMarshalInterfaceField(t *testing.T) {
@@ -50,18 +29,9 @@ func TestMarshalInterfaceField(t *testing.T) {
 		Foo string
 		Bar interface{}
 	}{"foo", "bar"}
-	data, err := unjson.MarshalTo(nil, &v)
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err)
-		return
-	}
-	switch string(data) {
-	case `{"Bar":"bar","Foo":"foo"}`, `{"Foo":"foo","Bar":"bar"}`:
-	default:
-		expect, _ := json.Marshal(v)
-		t.Errorf("Invalid marshal:\nactual: %s\nexpect: %s", data, expect)
-		return
-	}
+	data, err := AppendJSON(nil, &v)
+	assertNoError(t, err)
+	assertEqual(t, string(data), `{"Foo":"foo","Bar":"bar"}`)
 }
 
 func TestMarshalInterface(t *testing.T) {
@@ -71,16 +41,7 @@ func TestMarshalInterface(t *testing.T) {
 	}{"foo", "bar"}
 	var x interface{} = &v
 
-	data, err := unjson.MarshalTo(nil, &x)
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err)
-		return
-	}
-	switch string(data) {
-	case `{"Bar":"bar","Foo":"foo"}`, `{"Foo":"foo","Bar":"bar"}`:
-	default:
-		expect, _ := json.Marshal(&v)
-		t.Errorf("Invalid marshal:\nactual: %s\nexpect: %s", data, expect)
-		return
-	}
+	data, err := AppendJSON(nil, &x)
+	assertNoError(t, err)
+	assertEqual(t, string(data), `{"Foo":"foo","Bar":"bar"}`)
 }

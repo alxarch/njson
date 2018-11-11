@@ -14,6 +14,7 @@ type structCodec struct {
 func (c *structCodec) Add(f codec) {
 	c.fields = append(c.fields, f)
 }
+
 func (c *structCodec) Get(key string) *codec {
 	for i := range c.fields {
 		f := &c.fields[i]
@@ -22,37 +23,18 @@ func (c *structCodec) Get(key string) *codec {
 		}
 	}
 	return nil
-	// // Binary search in sorted fields
-	// var (
-	// 	i, j, h = 0, len(c.fields), 0
-	// 	f       *fieldCodec
-	// )
-	// for i < j {
-	// 	h = int(uint(i+j) >> 1) // avoid overflow when computing h
-	// 	// i ≤ h < j
-	// 	if 0 <= h && h < len(c.fields) {
-	// 		f = &c.fields[h]
-	// 		if f.Key < key {
-	// 			i = h + 1
-	// 		} else if f.Key > key {
-	// 			j = h
-	// 		} else {
-	// 			return f.codec
-	// 		}
-	// 	}
-	// }
-	// return nil
 }
 
+// codec is a field encoder/decoder
 type codec struct {
 	key   string
-	index []int
-	n     int
+	index []int // embedded struct index
 	decoder
 	encoder
 	omit omiter
 }
 
+// omit checks if a value should be omited
 func (c *structCodec) omit(v reflect.Value) bool {
 	for i := range c.fields {
 		field := &c.fields[i]
@@ -95,7 +77,7 @@ func (c *structCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
 	return b, nil
 }
 
-func (d *structCodec) merge(typ reflect.Type, options *Options, index []int) error {
+func (c *structCodec) merge(typ reflect.Type, options *Options, index []int) error {
 	if typ == nil {
 		return nil
 	}
@@ -122,14 +104,14 @@ func (d *structCodec) merge(typ reflect.Type, options *Options, index []int) err
 			}
 			if t.Kind() == reflect.Struct {
 				// embedded struct
-				if err := d.merge(t, options, index); err != nil {
+				if err := c.merge(t, options, index); err != nil {
 					return err
 				}
 				continue
 			}
 		}
 		// tag = string(strjson.Escape(nil, tag))
-		if ff := d.Get(tag); ff != nil && cmpIndex(ff.index, index) != -1 {
+		if ff := c.Get(tag); ff != nil && cmpIndex(ff.index, index) != -1 {
 			continue
 		}
 		u, err := newDecoder(field.Type, options)
@@ -148,10 +130,9 @@ func (d *structCodec) merge(typ reflect.Type, options *Options, index []int) err
 				omit = newOmiter(field.Type, options.OmitMethod)
 			}
 		}
-		d.Add(codec{
+		c.Add(codec{
 			key:     tag,
 			index:   copyIndex(index),
-			n:       len(index),
 			decoder: u,
 			encoder: m,
 			omit:    omit,
@@ -175,10 +156,6 @@ func newStructCodec(typ reflect.Type, options *Options) (*structCodec, error) {
 	if err := d.merge(typ, options, nil); err != nil {
 		return nil, err
 	}
-	// // Sort fields for binary search
-	// sort.Slice(d.fields, func(i, j int) bool {
-	// 	return d.fields[i].Key < d.fields[j].Key
-	// })
 	return d, nil
 }
 

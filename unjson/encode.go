@@ -47,6 +47,7 @@ func (m *typeEncoder) Encode(out []byte, x interface{}) ([]byte, error) {
 	return m.encode(out, v)
 }
 
+// TypeEncoder creates a new Encoder for a reflect.Type
 func TypeEncoder(typ reflect.Type, options Options) (Encoder, error) {
 	if typ == nil {
 		return interfaceEncoder{}, nil
@@ -167,7 +168,7 @@ func (c interfaceEncoder) encode(b []byte, v reflect.Value) ([]byte, error) {
 	if v.IsNil() {
 		return append(b, strNull...), nil
 	}
-	return MarshalTo(b, v.Interface())
+	return AppendJSON(b, v.Interface())
 }
 
 type textEncoder struct{}

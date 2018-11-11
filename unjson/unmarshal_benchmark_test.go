@@ -1,4 +1,4 @@
-package unjson_test
+package unjson
 
 import (
 	"encoding/json"
@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/alxarch/njson"
-	"github.com/alxarch/njson/unjson"
 )
 
 func BenchmarkJSON_Unmarshal(b *testing.B) {
@@ -25,12 +24,12 @@ func BenchmarkUnmarshalFromString(b *testing.B) {
 	var err error
 	b.SetBytes(int64(len(mediumJSON)))
 	m := medium{}
-	if err = unjson.UnmarshalFromString(mediumJSON, &m); err != nil {
+	if err = UnmarshalFromString(mediumJSON, &m); err != nil {
 		b.Errorf("UnexpectedError: %s", err)
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		unjson.UnmarshalFromString(mediumJSON, &m)
+		UnmarshalFromString(mediumJSON, &m)
 	}
 }
 func BenchmarkParseAndUnmarshal(b *testing.B) {
@@ -46,13 +45,13 @@ func BenchmarkParseAndUnmarshal(b *testing.B) {
 		if n, _, err = d.Parse(mediumJSON); err != nil {
 			b.Errorf("UnexpectedError: %s", err)
 		}
-		if err = unjson.UnmarshalFromNode(n, &m); err != nil {
+		if err = UnmarshalFromNode(n, &m); err != nil {
 			b.Errorf("UnexpectedError: %s", err)
 		}
 	}
 }
 func BenchmarkUnmarshaler_Unmarshal(b *testing.B) {
-	dec, err := unjson.TypeDecoder(reflect.TypeOf(&medium{}), "")
+	dec, err := TypeDecoder(reflect.TypeOf(&medium{}), "")
 	if err != nil {
 		b.Errorf("UnexpectedError: %s", err)
 		return

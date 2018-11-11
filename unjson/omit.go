@@ -2,6 +2,7 @@ package unjson
 
 import "reflect"
 
+// Omiter implements custom omitempty logic
 type Omiter interface {
 	Omit() bool
 }
