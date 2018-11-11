@@ -197,8 +197,6 @@ func (n Node) WrapUnmarshalJSON(u json.Unmarshaler) (err error) {
 		}
 	case TypeInvalid:
 		return typeError{TypeInvalid, TypeAnyValue}
-	default:
-		return u.UnmarshalJSON([]byte(node.raw))
 	}
 	data := bufferpool.Get().([]byte)
 	data, err = n.AppendJSON(data[:0])
@@ -214,7 +212,11 @@ func (n Node) WrapUnmarshalText(u encoding.TextUnmarshaler) (err error) {
 	if node := n.get(); node != nil {
 		switch t := node.info.Type(); t {
 		case TypeString:
-			return u.UnmarshalText([]byte(node.raw))
+			buf := bufferpool.Get().([]byte)
+			buf = append(buf[:0], node.raw...)
+			err = u.UnmarshalText(buf)
+			bufferpool.Put(buf)
+			return
 		default:
 			return newTypeError(t, TypeString)
 		}
