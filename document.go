@@ -14,6 +14,49 @@ type Document struct {
 	rev   uint // document revision incremented on every Reset/Close invalidating nodes
 }
 
+// node is a JSON document node.
+// node's data is only valid until Document.Close() or Document.Reset().
+type node struct {
+	info   info
+	raw    string
+	values []V
+}
+
+// V is a node's value referencing it's id.
+// Array node's values have empty string keys.
+type V struct {
+	id  uint
+	key string
+}
+
+// Key returns a value's key
+func (v *V) Key() string {
+	return v.key
+}
+
+// ID returns a value's id
+func (v *V) ID() uint {
+	return v.id
+}
+
+const maxUint = ^(uint(0))
+
+func (n *node) set(inf info, raw string) {
+	n.info = inf
+	n.raw = raw
+}
+
+func (n *node) reset(inf info, raw string, values []V) {
+	for i := range n.values {
+		n.values[i] = V{}
+	}
+	*n = node{
+		info:   inf,
+		raw:    raw,
+		values: values,
+	}
+}
+
 // lookup finds a node's id by path.
 func (d *Document) lookup(id uint, path []string) uint {
 	var (
@@ -177,7 +220,7 @@ func (d *Document) toInterface(id uint) (interface{}, bool) {
 		}
 		return s, true
 	case TypeString:
-		return n.Unescaped(), true
+		return strjson.Unescaped(n.raw), true
 	case TypeBoolean:
 		switch n.raw {
 		case strTrue:

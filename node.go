@@ -71,7 +71,12 @@ func (n Node) Raw() string {
 
 // Unescaped unescapes the value of a String Node.
 // The returned string is safe to use even if ParseUnsafe was used.
-func (n Node) Unescaped() string { return n.get().Unescaped() }
+func (n Node) Unescaped() string {
+	if n := n.get(); n != nil && n.info.IsString() {
+		return strjson.Unescaped(n.raw)
+	}
+	return ""
+}
 
 // ToFloat converts a node's value to float64.
 func (n Node) ToFloat() (float64, bool) {
@@ -131,7 +136,7 @@ func (n Node) Values() IterV {
 
 // TypeError returns an error for a type not matching a Node's type.
 func (n Node) TypeError(want Type) error {
-	return typeError{n.get().Type(), want}
+	return typeError{n.Type(), want}
 }
 
 // Lookup finds a node by path
@@ -206,11 +211,15 @@ func (n Node) WrapUnmarshalJSON(u json.Unmarshaler) (err error) {
 
 // WrapUnmarshalText wraps a call to the encoding.TextUnmarshaler interface
 func (n Node) WrapUnmarshalText(u encoding.TextUnmarshaler) (err error) {
-	node := n.get()
-	if node != nil && node.info.IsString() {
-		return u.UnmarshalText([]byte(node.raw))
+	if node := n.get(); node != nil {
+		switch t := node.info.Type(); t {
+		case TypeString:
+			return u.UnmarshalText([]byte(node.raw))
+		default:
+			return newTypeError(t, TypeString)
+		}
 	}
-	return node.TypeError(TypeString)
+	return newTypeError(TypeInvalid, TypeString)
 }
 
 // Get gets a Node by key.
@@ -230,14 +239,15 @@ func (n Node) Get(key string) Node {
 }
 
 // Index gets the Node at offset i of an Array.
-// If the index is out of bounds the returned node's id
-// will be MaxID and the Node will behave as empty.
+// If the index is out of bounds it sets the id to MaxUint
+// and the Node will behave as empty but still have a usable
+// reference to Document.
 func (n Node) Index(i int) Node {
 	if nn := n.get(); nn != nil && nn.info.IsArray() && 0 <= i && i < len(nn.values) {
 		n.id = nn.values[i].id
-	} else {
-		n.id = maxUint
+		return n
 	}
+	n.id = maxUint
 	return n
 }
 
