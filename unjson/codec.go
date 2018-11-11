@@ -53,9 +53,9 @@ type codec struct {
 	omit omiter
 }
 
-func (d *structCodec) omit(v reflect.Value) bool {
-	for i := range d.fields {
-		field := &d.fields[i]
+func (c *structCodec) omit(v reflect.Value) bool {
+	for i := range c.fields {
+		field := &c.fields[i]
 		if f := fieldByIndex(v, field.index); f.IsValid() && !field.omit(f) {
 			return false
 		}
@@ -63,22 +63,25 @@ func (d *structCodec) omit(v reflect.Value) bool {
 	return true
 }
 
-func (d *structCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
-	var (
-		err error
-		fv  reflect.Value
-		fc  *codec
+func (c *structCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
+	const (
+		start = `{,`
+		end   = `{}`
 	)
-	b = append(b, delimBeginObject)
-	for i := range d.fields {
-		fc = &d.fields[i]
+	var (
+		err  error
+		more uint
+		fv   reflect.Value
+		fc   *codec
+	)
+	for i := range c.fields {
+		fc = &c.fields[i]
 		fv = fieldByIndex(v, fc.index)
 		if !fv.IsValid() || fc.omit(fv) {
 			continue
 		}
-		if i > 0 {
-			b = append(b, delimValueSeparator)
-		}
+		b = append(b, start[more])
+		more = 1
 		b = append(b, delimString)
 		b = append(b, fc.key...)
 		b = append(b, delimString)
@@ -88,7 +91,7 @@ func (d *structCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
 			return b, err
 		}
 	}
-	b = append(b, delimEndObject)
+	b = append(b, end[more:]...)
 	return b, nil
 }
 
@@ -193,37 +196,37 @@ func fieldByIndex(v reflect.Value, index []int) reflect.Value {
 	return v
 }
 
-func (d *structCodec) decode(v reflect.Value, n njson.Node) (err error) {
+func (c *structCodec) decode(v reflect.Value, n njson.Node) (err error) {
 	switch n.Type() {
 	case njson.TypeNull:
-		v.Set(d.zeroValue)
+		v.Set(c.zeroValue)
 		return nil
 	case njson.TypeObject:
 		var (
-			field reflect.Value
-			fc    *codec
+			field  reflect.Value
+			fc     *codec
+			values = n.Values()
 		)
-		for values := n.Values(); values.Next(); {
-			fc = d.Get(values.Key())
+		for values.Next() {
+			fc = c.Get(values.Key())
 			if fc == nil {
 				continue
 			}
 			switch len(fc.index) {
-			case 0:
-				continue
 			case 1:
 				field = v.Field(fc.index[0])
+			case 0:
+				continue
 			default:
 				field = v.Field(fc.index[0])
-				for i := 1; 0 <= i && i < len(fc.index); i++ {
-					switch j := fc.index[i]; j {
-					case -1:
+				for _, i := range fc.index[1:] {
+					if i == -1 {
 						if field.IsNil() {
 							field = reflect.New(field.Type().Elem())
 						}
 						field = field.Elem()
-					default:
-						field = field.Field(j)
+					} else {
+						field = field.Field(i)
 					}
 				}
 			}
@@ -242,6 +245,7 @@ func copyIndex(a []int) (b []int) {
 	copy(b, a)
 	return
 }
+
 func cmpIndex(a, b []int) int {
 	if len(a) > len(b) {
 		return -1
