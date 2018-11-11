@@ -12,7 +12,7 @@ import (
 
 	"flag"
 
-	"github.com/alxarch/njson/generator"
+	"github.com/alxarch/njson/cmd/njson/generator"
 )
 
 var (

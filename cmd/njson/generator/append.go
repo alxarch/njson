@@ -9,6 +9,7 @@ import (
 	"github.com/alxarch/meta"
 )
 
+// WriteAppender writes an AppendJSON method for a type
 func (g *Generator) WriteAppender(typName string) (err error) {
 	code := g.Appender(typName)
 	if err = code.Err(); err != nil {
@@ -19,6 +20,7 @@ func (g *Generator) WriteAppender(typName string) (err error) {
 	return
 }
 
+// Appender returns the AppendJSON method code for a type
 func (g *Generator) Appender(typName string) (c meta.Code) {
 	typ := g.LookupType(typName)
 	if typ == nil {
@@ -39,6 +41,7 @@ func (g *Generator) Appender(typName string) (c meta.Code) {
 
 }
 
+// OmiterType returns the interface for an omiter
 func (g *Generator) OmiterType() (string, *types.Interface) {
 	if g.omiter == nil {
 		g.omiter = typOmiter
@@ -46,6 +49,7 @@ func (g *Generator) OmiterType() (string, *types.Interface) {
 	return g.omiter.Method(0).Name(), g.omiter
 }
 
+// TypeOmiter returns the code block to check if a value should be omited
 func (g *Generator) TypeOmiter(typ types.Type, block meta.Code) meta.Code {
 	cond := ""
 	if method, omiter := g.OmiterType(); types.Implements(typ, omiter) {
@@ -90,6 +94,7 @@ func (g *Generator) TypeOmiter(typ types.Type, block meta.Code) meta.Code {
 
 }
 
+// EnsureReversePath returns a code block to check the path to an embedded field does not contain any nil pointers
 func (g *Generator) EnsureReversePath(path meta.FieldPath, code meta.Code) meta.Code {
 	cond := []string{}
 	for i, p := range path {
@@ -112,6 +117,7 @@ func (g *Generator) EnsureReversePath(path meta.FieldPath, code meta.Code) meta.
 	}`, path, code)
 }
 
+// StructAppender returns the AppendJSON block code for a struct
 func (g *Generator) StructAppender(fields meta.Fields) (c meta.Code) {
 	c = c.Println(`more := 0`)
 	sortedFields := []meta.Field{}
@@ -157,6 +163,8 @@ func (g *Generator) StructAppender(fields meta.Fields) (c meta.Code) {
 	out = append(out, "{}"[more:]...)`)
 	return
 }
+
+// TypeAppender returnds the AppendJSON block code for a type
 func (g *Generator) TypeAppender(typ types.Type, params meta.Params) (c meta.Code) {
 	switch {
 	case types.Implements(typ, typJSONAppender):
@@ -249,9 +257,8 @@ func (g *Generator) TypeAppender(typ types.Type, params meta.Params) (c meta.Cod
 				return c.Println(`out = strconv.AppendUint(out, uint64(v), 10)`).Import(strconvPkg)
 			} else if info&types.IsInteger != 0 {
 				return c.Println(`out = strconv.AppendInt(out, int64(v), 10)`).Import(strconvPkg)
-			} else {
-				return c.Error(typeError{typ})
 			}
+			return c.Error(typeError{typ})
 		}
 	case *types.Interface:
 		if t.Empty() {

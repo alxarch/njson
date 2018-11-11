@@ -5,11 +5,11 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/alxarch/njson/generator"
+	"github.com/alxarch/njson/cmd/njson/generator"
 	"github.com/alxarch/njson/njsontest"
 )
 
-//go:generate go run ../cmd/njson/njson.go -w generator_test "_$"
+//go:generate go run ../njson.go -w generator_test "_$"
 
 type Foo_ struct {
 	Bar string `json:"bar,omitempty"`

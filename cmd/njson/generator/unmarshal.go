@@ -293,6 +293,7 @@ default:
 `, typK, typV, codeV).Import(njsonPkg)
 }
 
+// RawStringUnmarshaler unmarshals strings without unescaping
 func (g *Generator) RawStringUnmarshaler(t types.Type) meta.Code {
 	return g.Code(`*r = %s(n.Raw())`, t)
 }
