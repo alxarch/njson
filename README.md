@@ -1,6 +1,8 @@
 # njson
 
-Parsing and manipulation of JSON documents for Go.
+High performance parsing and manipulation of JSON documents for Go.
+
+Inspired by [`github.com/valyala/fastjson`](https://github.com/valyala/fastjson)
 
 ## Features
 
@@ -13,6 +15,8 @@ Parsing and manipulation of JSON documents for Go.
     * Iterate over tree
     * Documents can be reused to avoid allocations
     * Fast, fast, fast
+    * [WIP] Support for `reflect` based struct Marshal/Unmarshal via `github.com/alxarch/njson/unjson` package
+    * [WIP] CLI tool for Marshal/Unmarshal generated code via `github.com/alxarch/njson/cmd/njson` package
 
 ## Usage
 
