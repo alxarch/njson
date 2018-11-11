@@ -116,12 +116,6 @@ func Test_DocumentReset(t *testing.T) {
 
 }
 
-func assertNoError(t *testing.T, err error) {
-	t.Helper()
-	if err != nil {
-		t.Fatalf("Unexpected error: %s", err)
-	}
-}
 func TestDocument_ncopy(t *testing.T) {
 	d := new(Document)
 	n := d.Object()

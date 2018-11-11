@@ -3,7 +3,6 @@ package njson
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"reflect"
 	"testing"
 )
@@ -493,11 +492,11 @@ func TestNode_Del(t *testing.T) {
 func TestNode_Strip(t *testing.T) {
 	d := Document{}
 	n, _, err := d.Parse(`{
-		"foo": {},
 		"bar": {
 			"foo": "bar",
 			"bar":"baz"
-		}
+		},
+		"foo": {}
 	}`)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
@@ -615,18 +614,6 @@ func TestNode_Values(t *testing.T) {
 	assertEqual(t, v.Next(), false)
 	assertEqual(t, v.values, []V(nil))
 
-}
-func assert(t *testing.T, ok bool, msg string, a ...interface{}) {
-	t.Helper()
-	if !ok {
-		t.Fatalf("Assertion failed: %s", fmt.Sprintf(msg, a...))
-	}
-}
-func assertEqual(t *testing.T, a, b interface{}) {
-	t.Helper()
-	if !reflect.DeepEqual(a, b) {
-		t.Fatalf("Assertion failed: %v != %v", a, b)
-	}
 }
 
 func TestNode_SetX(t *testing.T) {
