@@ -114,3 +114,46 @@ func TestParseFloat(t *testing.T) {
 	test("-123.456E-10", -123.456E-10)
 
 }
+
+func TestParseUint(t *testing.T) {
+	n, ok := ParseUint(`42`)
+	if !ok {
+		t.Fatalf("Failed to parse uint")
+	}
+	if n != 42 {
+		t.Fatalf("Invalid parse result %d", n)
+
+	}
+	_, ok = ParseUint(`-42`)
+	if ok {
+		t.Fatalf("Should fail to parse uint")
+	}
+	_, ok = ParseUint(`42.01`)
+	if ok {
+		t.Fatalf("Should fail to parse uint")
+	}
+
+}
+
+func TestParseInt(t *testing.T) {
+	n, ok := ParseInt(`42`)
+	if !ok {
+		t.Fatalf("Failed to parse int")
+	}
+	if n != 42 {
+		t.Fatalf("Invalid parse result %d", n)
+
+	}
+	n, ok = ParseInt(`-42`)
+	if !ok {
+		t.Fatalf("Failed to parse int")
+	}
+	if n != -42 {
+		t.Fatalf("Invalid parse result %d", n)
+	}
+	_, ok = ParseInt(`42.01`)
+	if ok {
+		t.Fatalf("Should fail to parse int")
+	}
+
+}
