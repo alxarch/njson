@@ -174,7 +174,7 @@ func newSliceDecoder(typ reflect.Type, options *Options, codecs cache) (*sliceDe
 	sd := sliceDecoder{
 		typ: typ,
 	}
-	codecs[typ] = &sd
+	codecs[cacheKey{typ, 0}] = &sd
 	dec, err := codecs.decoder(typ.Elem(), options)
 	if err != nil {
 		return nil, err
@@ -238,7 +238,7 @@ func newMapDecoder(typ reflect.Type, options *Options, codecs cache) (*mapDecode
 		return nil, errInvalidType
 	}
 	// First cache the decoder to avoid recursion issues
-	codecs[typ] = &md
+	codecs[cacheKey{typ, 0}] = &md
 	dec, err := codecs.decoder(el, options)
 	if err != nil {
 		return nil, err
@@ -277,7 +277,7 @@ func newPtrDecoder(typ reflect.Type, options *Options, codecs cache) (*ptrDecode
 		typ:  typ.Elem(),
 		zero: reflect.Zero(typ),
 	}
-	codecs[typ] = &pd
+	codecs[cacheKey{typ, 0}] = &pd
 	dec, err := codecs.decoder(pd.typ, options)
 	if err != nil {
 		return nil, err

@@ -66,32 +66,49 @@ func (c *Cache) Encoder(typ reflect.Type) (enc Encoder, err error) {
 }
 
 // cache is used when creating new encoders/decoders to not recalculate stuff and avoid recursion issues.
-type cache map[reflect.Type]interface{}
+type cache map[cacheKey]interface{}
+type cacheKey struct {
+	typ   reflect.Type
+	hints hint
+}
 
 func (c cache) codec(typ reflect.Type) *structCodec {
-	if x := c[typ]; x != nil {
+	key := cacheKey{typ, 0}
+	if x := c[key]; x != nil {
 		if c, ok := x.(*structCodec); ok {
 			return c
 		}
 	}
 	return nil
 }
-func (c cache) encoder(typ reflect.Type, options *Options) (encoder, error) {
-	if x := c[typ]; x != nil {
+func cacheType(typ reflect.Type) bool {
+	switch typ.Kind() {
+	case reflect.Ptr, reflect.Slice, reflect.Array:
+		return cacheType(typ.Elem())
+	case reflect.Struct, reflect.Map:
+		return true
+	default:
+		return false
+	}
+}
+func (c cache) encoder(typ reflect.Type, options *Options, hints hint) (encoder, error) {
+	key := cacheKey{typ, hints}
+	if x := c[key]; x != nil {
 		if e, ok := x.(encoder); ok {
 			return e, nil
 		}
 	}
-	enc, err := newEncoder(typ, options, c)
+	enc, err := newEncoder(typ, options, hints, c)
 	if err != nil {
 		return nil, err
 	}
-	c[typ] = enc
+	c[key] = enc
 	return enc, nil
 }
 
 func (c cache) decoder(typ reflect.Type, options *Options) (decoder, error) {
-	if x := c[typ]; x != nil {
+	key := cacheKey{typ, 0}
+	if x := c[key]; x != nil {
 		if e, ok := x.(decoder); ok {
 			return e, nil
 		}
@@ -100,6 +117,6 @@ func (c cache) decoder(typ reflect.Type, options *Options) (decoder, error) {
 	if err != nil {
 		return nil, err
 	}
-	c[typ] = dec
+	c[key] = dec
 	return dec, nil
 }

@@ -128,3 +128,13 @@ fallback:
 	return f
 
 }
+
+func ParseInt(s string) (int64, bool) {
+	f := ParseFloat(s)
+	return int64(f), math.MinInt64 <= f && f < math.MaxInt64 && math.Trunc(f) == f
+}
+
+func ParseUint(s string) (uint64, bool) {
+	f := ParseFloat(s)
+	return uint64(f), 0 <= f && f < math.MaxUint64 && math.Trunc(f) == f
+}

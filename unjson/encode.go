@@ -72,7 +72,7 @@ func newTypeEncoder(typ reflect.Type, options *Options) (*typeEncoder, error) {
 	case typ.Implements(typTextMarshaler):
 		m.encoder = textEncoder{}
 	default:
-		e, err := newEncoder(m.typ, options, cache{})
+		e, err := newEncoder(m.typ, options, 0, cache{})
 		if err != nil {
 			return nil, err
 		}
@@ -81,7 +81,7 @@ func newTypeEncoder(typ reflect.Type, options *Options) (*typeEncoder, error) {
 	return &m, nil
 }
 
-func newEncoder(typ reflect.Type, options *Options, codecs cache) (encoder, error) {
+func newEncoder(typ reflect.Type, options *Options, hints hint, codecs cache) (encoder, error) {
 	if typ == nil {
 		return nil, errInvalidType
 	}
@@ -95,11 +95,11 @@ func newEncoder(typ reflect.Type, options *Options, codecs cache) (encoder, erro
 	}
 	switch typ.Kind() {
 	case reflect.Ptr:
-		return newPtrEncoder(typ, options, codecs)
+		return newPtrEncoder(typ, options, hints, codecs)
 	case reflect.Struct:
 		return newStructCodec(typ, options, codecs)
 	case reflect.Slice:
-		return newSliceEncoder(typ, options, codecs)
+		return newSliceEncoder(typ, options, hints, codecs)
 	case reflect.Map:
 		return newMapEncoder(typ, options, codecs)
 	case reflect.Interface:
@@ -118,7 +118,7 @@ func newEncoder(typ reflect.Type, options *Options, codecs cache) (encoder, erro
 	case reflect.Bool:
 		return boolEncoder{}, nil
 	case reflect.String:
-		return stringEncoder(options.HTML), nil
+		return newStringEncoder(hints), nil
 	default:
 		return nil, errInvalidType
 	}
@@ -140,7 +140,27 @@ func (jsonEncoder) encode(out []byte, v reflect.Value) (b []byte, err error) {
 	return out, err
 }
 
+type rawStringEncoder struct{}
+
+func (rawStringEncoder) encode(b []byte, v reflect.Value) ([]byte, error) {
+	b = append(b, delimString)
+	b = append(b, v.String()...)
+	b = append(b, delimString)
+	return b, nil
+}
+
 type stringEncoder bool
+
+func newStringEncoder(hints hint) encoder {
+	switch {
+	case hints&hintHTML == hintHTML:
+		return stringEncoder(true)
+	case hints&hintRaw == hintRaw:
+		return rawStringEncoder{}
+	default:
+		return stringEncoder(false)
+	}
+}
 
 func (HTML stringEncoder) encode(b []byte, v reflect.Value) ([]byte, error) {
 	b = append(b, delimString)
@@ -195,12 +215,12 @@ func newMapEncoder(typ reflect.Type, options *Options, codecs cache) (*mapEncode
 	if key.Implements(typTextMarshaler) {
 		me.keys = textEncoder{}
 	} else if key.Kind() == reflect.String {
-		me.keys = stringEncoder(options.HTML)
+		me.keys = newStringEncoder(hintRaw)
 	} else {
 		return nil, errInvalidType
 	}
-	codecs[typ] = &me
-	enc, err := codecs.encoder(el, options)
+	codecs[cacheKey{typ, 0}] = &me
+	enc, err := codecs.encoder(el, options, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -236,10 +256,10 @@ type ptrEncoder struct {
 	encoder encoder
 }
 
-func newPtrEncoder(typ reflect.Type, options *Options, codecs cache) (*ptrEncoder, error) {
+func newPtrEncoder(typ reflect.Type, options *Options, hints hint, codecs cache) (*ptrEncoder, error) {
 	pe := new(ptrEncoder)
-	codecs[typ] = pe
-	enc, err := codecs.encoder(typ.Elem(), options)
+	codecs[cacheKey{typ, hints}] = pe
+	enc, err := codecs.encoder(typ.Elem(), options, hints)
 	if err != nil {
 		return nil, err
 	}
@@ -258,10 +278,10 @@ type sliceEncoder struct {
 	encoder encoder
 }
 
-func newSliceEncoder(typ reflect.Type, options *Options, codecs cache) (*sliceEncoder, error) {
+func newSliceEncoder(typ reflect.Type, options *Options, hints hint, codecs cache) (*sliceEncoder, error) {
 	se := new(sliceEncoder)
-	codecs[typ] = se
-	enc, err := codecs.encoder(typ.Elem(), options)
+	codecs[cacheKey{typ, hints}] = se
+	enc, err := codecs.encoder(typ.Elem(), options, hints)
 	if err != nil {
 		return nil, err
 	}

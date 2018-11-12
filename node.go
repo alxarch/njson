@@ -83,8 +83,8 @@ func (n Node) Unescaped() string {
 	return ""
 }
 
-// Value returns a node's raw value and type
-func (n Node) Value() (string, Type) {
+// Data returns a node's raw string and type
+func (n Node) Data() (string, Type) {
 	if n := n.get(); n != nil {
 		return n.raw, n.info.Type()
 	}

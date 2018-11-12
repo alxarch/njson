@@ -91,7 +91,7 @@ func (c *structCodec) merge(typ reflect.Type, options *Options, index []int, cod
 			continue
 		}
 		field := typ.Field(i)
-		tag, omitempty, tagged := options.parseField(field)
+		tag, hints, tagged := options.parseField(field)
 		if tag == "-" {
 			continue
 		}
@@ -120,13 +120,13 @@ func (c *structCodec) merge(typ reflect.Type, options *Options, index []int, cod
 		if err != nil {
 			return err
 		}
-		m, err := codecs.encoder(field.Type, options)
+		enc, err := codecs.encoder(field.Type, options, hints)
 		if err != nil {
 			return err
 		}
 		omit := omitNever
-		if omitempty {
-			if m, ok := m.(*structCodec); ok {
+		if hints&hintOmitempty == hintOmitempty {
+			if m, ok := enc.(*structCodec); ok {
 				omit = m.omit
 			} else {
 				omit = newOmiter(field.Type, options.OmitMethod)
@@ -136,7 +136,7 @@ func (c *structCodec) merge(typ reflect.Type, options *Options, index []int, cod
 			key:     tag,
 			index:   copyIndex(index),
 			decoder: u,
-			encoder: m,
+			encoder: enc,
 			omit:    omit,
 		})
 	}
@@ -154,16 +154,16 @@ func newStructCodec(typ reflect.Type, options *Options, codecs cache) (*structCo
 	if c := codecs.codec(typ); c != nil {
 		return c, nil
 	}
-	c := &structCodec{
+	c := structCodec{
 		typ:       typ,
 		fields:    make([]codec, 0, typ.NumField()),
 		zeroValue: reflect.Zero(typ),
 	}
-	codecs[typ] = c
+	codecs[cacheKey{typ, 0}] = &c
 	if err := c.merge(typ, options, nil, codecs); err != nil {
 		return nil, err
 	}
-	return c, nil
+	return &c, nil
 }
 
 func fieldByIndex(v reflect.Value, index []int) reflect.Value {
@@ -248,3 +248,11 @@ func cmpIndex(a, b []int) int {
 	}
 	return 1
 }
+
+type hint uint8
+
+const (
+	hintRaw hint = 1 << iota
+	hintHTML
+	hintOmitempty
+)

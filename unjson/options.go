@@ -9,22 +9,26 @@ import (
 type Options struct {
 	Tag        string
 	OmitEmpty  bool   // Force omitempty on all fields
-	OmitMethod string // Method name for checking if a value is empty
-	HTML       bool   // Escape HTML-safe
+	OmitMethod string // Method name for checking if a value is empty defaults to 'Omit'
 	AllowNaN   bool   // Allow NaN values for numbers
 	AllowInf   bool   // Allow ±Inf values for numbers
 }
 
-func (o *Options) parseField(f reflect.StructField) (name string, omiempty, ok bool) {
-	p := fieldParser{}
-	if o != nil {
-		p.Key = o.Tag
-		p.OmitEmpty = o.OmitEmpty
+func (o *Options) tagKey() string {
+	if o != nil && o.Tag != "" {
+		return o.Tag
 	}
-	if p.Key == "" {
-		p.Key = defaultTag
+	return defaultTag
+}
+
+func (o *Options) parseField(f reflect.StructField) (name string, hints hint, ok bool) {
+	key := o.tagKey()
+	name, hints, ok = parseTag(f.Tag, key)
+	if name == "" {
+		// TODO: add Options.DefaultFieldCase
+		name = f.Name
 	}
-	return p.parseField(f)
+	return
 }
 
 func (o Options) normalize() Options {
@@ -47,7 +51,6 @@ var (
 		Tag:        defaultTag,
 		OmitEmpty:  false,
 		OmitMethod: defaultOmitMethod,
-		HTML:       false,
 		AllowInf:   false,
 		AllowNaN:   false,
 	}
@@ -58,22 +61,36 @@ func DefaultOptions() Options {
 	return defaultOptions
 }
 
-type fieldParser struct {
-	Key       string // Tag key to use for encoder/decoder
-	OmitEmpty bool   // Force omitempty on all fields
+func parseHints(tag string) (hints hint) {
+	var hint string
+	for len(tag) > 0 {
+		tag = tag[1:]
+		i := strings.IndexByte(tag, ',')
+		if 0 <= i && i < len(tag) {
+			hint = tag[:i]
+			tag = tag[i:]
+		} else {
+			hint = tag
+			tag = ""
+		}
+		switch hint {
+		case "omitempty":
+			hints |= hintOmitempty
+		case "raw":
+			hints |= hintRaw
+		case "html":
+			hints |= hintHTML
+		}
+	}
+	return
 }
 
-func (o fieldParser) parseField(field reflect.StructField) (tag string, omitempty bool, ok bool) {
-	omitempty = o.OmitEmpty
-	if tag, ok = field.Tag.Lookup(o.Key); ok {
-		if i := strings.IndexByte(tag, ','); 0 <= i && i < len(tag) {
-			if !omitempty {
-				omitempty = strings.Index(tag[i:], "omitempty") > 0
-			}
-			tag = tag[:i]
+func parseTag(tag reflect.StructTag, key string) (name string, hints hint, ok bool) {
+	if name, ok = tag.Lookup(key); ok {
+		if i := strings.IndexByte(name, ','); 0 <= i && i < len(tag) {
+			hints = parseHints(name[i:])
+			name = name[:i]
 		}
-	} else {
-		tag = field.Name
 	}
 	return
 }
