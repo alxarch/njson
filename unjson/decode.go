@@ -97,30 +97,30 @@ func TypeDecoder(typ reflect.Type, tag string) (Decoder, error) {
 	return newTypeDecoder(typ, &options)
 }
 
-func newTypeDecoder(typ reflect.Type, options *Options) (*typeDecoder, error) {
+func newTypeDecoder(typ reflect.Type, options *Options) (Decoder, error) {
 	if typ == nil {
 		return nil, errInvalidType
 	}
 	if typ.Kind() != reflect.Ptr {
 		return nil, errInvalidType
 	}
-	c := typeDecoder{typ: typ}
 	switch {
 	case typ.Implements(typNodeUnmarshaler):
-		c.decoder = njsonDecoder{}
+		return njsonDecoder{}, nil
 	case typ.Implements(typJSONUnmarshaler):
-		c.decoder = jsonDecoder{}
+		return jsonDecoder{}, nil
 	case typ.Implements(typTextUnmarshaler):
-		c.decoder = textDecoder{}
+		return textDecoder{}, nil
 	default:
+		c := typeDecoder{typ: typ}
 		typ = typ.Elem()
 		d, err := newDecoder(typ, options, cache{})
 		if err != nil {
 			return nil, err
 		}
 		c.decoder = d
+		return &c, nil
 	}
-	return &c, nil
 }
 
 func newDecoder(typ reflect.Type, options *Options, codecs cache) (decoder, error) {
@@ -378,4 +378,11 @@ func (textDecoder) decode(v reflect.Value, n njson.Node) error {
 		return n.WrapUnmarshalText(v.Interface().(encoding.TextUnmarshaler))
 	}
 	return n.TypeError(njson.TypeString)
+}
+
+func (textDecoder) Decode(x interface{}, n njson.Node) error {
+	if u, ok := x.(encoding.TextUnmarshaler); ok {
+		return n.WrapUnmarshalText(u)
+	}
+	return errInvalidValueType
 }

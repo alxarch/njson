@@ -69,18 +69,18 @@ func newTypeEncoder(typ reflect.Type, options *Options) (*typeEncoder, error) {
 		typ = reflect.PtrTo(typ)
 	}
 	switch {
-	case m.typ.Implements(typAppender):
+	case typ.Implements(typAppender):
 		m.encoder = njsonEncoder{}
-	case m.typ.Implements(typJSONMarshaler):
+	case typ.Implements(typJSONMarshaler):
 		m.encoder = jsonEncoder{}
-	case m.typ.Implements(typTextMarshaler):
+	case typ.Implements(typTextMarshaler):
 		m.encoder = textEncoder{}
 	default:
-		d, err := newEncoder(m.typ, options, cache{})
+		e, err := newEncoder(m.typ, options, cache{})
 		if err != nil {
 			return nil, err
 		}
-		m.encoder = d
+		m.encoder = e
 	}
 	return &m, nil
 }
@@ -190,30 +190,26 @@ type mapEncoder struct {
 }
 
 func newMapEncoder(typ reflect.Type, options *Options, codecs cache) (*mapEncoder, error) {
-	if typ.Kind() != reflect.Map {
-		return nil, errInvalidType
+	key := typ.Key()
+	el := typ.Elem()
+	me := mapEncoder{
+		typ: typ,
 	}
 
-	var keys encoder
-	if typ.Key().Implements(typTextMarshaler) {
-		keys = textEncoder{}
-	} else if typ.Key().Kind() == reflect.String {
-		keys = stringEncoder(options.HTML)
+	if key.Implements(typTextMarshaler) {
+		me.keys = textEncoder{}
+	} else if key.Kind() == reflect.String {
+		me.keys = stringEncoder(options.HTML)
 	} else {
 		return nil, errInvalidType
 	}
-	me := new(mapEncoder)
-	codecs[typ] = me
-	enc, err := codecs.encoder(typ.Elem(), options)
+	codecs[typ] = &me
+	enc, err := codecs.encoder(el, options)
 	if err != nil {
 		return nil, err
 	}
-	*me = mapEncoder{
-		typ:     typ,
-		keys:    keys,
-		encoder: enc,
-	}
-	return me, nil
+	me.encoder = enc
+	return &me, nil
 }
 
 func (d *mapEncoder) encode(out []byte, v reflect.Value) ([]byte, error) {
@@ -226,9 +222,11 @@ func (d *mapEncoder) encode(out []byte, v reflect.Value) ([]byte, error) {
 		if i > 0 {
 			out = append(out, delimValueSeparator)
 		}
-		out = append(out, delimString)
-		out = append(out, v.String()...)
-		out = append(out, delimString, delimNameSeparator)
+		out, err = d.keys.encode(out, key)
+		if err != nil {
+			return out, err
+		}
+		out = append(out, delimNameSeparator)
 		out, err = d.encoder.encode(out, v.MapIndex(key))
 		if err != nil {
 			return out, err

@@ -5,18 +5,7 @@ import (
 	"sync"
 )
 
-type cacheKey struct {
-	typ     reflect.Type
-	options Options
-}
-
-var (
-	unmarshalCacheLock sync.RWMutex
-	unmarshalCache     = map[cacheKey]Decoder{}
-	marshalCacheLock   sync.RWMutex
-	marshalCache       = map[cacheKey]Encoder{}
-)
-
+// cache is used when creating new encoders/decoders to not recalculate stuff and avoid recursion issues.
 type cache map[reflect.Type]interface{}
 
 func (c cache) codec(typ reflect.Type) *structCodec {
@@ -53,6 +42,18 @@ func (c cache) decoder(typ reflect.Type, options *Options) (decoder, error) {
 	c[typ] = dec
 	return dec, nil
 }
+
+type cacheKey struct {
+	typ     reflect.Type
+	options Options
+}
+
+var (
+	unmarshalCacheLock sync.RWMutex
+	unmarshalCache     = map[cacheKey]Decoder{}
+	marshalCacheLock   sync.RWMutex
+	marshalCache       = map[cacheKey]Encoder{}
+)
 
 func cachedDecoder(typ reflect.Type, options *Options) (u Decoder, err error) {
 	if typ == nil {
