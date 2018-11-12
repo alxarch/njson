@@ -9,7 +9,7 @@ import (
 func AppendFloat(dst []byte, f float64, bits int) []byte {
 	abs := math.Abs(f)
 	fmt := byte('f')
-	if abs != 0 && ((bits == 32 && (abs < 1e-6 || abs >= 1e21)) ||
+	if abs != 0 && ((bits == 32 && (float32(abs) < 1e-6 || float32(abs) >= 1e21)) ||
 		(bits == 64 && (abs < 1e-6 || abs >= 1e21))) {
 		fmt = 'e'
 	}
