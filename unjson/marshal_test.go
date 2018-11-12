@@ -65,5 +65,10 @@ func TestMarshalInterface(t *testing.T) {
 	}
 	data, err = Marshal(x)
 	assertNoError(t, err)
-	assertEqual(t, string(data), `{"foo":"foo","bar":[1,2,3]}`)
+	switch string(data) {
+	case `{"foo":"foo","bar":[1,2,3]}`:
+	case `{"bar":[1,2,3],"foo":"foo"}`:
+	default:
+		t.Fatalf("Invalid data %s", data)
+	}
 }
