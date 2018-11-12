@@ -17,7 +17,7 @@ func TestOmit(t *testing.T) {
 		Pointer *Foo              `json:"pointer,omitempty"`
 	}
 	foo := new(Foo)
-	enc, err := TypeEncoder(reflect.TypeOf(foo), DefaultOptions())
+	enc, err := NewTypeEncoder(reflect.TypeOf(foo), DefaultOptions())
 	assertNoError(t, err)
 	data, err := enc.Encode(nil, foo)
 	assertNoError(t, err)

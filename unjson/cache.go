@@ -5,6 +5,66 @@ import (
 	"sync"
 )
 
+// Cache is an Encoder/Decoder cache for specific options
+type Cache struct {
+	Options
+	mu       sync.RWMutex
+	decoders map[reflect.Type]Decoder
+	encoders map[reflect.Type]Encoder
+}
+
+var defaultCache Cache
+
+// Decoder returns a Decoder for the type using the tag key from cache.Options
+func (c *Cache) Decoder(typ reflect.Type) (dec Decoder, err error) {
+	c.mu.RLock()
+	dec = c.decoders[typ]
+	c.mu.RUnlock()
+	if dec != nil {
+		return
+	}
+	dec, err = NewTypeDecoder(typ, c.Tag)
+	if err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	if d := c.decoders[typ]; d != nil {
+		c.mu.Unlock()
+		return d, nil
+	}
+	if c.decoders == nil {
+		c.decoders = make(map[reflect.Type]Decoder)
+	}
+	c.decoders[typ] = dec
+	c.mu.Unlock()
+	return
+}
+
+// Encoder returns an Encoder for the type using cache.Options
+func (c *Cache) Encoder(typ reflect.Type) (enc Encoder, err error) {
+	c.mu.RLock()
+	enc = c.encoders[typ]
+	c.mu.RUnlock()
+	if enc != nil {
+		return
+	}
+	enc, err = NewTypeEncoder(typ, c.Options)
+	if err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	if e := c.encoders[typ]; e != nil {
+		c.mu.Unlock()
+		return e, nil
+	}
+	if c.encoders == nil {
+		c.encoders = make(map[reflect.Type]Encoder)
+	}
+	c.encoders[typ] = enc
+	c.mu.Unlock()
+	return
+}
+
 // cache is used when creating new encoders/decoders to not recalculate stuff and avoid recursion issues.
 type cache map[reflect.Type]interface{}
 
@@ -29,6 +89,7 @@ func (c cache) encoder(typ reflect.Type, options *Options) (encoder, error) {
 	c[typ] = enc
 	return enc, nil
 }
+
 func (c cache) decoder(typ reflect.Type, options *Options) (decoder, error) {
 	if x := c[typ]; x != nil {
 		if e, ok := x.(decoder); ok {
@@ -41,67 +102,4 @@ func (c cache) decoder(typ reflect.Type, options *Options) (decoder, error) {
 	}
 	c[typ] = dec
 	return dec, nil
-}
-
-type cacheKey struct {
-	typ     reflect.Type
-	options Options
-}
-
-var (
-	unmarshalCacheLock sync.RWMutex
-	unmarshalCache     = map[cacheKey]Decoder{}
-	marshalCacheLock   sync.RWMutex
-	marshalCache       = map[cacheKey]Encoder{}
-)
-
-func cachedDecoder(typ reflect.Type, options *Options) (u Decoder, err error) {
-	if typ == nil {
-		return interfaceDecoder{}, nil
-	}
-	key := cacheKey{typ, defaultOptions}
-	if options == nil {
-		options = &defaultOptions
-	} else {
-		key.options = *options
-	}
-	unmarshalCacheLock.RLock()
-	u, ok := unmarshalCache[key]
-	unmarshalCacheLock.RUnlock()
-	if ok {
-		return
-	}
-	if u, err = newTypeDecoder(typ, options); err != nil {
-		return
-	}
-	unmarshalCacheLock.Lock()
-	unmarshalCache[key] = u
-	unmarshalCacheLock.Unlock()
-	return
-}
-
-func cachedEncoder(typ reflect.Type, options *Options) (m Encoder, err error) {
-	if typ == nil {
-		return interfaceEncoder{}, nil
-	}
-	key := cacheKey{typ, defaultOptions}
-	if options == nil {
-		options = &defaultOptions
-	} else {
-		key.options = *options
-	}
-
-	marshalCacheLock.RLock()
-	m, ok := marshalCache[key]
-	marshalCacheLock.RUnlock()
-	if ok {
-		return
-	}
-	if m, err = newTypeEncoder(typ, options); err != nil {
-		return
-	}
-	marshalCacheLock.Lock()
-	marshalCache[key] = m
-	marshalCacheLock.Unlock()
-	return
 }

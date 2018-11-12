@@ -12,7 +12,7 @@ func TestUnmarshalBasic(t *testing.T) {
 	type A struct{ Foo, Bar, Baz int }
 	a := A{}
 
-	dec, err := TypeDecoder(reflect.TypeOf(&a), "")
+	dec, err := NewTypeDecoder(reflect.TypeOf(&a), "")
 	assertNoError(t, err)
 	d := njson.Blank()
 	defer d.Close()
@@ -150,7 +150,12 @@ func TestUnmarshalFromString(t *testing.T) {
 		x interface{}
 	}
 	var (
-		f     float64
+		f64   float64
+		f32   float32
+		u64   uint64
+		u32   uint32
+		i64   int64
+		i32   int32
 		empty interface{}
 	)
 	tests := []struct {
@@ -159,18 +164,59 @@ func TestUnmarshalFromString(t *testing.T) {
 		wantErr bool
 		check   interface{}
 	}{
-		{"float64", args{"1.2", f}, true, nil},
+		{"float64", args{"1.2", f64}, true, nil},
 		{"float64", args{"1.2", empty}, true, nil},
-		{"float64", args{"1.2", &f}, false, 1.2},
+		{"float64", args{"1.2", &f64}, false, 1.2},
 		// {"float64", args{"NaN", &f}, false, math.NaN()},
-		{"float64", args{"0", &f}, false, 0.0},
-		{"float64", args{"-1", &f}, false, -1.0},
-		{"float64", args{"{}", &f}, true, nil},
+		{"float64", args{"0", &f64}, false, 0.0},
+		{"float64", args{"-1", &f64}, false, -1.0},
+		{"float64", args{"{}", &f64}, true, nil},
+
+		{"float32", args{"1.2", f32}, true, nil},
+		{"float32", args{"1.2", empty}, true, nil},
+		{"float32", args{"1.2", &f32}, false, float32(1.2)},
+		// {"float32", args{"NaN", &f}, false, math.NaN()},
+		{"float32", args{"0", &f32}, false, float32(0.0)},
+		{"float32", args{"-1", &f32}, false, float32(-1.0)},
+		{"float32", args{"{}", &f32}, true, nil},
+
+		{"uint64", args{"1.2", u64}, true, nil},
+		{"uint64", args{"1.2", empty}, true, nil},
+		{"uint64", args{"1.2", &u64}, true, nil},
+		{"uint64", args{"0", &u64}, false, uint64(0)},
+		{"uint64", args{"42", &u64}, false, uint64(42)},
+		{"uint64", args{"-1", &u64}, true, nil},
+		{"uint64", args{"{}", &u64}, true, nil},
+
+		{"uint32", args{"1.2", u32}, true, nil},
+		{"uint32", args{"1.2", empty}, true, nil},
+		{"uint32", args{"1.2", &u32}, true, nil},
+		{"uint32", args{"0", &u32}, false, uint32(0)},
+		{"uint32", args{"42", &u32}, false, uint32(42)},
+		{"uint32", args{"-1", &u32}, true, nil},
+		{"uint32", args{"{}", &u32}, true, nil},
+
+		{"int32", args{"1.2", i32}, true, nil},
+		{"int32", args{"1.2", empty}, true, nil},
+		{"int32", args{"1.2", &i32}, true, nil},
+		{"int32", args{"0", &i32}, false, int32(0)},
+		{"int32", args{"42", &i32}, false, int32(42)},
+		{"int32", args{"-1", &i32}, false, int32(-1)},
+		{"int32", args{"{}", &i32}, true, nil},
+
+		{"int64", args{"1.2", i64}, true, nil},
+		{"int64", args{"1.2", empty}, true, nil},
+		{"int64", args{"1.2", &i64}, true, nil},
+		{"int64", args{"0", &i64}, false, int64(0)},
+		{"int64", args{"42", &i64}, false, int64(42)},
+		{"int64", args{"-1", &i64}, false, int64(-1)},
+		{"int64", args{"{}", &i64}, true, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+
 			if err := UnmarshalFromString(tt.args.s, tt.args.x); (err != nil) != tt.wantErr {
-				t.Errorf("UnmarshalFromString(%v) Unexpected error: %v", tt.args.x, err)
+				t.Errorf("UnmarshalFromString(%T) Unexpected error: %v", tt.args.x, err)
 				return
 			}
 			if tt.check == nil {

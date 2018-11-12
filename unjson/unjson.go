@@ -20,7 +20,7 @@ func UnmarshalFromNode(n njson.Node, x interface{}) error {
 	if x == nil {
 		return errInvalidValueType
 	}
-	dec, err := cachedDecoder(reflect.TypeOf(x), nil)
+	dec, err := defaultCache.Decoder(reflect.TypeOf(x))
 	if err != nil {
 		return err
 	}
@@ -32,7 +32,7 @@ func UnmarshalFromString(s string, x interface{}) (err error) {
 	if x == nil {
 		return errInvalidValueType
 	}
-	d, err := cachedDecoder(reflect.TypeOf(x), nil)
+	d, err := defaultCache.Decoder(reflect.TypeOf(x))
 	if err != nil {
 		return
 	}
@@ -56,7 +56,7 @@ func AppendJSON(out []byte, x interface{}) ([]byte, error) {
 	if x == nil {
 		return append(out, strNull...), nil
 	}
-	m, err := cachedEncoder(reflect.TypeOf(x), nil)
+	m, err := defaultCache.Encoder(reflect.TypeOf(x))
 	if err != nil {
 		return nil, err
 	}

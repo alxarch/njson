@@ -42,7 +42,7 @@ func (t *customText) UnmarshalText(data []byte) error {
 
 func TestCustomText(t *testing.T) {
 	v := customText("foo")
-	dec, err := TypeDecoder(reflect.TypeOf(&v), "json")
+	dec, err := NewTypeDecoder(reflect.TypeOf(&v), "json")
 	assertNoError(t, err)
 	_, ok := dec.(textDecoder)
 	assertEqual(t, ok, true)
@@ -53,7 +53,7 @@ func TestCustomText(t *testing.T) {
 	err = Unmarshal([]byte(`"bar"`), &v)
 	assertNoError(t, err)
 	assertEqual(t, string(v), `bar`)
-	enc, err := TypeEncoder(reflect.TypeOf(v), DefaultOptions())
+	enc, err := NewTypeEncoder(reflect.TypeOf(v), DefaultOptions())
 	assertNoError(t, err)
 	// _, ok := dec.(textEncoder)
 	// assertEqual(t, ok, true)

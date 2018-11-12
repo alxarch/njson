@@ -5,6 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strconv"
+
+	"github.com/alxarch/njson/strjson"
+
+	"github.com/alxarch/njson/numjson"
 
 	"github.com/alxarch/njson"
 )
@@ -85,26 +90,18 @@ func (jsonDecoder) decode(v reflect.Value, n njson.Node) (err error) {
 	return n.WrapUnmarshalJSON(v.Interface().(json.Unmarshaler))
 }
 
-// TypeDecoder creates a new decoder for a type.
-func TypeDecoder(typ reflect.Type, tag string) (Decoder, error) {
-	if typ == nil {
-		return interfaceDecoder{}, nil
-	}
-	if tag == "" {
-		tag = defaultTag
-	}
-	options := Options{Tag: tag}
-	return newTypeDecoder(typ, &options)
-}
-
-func newTypeDecoder(typ reflect.Type, options *Options) (Decoder, error) {
-	if typ == nil {
-		return nil, errInvalidType
-	}
-	if typ.Kind() != reflect.Ptr {
-		return nil, errInvalidType
-	}
+// NewTypeDecoder creates a new decoder for a type.
+func NewTypeDecoder(typ reflect.Type, tag string) (Decoder, error) {
 	switch {
+	case typ == nil:
+		return interfaceDecoder{}, nil
+	case typ.Kind() == reflect.Interface:
+		if typ.NumMethod() == 0 {
+			return interfaceDecoder{}, nil
+		}
+		fallthrough
+	case typ.Kind() != reflect.Ptr:
+		return nil, errInvalidType
 	case typ.Implements(typNodeUnmarshaler):
 		return njsonDecoder{}, nil
 	case typ.Implements(typJSONUnmarshaler):
@@ -112,9 +109,12 @@ func newTypeDecoder(typ reflect.Type, options *Options) (Decoder, error) {
 	case typ.Implements(typTextUnmarshaler):
 		return textDecoder{}, nil
 	default:
+		if tag == "" {
+			tag = defaultTag
+		}
+		options := Options{Tag: tag}
 		c := typeDecoder{typ: typ}
-		typ = typ.Elem()
-		d, err := newDecoder(typ, options, cache{})
+		d, err := newDecoder(typ.Elem(), &options, cache{})
 		if err != nil {
 			return nil, err
 		}
@@ -302,8 +302,16 @@ func (d *ptrDecoder) decode(v reflect.Value, n njson.Node) error {
 type stringDecoder struct{}
 
 func (stringDecoder) decode(v reflect.Value, n njson.Node) error {
-	v.SetString(n.Unescaped())
-	return nil
+	switch raw, typ := n.Data(); typ {
+	case njson.TypeString:
+		v.SetString(strjson.Unescaped(raw))
+		return nil
+	case njson.TypeNull:
+		v.SetString("")
+		return nil
+	default:
+		return n.TypeError(njson.TypeString)
+	}
 }
 
 type interfaceDecoder struct{}
@@ -337,6 +345,10 @@ func (boolDecoder) decode(v reflect.Value, n njson.Node) (err error) {
 		v.SetBool(b)
 		return nil
 	}
+	if n.Type() == njson.TypeNull {
+		v.SetBool(false)
+		return nil
+	}
 	return n.TypeError(njson.TypeBoolean)
 
 }
@@ -344,31 +356,67 @@ func (boolDecoder) decode(v reflect.Value, n njson.Node) (err error) {
 type uintDecoder struct{}
 
 func (uintDecoder) decode(v reflect.Value, n njson.Node) (err error) {
-	if u, ok := n.ToUint(); ok {
-		v.SetUint(u)
+	switch raw, t := n.Data(); t {
+	case njson.TypeNumber:
+		n, ok := numjson.ParseUint(raw)
+		if ok {
+			v.SetUint(n)
+			return nil
+		}
+		if n, err = strconv.ParseUint(raw, 10, 64); err == nil {
+			v.SetUint(n)
+		}
+		return
+	default:
+		return n.TypeError(njson.TypeNumber)
+	case njson.TypeNull:
+		v.SetUint(0)
 		return nil
 	}
-	return n.TypeError(njson.TypeNumber)
 }
 
 type intDecoder struct{}
 
 func (intDecoder) decode(v reflect.Value, n njson.Node) (err error) {
-	if i, ok := n.ToInt(); ok {
-		v.SetInt(i)
+	switch raw, t := n.Data(); t {
+	case njson.TypeNumber:
+		n, ok := numjson.ParseInt(raw)
+		if ok {
+			v.SetInt(n)
+			return nil
+		}
+		if n, err = strconv.ParseInt(raw, 10, 64); err == nil {
+			v.SetInt(n)
+		}
+		return
+	default:
+		return n.TypeError(njson.TypeNumber)
+	case njson.TypeNull:
+		v.SetInt(0)
 		return nil
 	}
-	return n.TypeError(njson.TypeNumber)
 }
 
 type floatDecoder struct{}
 
 func (floatDecoder) decode(v reflect.Value, n njson.Node) (err error) {
-	if f, ok := n.ToFloat(); ok {
-		v.SetFloat(f)
+	switch raw, typ := n.Data(); typ {
+	case njson.TypeNumber:
+		f := numjson.ParseFloat(raw)
+		if f == f {
+			v.SetFloat(f)
+			return nil
+		}
+		if f, err = strconv.ParseFloat(raw, 64); err == nil {
+			v.SetFloat(f)
+		}
+		return
+	case njson.TypeNull:
+		v.SetFloat(0)
 		return nil
+	default:
+		return n.TypeError(njson.TypeNumber)
 	}
-	return n.TypeError(njson.TypeNumber)
 }
 
 type textDecoder struct{}

@@ -47,14 +47,10 @@ func (m *typeEncoder) Encode(out []byte, x interface{}) ([]byte, error) {
 	return m.encode(out, v)
 }
 
-// TypeEncoder creates a new Encoder for a reflect.Type
-func TypeEncoder(typ reflect.Type, options Options) (Encoder, error) {
-	if typ == nil {
-		return interfaceEncoder{}, nil
-	}
+// NewTypeEncoder creates a new Encoder for a reflect.Type
+func NewTypeEncoder(typ reflect.Type, options Options) (Encoder, error) {
 	options = options.normalize()
-
-	return cachedEncoder(typ, &options)
+	return newTypeEncoder(typ, &options)
 }
 
 func newTypeEncoder(typ reflect.Type, options *Options) (*typeEncoder, error) {

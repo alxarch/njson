@@ -51,7 +51,7 @@ func BenchmarkParseAndUnmarshal(b *testing.B) {
 	}
 }
 func BenchmarkUnmarshaler_Unmarshal(b *testing.B) {
-	dec, err := TypeDecoder(reflect.TypeOf(&medium{}), "")
+	dec, err := NewTypeDecoder(reflect.TypeOf(&medium{}), "")
 	if err != nil {
 		b.Errorf("UnexpectedError: %s", err)
 		return
