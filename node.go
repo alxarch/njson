@@ -83,6 +83,14 @@ func (n Node) Unescaped() string {
 	return ""
 }
 
+// Value returns a node's raw value and type
+func (n Node) Value() (string, Type) {
+	if n := n.get(); n != nil {
+		return n.raw, n.info.Type()
+	}
+	return "", TypeInvalid
+}
+
 // ToFloat converts a node's value to float64.
 func (n Node) ToFloat() (float64, bool) {
 	if n := n.get(); n != nil {
