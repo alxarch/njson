@@ -28,6 +28,9 @@ func (o *Options) parseField(f reflect.StructField) (name string, hints hint, ok
 		// TODO: add Options.DefaultFieldCase
 		name = f.Name
 	}
+	if o.OmitEmpty {
+		hints |= hintOmitempty
+	}
 	return
 }
 

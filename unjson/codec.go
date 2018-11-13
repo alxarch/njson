@@ -32,7 +32,15 @@ type codec struct {
 	index []int // embedded struct index
 	decoder
 	encoder
-	omit omiter
+	omiter
+}
+
+func (c *structCodec) omiter(methodName string) omiter {
+	omit := newCustomOmiter(c.typ, methodName)
+	if omit == nil {
+		omit = c
+	}
+	return omit
 }
 
 // omit checks if a value should be omitted
@@ -116,7 +124,7 @@ func (c *structCodec) merge(typ reflect.Type, options *Options, index []int, cod
 			continue
 		}
 
-		u, err := codecs.decoder(field.Type, options)
+		dec, err := codecs.decoder(field.Type, options)
 		if err != nil {
 			return err
 		}
@@ -124,20 +132,24 @@ func (c *structCodec) merge(typ reflect.Type, options *Options, index []int, cod
 		if err != nil {
 			return err
 		}
-		omit := omitNever
+
+		var omit omiter
 		if hints&hintOmitempty == hintOmitempty {
-			if m, ok := enc.(*structCodec); ok {
-				omit = m.omit
+			if enc, ok := enc.(omiterer); ok {
+				omit = enc.omiter(options.OmitMethod)
 			} else {
 				omit = newOmiter(field.Type, options.OmitMethod)
 			}
+		} else {
+			omit = omitNever{}
 		}
+
 		c.Add(codec{
 			key:     tag,
 			index:   copyIndex(index),
-			decoder: u,
+			decoder: dec,
 			encoder: enc,
-			omit:    omit,
+			omiter:  omit,
 		})
 	}
 	return nil

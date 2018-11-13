@@ -11,46 +11,101 @@ var (
 	typOmiter = reflect.TypeOf((*Omiter)(nil)).Elem()
 )
 
-type omiter func(v reflect.Value) bool
+type omiter interface {
+	omit(v reflect.Value) bool
+}
+type omiterer interface {
+	omiter(methodName string) omiter
+}
 
-func omitNil(v reflect.Value) bool {
+type omitNil struct{}
+
+func (omitNil) omit(v reflect.Value) bool {
 	return v.IsNil()
 }
-func omitFloat(v reflect.Value) bool {
+
+type omitFloat struct{}
+
+func (omitFloat) omit(v reflect.Value) bool {
 	return v.Float() == 0
 }
-func omitInt(v reflect.Value) bool {
+
+type omitInt struct{}
+
+func (omitInt) omit(v reflect.Value) bool {
 	return v.Int() == 0
 }
-func omitUint(v reflect.Value) bool {
+
+type omitUint struct{}
+
+func (omitUint) omit(v reflect.Value) bool {
 	return v.Uint() == 0
 }
-func omitBool(v reflect.Value) bool {
+
+type omitBool struct{}
+
+func (omitBool) omit(v reflect.Value) bool {
 	return !v.Bool()
 }
-func omitZeroLen(v reflect.Value) bool {
+
+type omitZeroLen struct{}
+
+func (omitZeroLen) omit(v reflect.Value) bool {
 	return v.Len() == 0
 }
-func omitNever(reflect.Value) bool {
+
+type omitNever struct{}
+
+func (omitNever) omit(reflect.Value) bool {
 	return false
 }
-func omitAlways(reflect.Value) bool {
+
+type omitAlways struct{}
+
+func (omitAlways) omit(reflect.Value) bool {
 	return true
+}
+
+type omitFunc func(reflect.Value) bool
+
+func (f omitFunc) omit(v reflect.Value) bool {
+	return f(v)
+}
+
+type omitMethod int
+
+func (m omitMethod) omit(v reflect.Value) bool {
+	results := v.Method(int(m)).Call(nil)
+	if len(results) > 0 {
+		return results[0].Bool()
+	}
+	return false
 }
 
 func customOmiter(typ reflect.Type, methodName string) omiter {
 	if method, ok := typ.MethodByName(methodName); ok {
 		f := method.Func.Type()
 		if f.NumIn() == 1 && f.NumOut() == 1 && f.Out(0).Kind() == reflect.Bool {
-			return omiter(func(v reflect.Value) bool {
-				if results := v.Method(method.Index).Call(nil); len(results) > 0 {
-					return results[0].Bool()
-				}
-				return false
-			})
+			return omitMethod(method.Index)
 		}
 	}
 	return nil
+}
+
+type ptrOmiter struct {
+	omiter
+}
+
+func (o *ptrOmiter) omit(v reflect.Value) bool {
+	return v.IsNil() || o.omiter.omit(v.Elem())
+}
+
+type elemOmiter struct {
+	omiter
+}
+
+func (o *elemOmiter) omit(v reflect.Value) bool {
+	return v.CanAddr() && o.omiter.omit(v.Addr())
 }
 
 // newCustomOmiter creates an omiter func for a type.
@@ -72,16 +127,12 @@ func newCustomOmiter(typ reflect.Type, methodName string) omiter {
 	case reflect.Ptr:
 		// If pointer element implements omiter wrap it
 		if om := customOmiter(typ.Elem(), methodName); om != nil {
-			return omiter(func(v reflect.Value) bool {
-				return v.IsNil() || om(v.Elem())
-			})
+			return &ptrOmiter{om}
 		}
 	default:
 		// If pointer to type implements omiter wrap it
 		if om := customOmiter(reflect.PtrTo(typ), methodName); om != nil {
-			return omiter(func(v reflect.Value) bool {
-				return v.CanAddr() && om(v.Addr())
-			})
+			return &elemOmiter{om}
 		}
 	}
 	return nil
@@ -91,34 +142,57 @@ func omitCustom(v reflect.Value) bool {
 	return v.Interface().(Omiter).Omit()
 }
 
+type arrayOmiter struct {
+	size int
+	omiter
+}
+
+func (o *arrayOmiter) omit(v reflect.Value) bool {
+	for i := 0; i < o.size; i++ {
+		if !o.omiter.omit(v.Index(i)) {
+			return false
+		}
+	}
+	return true
+}
+
+func newArrayOmiter(typ reflect.Type, methodName string) omiter {
+	return &arrayOmiter{
+		omiter: newOmiter(typ.Elem(), methodName),
+		size:   typ.Len(),
+	}
+}
+
 func newOmiter(typ reflect.Type, methodName string) omiter {
 	if typ == nil {
-		return omitAlways
+		return omitAlways{}
 	}
 	if om := newCustomOmiter(typ, methodName); om != nil {
 		return om
 	}
 	switch typ.Kind() {
 	case reflect.Ptr:
-		return omitNil
+		return omitNil{}
 	case reflect.Struct:
-		return omitNever
+		return omitNever{}
 	case reflect.Slice, reflect.Map, reflect.String:
-		return omitZeroLen
+		return omitZeroLen{}
+	case reflect.Array:
+		return newArrayOmiter(typ, methodName)
 	case reflect.Interface:
 		if typ.NumMethod() == 0 {
-			return omitNil
+			return omitNil{}
 		}
-		return omitAlways
+		return omitAlways{}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return omitInt
+		return omitInt{}
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return omitUint
+		return omitUint{}
 	case reflect.Float32, reflect.Float64:
-		return omitFloat
+		return omitFloat{}
 	case reflect.Bool:
-		return omitBool
+		return omitBool{}
 	default:
-		return omitAlways
+		return omitAlways{}
 	}
 }

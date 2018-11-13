@@ -67,6 +67,8 @@ func (c *Cache) Encoder(typ reflect.Type) (enc Encoder, err error) {
 
 // cache is used when creating new encoders/decoders to not recalculate stuff and avoid recursion issues.
 type cache map[cacheKey]interface{}
+
+// cacheKey is based on both Type and hint so types with different hints get correct encoders
 type cacheKey struct {
 	typ   reflect.Type
 	hints hint
