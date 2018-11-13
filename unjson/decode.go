@@ -143,6 +143,8 @@ func newDecoder(typ reflect.Type, options *Options, codecs cache) (decoder, erro
 		return newStructCodec(typ, options, codecs)
 	case reflect.Slice:
 		return newSliceDecoder(typ, options, codecs)
+	case reflect.Array:
+		return newArrayDecoder(typ, options, codecs)
 	case reflect.Map:
 		return newMapDecoder(typ, options, codecs)
 	case reflect.Interface:
@@ -162,6 +164,66 @@ func newDecoder(typ reflect.Type, options *Options, codecs cache) (decoder, erro
 		return stringDecoder{}, nil
 	default:
 		return nil, errInvalidType
+	}
+}
+
+type arrayDecoder struct {
+	// typ     reflect.Type
+	size      int
+	zeroValue reflect.Value
+	decoder   decoder
+}
+
+func newArrayDecoder(typ reflect.Type, options *Options, codecs cache) (*arrayDecoder, error) {
+
+	el := typ.Elem()
+	ad := arrayDecoder{
+		// typ:  el,
+		size:      typ.Len(),
+		zeroValue: reflect.Zero(el),
+	}
+	codecs[cacheKey{typ, 0}] = &ad
+	dec, err := codecs.decoder(typ.Elem(), options)
+	if err != nil {
+		return nil, err
+	}
+	ad.decoder = dec
+	return &ad, nil
+}
+
+func (dec *arrayDecoder) decode(v reflect.Value, n njson.Node) error {
+	switch n.Type() {
+	case njson.TypeArray:
+		var (
+			values = n.Values()
+			el     reflect.Value
+			i      = 0
+		)
+		for ; i < dec.size; i++ {
+			if !values.Next() {
+				for ; i < dec.size; i++ {
+					el = v.Index(i)
+					el.Set(dec.zeroValue)
+				}
+				return nil
+			}
+			el = v.Index(i)
+			n = n.With(values.ID())
+			dec.decoder.decode(el, n)
+		}
+		return nil
+	case njson.TypeNull:
+		var (
+			el reflect.Value
+			i  = 0
+		)
+		for ; i < dec.size; i++ {
+			el = v.Index(i)
+			el.Set(dec.zeroValue)
+		}
+		return nil
+	default:
+		return n.TypeError(njson.TypeArray)
 	}
 }
 
