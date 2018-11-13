@@ -386,14 +386,14 @@ func (pool *Pool) Put(d *Document) {
 	if d == nil {
 		return
 	}
-	// Free all heap pointers
-	for i := range d.nodes {
-		n := &d.nodes[i]
-		n.raw = ""
-		for i := range n.values {
-			n.values[i] = V{}
-		}
-	}
+	// // Free all heap pointers
+	// for i := range d.nodes {
+	// 	n := &d.nodes[i]
+	// 	n.raw = ""
+	// 	for i := range n.values {
+	// 		n.values[i] = V{}
+	// 	}
+	// }
 	d.Reset()
 	pool.docs.Put(d)
 }
