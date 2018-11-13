@@ -100,6 +100,8 @@ func newEncoder(typ reflect.Type, options *Options, hints hint, codecs cache) (e
 		return newStructCodec(typ, options, codecs)
 	case reflect.Slice:
 		return newSliceEncoder(typ, options, hints, codecs)
+	case reflect.Array:
+		return newArrayEncoder(typ, options, hints, codecs)
 	case reflect.Map:
 		return newMapEncoder(typ, options, codecs)
 	case reflect.Interface:
@@ -305,6 +307,42 @@ func (e *sliceEncoder) encode(out []byte, v reflect.Value) ([]byte, error) {
 			if err != nil {
 				return out, err
 			}
+		}
+	}
+	out = append(out, delimEndArray)
+	return out, nil
+}
+
+type arrayEncoder struct {
+	encoder encoder
+	size    int
+}
+
+func newArrayEncoder(typ reflect.Type, options *Options, hints hint, codecs cache) (*arrayEncoder, error) {
+	ae := new(arrayEncoder)
+	ae.size = typ.Len()
+	codecs[cacheKey{typ, hints}] = ae
+	enc, err := codecs.encoder(typ.Elem(), options, hints)
+	if err != nil {
+		return nil, err
+	}
+	ae.encoder = enc
+	return ae, nil
+}
+
+func (enc *arrayEncoder) encode(out []byte, v reflect.Value) ([]byte, error) {
+	out = append(out, delimBeginArray)
+	var (
+		err error
+		i   = 0
+	)
+	for ; i < enc.size; i++ {
+		if i > 0 {
+			out = append(out, delimValueSeparator)
+		}
+		out, err = enc.encoder.encode(out, v.Index(i))
+		if err != nil {
+			return out, err
 		}
 	}
 	out = append(out, delimEndArray)
