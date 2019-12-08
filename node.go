@@ -141,8 +141,8 @@ func (n Node) Type() Type {
 
 // Values returns a value iterator over an Array or Object values.
 func (n Node) Values() IterV {
-	if n := n.get(); n != nil {
-		return IterV{values: n.values}
+	if node := n.get(); node != nil {
+		return IterV{node: n, values: node.values}
 	}
 	return IterV{}
 }
@@ -448,32 +448,36 @@ func (n Node) SetNull() {
 
 // IterV is an iterator over a node's values.
 type IterV struct {
-	*V
+	V
 	index  int
 	values []V
+	node   Node
 }
 
 // Reset resets the iterator.
 func (i *IterV) Reset() {
 	i.index = 0
-	i.V = nil
+	i.id = maxUint
 }
 
 // Close closes the iterator unlinking the values slice.
 func (i *IterV) Close() {
-	i.values = nil
-	i.index = -1
-	i.V = nil
+	*i = IterV{
+		index: -1,
+		V: V{
+			id: maxUint,
+		},
+	}
 }
 
 // Next increments the iteration cursor and checks if the iterarion finished.
 func (i *IterV) Next() bool {
 	if 0 <= i.index && i.index < len(i.values) {
-		i.V = &i.values[i.index]
+		i.V = i.values[i.index]
 		i.index++
 		return true
 	}
-	i.V = nil
+	i.id = maxUint
 	// Set index to -1 so every Next() returns false until Reset() is called.
 	i.index = -1
 	return false
@@ -489,4 +493,9 @@ func (i *IterV) Len() int {
 // After the iteration has finished it returns -2.
 func (i *IterV) Index() int {
 	return i.index - 1
+}
+
+// Value returns the node of the current iteration value.
+func (i *IterV) Value() Node {
+	return i.node.With(i.id)
 }

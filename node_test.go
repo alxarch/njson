@@ -599,7 +599,7 @@ func TestNode_Values(t *testing.T) {
 	iterIndices := []int{}
 	for v.Next() {
 		iterKeys = append(iterKeys, v.Key())
-		n, _ := d.Node(v.ID()).ToInt()
+		n, _ := v.Value().ToInt()
 		iterValues = append(iterValues, n)
 		iterIndices = append(iterIndices, v.Index())
 	}
