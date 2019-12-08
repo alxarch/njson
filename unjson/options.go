@@ -7,7 +7,7 @@ import (
 
 // Options holds options for an Encoder/Decoder
 type Options struct {
-	Tag        string
+	Tag        string // Tag name to use for hints
 	OmitEmpty  bool   // Force omitempty on all fields
 	OmitMethod string // Method name for checking if a value is empty defaults to 'Omit'
 	AllowNaN   bool   // Allow NaN values for numbers

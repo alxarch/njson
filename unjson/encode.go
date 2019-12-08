@@ -12,7 +12,10 @@ import (
 	"github.com/alxarch/njson/strjson"
 )
 
-// Encoder is a type specific encoder
+// Encoder encodes a `reflect.Value` to JSON
+//
+// Each encoder can handle only a specific `reflect.Type`.
+// To create a new `Encoder` for a type use `NewTypeEncoder`.
 type Encoder interface {
 	Encode(out []byte, x interface{}) ([]byte, error)
 	encoder // disallow external implementations
@@ -47,7 +50,19 @@ func (m *typeEncoder) Encode(out []byte, x interface{}) ([]byte, error) {
 	return m.encode(out, v)
 }
 
-// NewTypeEncoder creates a new Encoder for a reflect.Type
+// NewTypeEncoder creates a new Encoder for `typ` using `options`
+//
+// Encoding can be customized through `options` argument and
+// by using struct tag options. The default tag is `json` and
+// can be customized by `options.Tag`.
+// The following struct tag options are supported:
+//   - `omitempty` to omit empty values. If the value provides an `Omit() bool` method
+//     it is used to determine if a value is to be omitted. Otherwise the default rules
+//     from `json/encoding` are used. The name of the method can be customized
+//     by the `options.OmitMethod`. To omit empty values by default use `options.OmitEmpty`.
+//   - `8bit` mark a string value as `8bit` to avoid costly JSON unescaping
+//   - `html` mark a string value as HTML text that should be escaped
+//
 func NewTypeEncoder(typ reflect.Type, options Options) (Encoder, error) {
 	options = options.normalize()
 	return newTypeEncoder(typ, &options)
