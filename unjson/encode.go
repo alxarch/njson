@@ -217,7 +217,7 @@ func newMapEncoder(typ reflect.Type, options *Options, codecs cache) (*mapEncode
 	if key.Implements(typTextMarshaler) {
 		me.keys = textEncoder{}
 	} else if key.Kind() == reflect.String {
-		me.keys = newStringEncoder(hintRaw)
+		me.keys = stringEncoder(false)
 	} else {
 		return nil, errInvalidType
 	}

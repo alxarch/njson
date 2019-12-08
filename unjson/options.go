@@ -79,7 +79,7 @@ func parseHints(tag string) (hints hint) {
 		switch hint {
 		case "omitempty":
 			hints |= hintOmitempty
-		case "raw":
+		case "8bit":
 			hints |= hintRaw
 		case "html":
 			hints |= hintHTML
