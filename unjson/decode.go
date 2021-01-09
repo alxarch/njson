@@ -78,16 +78,30 @@ func (njsonDecoder) decode(v reflect.Value, n njson.Node) error {
 // jsonDecoder implements the Decoder interface for types implementing json.Unmarshaller
 type jsonDecoder struct{}
 
-func (jsonDecoder) Decode(x interface{}, n njson.Node) (err error) {
-
-	if u, ok := x.(json.Unmarshaler); ok {
-		return n.WrapUnmarshalJSON(u)
+func (d jsonDecoder) Decode(x interface{}, n njson.Node) (err error) {
+	if x == nil {
+		return errInvalidValueType
 	}
-	return errInvalidValueType
+	v := reflect.ValueOf(x)
+	if v.Kind() != reflect.Ptr {
+		if v.CanAddr() {
+			v = v.Addr()
+		} else {
+			return errInvalidValueType
+		}
+	}
+	return d.decode(v, n)
 }
 
 func (jsonDecoder) decode(v reflect.Value, n njson.Node) (err error) {
-	return n.WrapUnmarshalJSON(v.Interface().(json.Unmarshaler))
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+		n.WrapUnmarshalJSON(v.Interface().(json.Unmarshaler))
+		return nil
+	}
+	return errInvalidValueType
 }
 
 // NewTypeDecoder creates a new decoder for a type.

@@ -71,76 +71,20 @@ func (t Type) String() string {
 	}
 }
 
-// info is a bitmask with type info for a node.
-type info uint16
+type flags uint8
 
 const (
-	vString  = info(TypeString)
-	vNumber  = info(TypeNumber)
-	vNull    = info(TypeNull)
-	vBoolean = info(TypeBoolean)
-	vArray   = info(TypeArray)
-	vObject  = info(TypeObject)
+	flagRoot flags = 1 << iota
+	flagEscapedString
+	flagUnescapedString
 )
 
-// Type flags
-const (
-	_ info = 1 << (iota + 8)
-	infRoot
-)
-
-// IsRoot checks if IsRoot flag is set.
-func (i info) IsRoot() bool {
-	return i&infRoot == infRoot
+func (f flags) IsRoot() bool {
+	return f&flagRoot == flagRoot
 }
-
-func (i info) Flags() info {
-	return i & 0xFF00
+func (f flags) IsSimpleString() bool {
+	return f&flagEscapedString == 0
 }
-
-// Type retutns the Type part of Info.
-func (i info) Type() Type {
-	return Type(i)
-}
-
-// IsNull checks if i is TypeNull
-func (i info) IsNull() bool {
-	return i.Type() == TypeNull
-}
-
-// IsBoolean checks if i is TypeBoolean
-func (i info) IsBoolean() bool {
-	return i.Type() == TypeBoolean
-}
-
-// IsArray checks if i is TypeArray
-func (i info) IsArray() bool {
-	return i.Type() == TypeArray
-}
-
-// IsValue checks if t matches TypeAnyValue
-func (t Type) IsValue() bool {
-	return t&TypeAnyValue != 0
-}
-
-const infAnyValue = info(TypeAnyValue)
-
-// IsValue checks if i matches TypeAnyValue
-func (i info) IsValue() bool {
-	return i&infAnyValue != 0
-}
-
-// IsString checks if i is TypeString
-func (i info) IsString() bool {
-	return i.Type() == TypeString
-}
-
-// IsNumber checks if i is TypeNumber
-func (i info) IsNumber() bool {
-	return i.Type() == TypeNumber
-}
-
-// IsObject checks if i is TypeObject
-func (i info) IsObject() bool {
-	return i.Type() == TypeObject
+func (f flags) IsUnescaped() bool {
+	return f&flagUnescapedString == flagUnescapedString
 }

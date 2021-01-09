@@ -102,7 +102,7 @@ func TestNode_ToInt(t *testing.T) {
 	if n, _, err := d.Parse("-1.0"); err != nil {
 		t.Errorf("Unexpected error: %s", err)
 	} else if f, ok := n.ToInt(); !ok {
-		t.Errorf("Unexpected conversion error %#v %d", n, f)
+		t.Errorf("Unexpected conversion error %v %d", n, f)
 	} else if f != -1 {
 		t.Errorf("Unexpected conversion %d", f)
 	}
@@ -316,31 +316,31 @@ func TestNode_Unescaped(t *testing.T) {
 	defer d.Close()
 	if n, _, err := d.Parse(`"foo"`); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if s := n.Unescaped(); s != "foo" {
+	} else if s := n.Raw(); s != "foo" {
 		t.Errorf("Unexpected value: %s", s)
 	}
 	if n, _, err := d.Parse(`42`); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if s := n.Unescaped(); s != "" {
+	} else if s := n.Raw(); s != "" {
 		t.Errorf("Unexpected value: %s", s)
 	}
 	if n, _, err := d.Parse(`"foo\n"`); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if s := n.Unescaped(); s != "foo\n" {
+	} else if s := n.Raw(); s != "foo\n" {
 		t.Errorf("Unexpected value: %s", s)
-	} else if s := n.Unescaped(); s != "foo\n" {
+	} else if s := n.Raw(); s != "foo\n" {
 		t.Errorf("Unexpected value: %s", s)
 	}
 	if n, _, err := d.Parse(`"foo\n"`); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if s := n.Unescaped(); string(s) != "foo\n" {
+	} else if s := n.Raw(); string(s) != "foo\n" {
 		t.Errorf("Unexpected value: %s", s)
-	} else if s := n.Unescaped(); string(s) != "foo\n" {
+	} else if s := n.Raw(); string(s) != "foo\n" {
 		t.Errorf("Unexpected value: %s", s)
 	}
 	if n, _, err := d.Parse(`"foo"`); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if s := n.Unescaped(); string(s) != "foo" {
+	} else if s := n.Raw(); string(s) != "foo" {
 		t.Errorf("Unexpected value: %s", s)
 	}
 }
@@ -440,7 +440,7 @@ func TestNode_Remove(t *testing.T) {
 		t.Errorf("Unexpected error: %s", err)
 		return
 	}
-	n.Get("results").Remove(1)
+	n.Object().Get("results").Array().Remove(1)
 	data, err := n.AppendJSON(nil)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
@@ -456,17 +456,16 @@ func TestNode_Remove(t *testing.T) {
 func TestNode_Index(t *testing.T) {
 	d := Document{}
 	n, _, _ := d.Parse(`[1,2,3]`)
+	arr := Array(n)
 	{
-		n := n.Index(2)
+		n := arr.Get(2)
 		assertEqual(t, n.Type(), TypeNumber)
 		assertEqual(t, n.Raw(), "3")
-		assertEqual(t, n.ID(), uint(3))
+		assertEqual(t, n.id, uint(3))
 	}
 	{
-		n := n.Index(8)
-		assertEqual(t, n.Type(), TypeInvalid)
-		assertEqual(t, n.Raw(), "")
-		assertEqual(t, n.ID(), maxUint)
+		n := arr.Get(8)
+		assertEqual(t, Node{}, n)
 	}
 }
 func TestNode_Del(t *testing.T) {
@@ -477,7 +476,7 @@ func TestNode_Del(t *testing.T) {
 		t.Errorf("Unexpected error: %s", err)
 		return
 	}
-	n.Del("wrong_answer")
+	Object(n).Del("wrong_answer")
 	data, err := n.AppendJSON(nil)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
@@ -498,19 +497,12 @@ func TestNode_Strip(t *testing.T) {
 		},
 		"foo": {}
 	}`)
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err)
-		return
-	}
-	n.Strip("foo")
+	assertNoError(t, err)
+	total := Object(n).Strip("foo")
 	data, err := n.AppendJSON(nil)
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err)
-		return
-	}
-	if string(data) != `{"bar":{"bar":"baz"}}` {
-		t.Errorf("Unexpected JSON value: %s", data)
-	}
+	assertNoError(t, err)
+	assertEqual(t, 2, total)
+	assertEqual(t, `{"bar":{"bar":"baz"}}`, string(data))
 }
 
 func TestNode_Lookup(t *testing.T) {
@@ -547,16 +539,14 @@ func TestNode_Lookup(t *testing.T) {
 func TestNode_Append(t *testing.T) {
 	d := Document{}
 	n := d.Array()
-	n.Append(d.Text("foo"), d.Text("bar"), d.Text("baz"))
-	data, err := n.AppendJSON(nil)
-	assertNoError(t, err)
-	assertEqual(t, string(data), `["foo","bar","baz"]`)
-	n.Append()
-	data, err = n.AppendJSON(nil)
+	n.Push(d.Text("foo"))
+	n.Push(d.Text("bar"))
+	n.Push(d.Text("baz"))
+	data, err := n.Node().AppendJSON(nil)
 	assertNoError(t, err)
 	assertEqual(t, string(data), `["foo","bar","baz"]`)
 	n.Slice(0, 2)
-	data, err = n.AppendJSON(nil)
+	data, err = n.Node().AppendJSON(nil)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
@@ -565,7 +555,7 @@ func TestNode_Append(t *testing.T) {
 		t.Errorf("Invalid append result: %s", data)
 	}
 	n.Replace(0, d.Number(42))
-	data, err = n.AppendJSON(nil)
+	data, err = n.Node().AppendJSON(nil)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
@@ -586,34 +576,27 @@ func TestNode_Values(t *testing.T) {
 		t.Errorf("Unexpected error: %s", err)
 		return
 	}
-	v := n.Values()
-	if v.Len() != 3 {
-		t.Errorf("Invalid iterator len: %d", v.Len())
-	}
-	if v.Index() != -1 {
-		t.Errorf("Invalid iterator index: %d", v.Index())
-
+	v := n.Object().Iter()
+	if n.Object().Len() != 3 {
+		t.Errorf("Invalid iterator len: %d", n.Object().Len())
 	}
 	iterKeys := []string{}
 	iterValues := []int64{}
 	iterIndices := []int{}
-	for v.Next() {
+	for i := 0; v.Next(); i++ {
 		iterKeys = append(iterKeys, v.Key())
-		n, _ := v.Value().ToInt()
+		n, _ := v.Node().ToInt()
 		iterValues = append(iterValues, n)
-		iterIndices = append(iterIndices, v.Index())
+		iterIndices = append(iterIndices, i)
 	}
-	assertEqual(t, v.Index(), -2)
 	assertEqual(t, iterKeys, []string{"foo", "bar", "baz"})
 	assertEqual(t, iterValues, []int64{1, 2, 3})
 	assertEqual(t, iterIndices, []int{0, 1, 2})
 	assertEqual(t, v.Next(), false)
-	v.Reset()
-	assertEqual(t, v.Next(), true)
 	v.Close()
 	assertEqual(t, v.Next(), false)
-	assertEqual(t, v.values, []V(nil))
-
+	assertEqual(t, v.node, Node{})
+	assertEqual(t, v.iter, childIter{})
 }
 
 func TestNode_SetX(t *testing.T) {
@@ -643,10 +626,10 @@ func TestNode_SetX(t *testing.T) {
 	n.SetStringHTML("<p>foo</p>")
 	assertEqual(t, n.Raw(), `\u003cp\u003efoo\u003c\/p\u003e`)
 	assertEqual(t, n.Type(), TypeString)
-	n = d.Object()
-	n.Set("foo", d.Text("bar"))
-	n.Set("foo", d.Text("baz"))
-	assertEqual(t, n.Get("foo").Raw(), "baz")
+	obj := d.Object()
+	obj.Set("foo", d.Text("bar"))
+	obj.Set("foo", d.Text("baz"))
+	assertEqual(t, obj.Get("foo").Raw(), "baz")
 
 }
 
@@ -654,7 +637,7 @@ func TestNode_Empty(t *testing.T) {
 	n := Node{}
 	assertEqual(t, n.Type(), TypeInvalid)
 	assertEqual(t, n.Raw(), "")
-	assertEqual(t, n.get(), (*node)(nil))
+	assertEqual(t, n.value(), (*value)(nil))
 	{
 		n, ok := n.ToUint()
 		assertEqual(t, n, uint64(0))
@@ -676,7 +659,7 @@ func TestNode_Empty(t *testing.T) {
 		assertEqual(t, ok, false)
 	}
 	{
-		n := n.Get("foo")
-		assertEqual(t, n.ID(), uint(maxUint))
+		n := Object(n).Get("foo")
+		assertEqual(t, n, Node{})
 	}
 }

@@ -122,7 +122,7 @@ case njson.TypeArray:
 	s := *r
 	for i := 0; values.Next() && 0 <= i && i < len(s) ; i++ {
 		r := &s[i]
-		n := n.With(values.ID())
+		n := values.Value()
 		%s
 	}
 
@@ -281,7 +281,7 @@ case njson.TypeObject:
 	for values.Next() {
 		var v %[2]s
 		{
-			n := n.With(values.ID())
+			n := values.Value()
 			r := &v
 			%[3]s
 		}
@@ -331,7 +331,7 @@ func (g *Generator) StructUnmarshaler(t *types.Struct) (code meta.Code) {
 			}
 			code = g.Code(`%s
 				case %s:
-					n := n.With(values.ID())
+					n := values.Value()
 					%s{
 						r := &r%s
 						%s

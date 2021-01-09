@@ -5,9 +5,9 @@ import (
 )
 
 type parser struct {
-	nodes []node
-	n     uint
-	err   error
+	values []value
+	n      uint
+	err    error
 }
 
 // Parse parses a JSON string and returns the root node
@@ -17,8 +17,8 @@ func (d *Document) Parse(s string) (Node, string, error) {
 	pos := p.parseValue(s, 0)
 	switch p.err.(type) {
 	case nil:
-		d.nodes = p.nodes[:p.n]
-		d.get(id).info |= infRoot
+		d.values = p.values[:p.n]
+		d.get(id).flags |= flagRoot
 		// Return tail of input string
 		if pos < uint(len(s)) {
 			return Node{id, d.rev, d}, s[pos:], nil
@@ -35,8 +35,8 @@ func (d *Document) Parse(s string) (Node, string, error) {
 
 func (d *Document) parser() parser {
 	return parser{
-		nodes: d.nodes[:cap(d.nodes)],
-		n:     uint(len(d.nodes)),
+		values: d.values[:cap(d.values)],
+		n:      uint(len(d.values)),
 	}
 }
 
@@ -46,31 +46,31 @@ func (p *parser) abort(pos uint, typ Type, got, want interface{}) uint {
 }
 
 // node returns a node pointer. The pointer is valid until the next call to node()
-func (p *parser) node() *node {
-	if p.n < uint(len(p.nodes)) {
-		n := &p.nodes[p.n]
+func (p *parser) value() *value {
+	if p.n < uint(len(p.values)) {
+		n := &p.values[p.n]
 		p.n++
 		return n
 	}
-	nodes := make([]node, 2*len(p.nodes)+1)
-	copy(nodes, p.nodes)
-	p.nodes = nodes
-	if p.n < uint(len(p.nodes)) {
-		n := &p.nodes[p.n]
+	values := make([]value, 2*len(p.values)+1)
+	copy(values, p.values)
+	p.values = values
+	if p.n < uint(len(p.values)) {
+		n := &p.values[p.n]
 		p.n++
 		return n
 	}
 	return nil
 }
-func appendV(values []V, key string, id, i uint) []V {
+func appendChild(values []child, key string, id, i uint) []child {
 	if i < uint(len(values)) {
-		values[i] = V{id, key}
+		values[i] = child{id, key}
 		return values
 	}
-	tmp := make([]V, 2*len(values)+1)
+	tmp := make([]child, 2*len(values)+1)
 	copy(tmp, values)
 	if i < uint(len(tmp)) {
-		tmp[i] = V{id, key}
+		tmp[i] = child{id, key}
 	}
 	return tmp
 }
@@ -82,8 +82,9 @@ func (p *parser) eof(typ Type, pos uint) uint {
 
 func (p *parser) parseValue(s string, pos uint) uint {
 	var (
-		c    byte
-		info info
+		c   byte
+		typ Type
+		f   flags
 	)
 
 	for ; pos < uint(len(s)); pos++ {
@@ -123,7 +124,7 @@ func (p *parser) parseValue(s string, pos uint) uint {
 	}
 	return p.eof(TypeAnyValue, pos)
 readNumber:
-	info |= vNumber
+	typ = TypeNumber
 	for i := uint(0); i < uint(len(s)); i++ {
 		if bytemapIsNumberEnd[s[i]] == 0 {
 			continue
@@ -135,7 +136,7 @@ readNumber:
 	pos += uint(len(s))
 	goto done
 readString:
-	info |= vString
+	typ = TypeString
 	if pos++; pos < uint(len(s)) {
 		// Slice after the opening quote
 		s = s[pos:]
@@ -144,6 +145,7 @@ readString:
 		i := strings.IndexByte(s, delimString) - 1
 		if 0 <= i && i < len(s) {
 			if s[i] == delimEscape {
+				f |= flagEscapedString
 				// Advance past '\' and '"' and scan the remaining string
 				for i += 2; 0 <= i && i < len(s); i++ { // Avoid bounds check
 					switch s[i] {
@@ -170,7 +172,7 @@ readString:
 	}
 	return p.eof(TypeString, pos-1)
 readTrue:
-	info |= vBoolean
+	typ = TypeBoolean
 	if len(s) >= 4 {
 		if s = s[:4]; s == strTrue {
 			pos += 4
@@ -180,7 +182,7 @@ readTrue:
 	}
 	return p.eof(TypeBoolean, pos)
 readFalse:
-	info |= vBoolean
+	typ = TypeBoolean
 	if len(s) >= 5 {
 		if s = s[:5]; s == strFalse {
 			pos += 5
@@ -190,7 +192,7 @@ readFalse:
 	}
 	return p.eof(TypeBoolean, pos)
 readNull:
-	info |= vNull
+	typ = TypeNull
 	if len(s) >= 4 {
 		if s = s[:4]; s == strNull {
 			pos += 4
@@ -200,46 +202,44 @@ readNull:
 	}
 	return p.eof(TypeNull, pos)
 done:
-	n := p.node()
-	n.set(info, s)
-	for i := range n.values {
-		n.values[i] = V{}
+	n := p.value()
+	n.set(typ, f, s)
+	for i := range n.children {
+		n.children[i] = child{}
 	}
-	n.values = n.values[:0]
+	n.children = n.children[:0]
 	return pos
 }
 
 func (p *parser) parseArray(s string, pos uint) uint {
 	var (
-		id = p.n
-		n  = p.node()
-		c  byte
-		// v      *N
-		values []V
+		id     = p.n
+		v      = p.value()
+		c      byte
+		values []child
 		numV   uint
 	)
-	n.set(vArray, "")
+	v.set(TypeArray, 0, "")
 	// Skip space after '['
 	for ; pos < uint(len(s)); pos++ {
 		c = s[pos]
 		if bytemapIsSpace[c] == 0 {
 			if c == delimEndArray {
-				for i := range n.values {
-					n.values[i] = V{}
+				for i := range v.children {
+					v.children[i] = child{}
 				}
-				n.values = n.values[:0]
+				v.children = v.children[:0]
 				return pos + 1
 			}
 
-			values = n.values[:cap(n.values)]
+			values = v.children[:cap(v.children)]
 			goto readValue
 		}
 	}
 	return p.eof(TypeArray, pos)
 readValue:
-	values = appendV(values, "", p.n, numV)
+	values = appendChild(values, "", p.n, numV)
 	numV++
-	// pos = p.parseValue(s, pos, p.node())
 	pos = p.parseValue(s, pos)
 	if p.err != nil {
 		return pos
@@ -253,17 +253,17 @@ readValue:
 			pos++
 			goto readValue
 		case delimEndArray:
-			if numV < uint(len(n.values)) {
-				values = n.values[:numV]
-				n.values = n.values[numV:]
-				for i := range n.values {
-					n.values[i] = V{}
+			if numV < uint(len(v.children)) {
+				values = v.children[:numV]
+				v.children = v.children[numV:]
+				for i := range v.children {
+					v.children[i] = child{}
 				}
 			} else if numV < uint(len(values)) {
 				values = values[:numV]
 			}
-			if id < uint(len(p.nodes)) {
-				p.nodes[id].values = values
+			if id < uint(len(p.values)) {
+				p.values[id].children = values
 			}
 			return pos + 1
 		default:
@@ -279,27 +279,29 @@ readValue:
 func (p *parser) parseObject(s string, pos uint) uint {
 	var (
 		id     = p.n
-		n      = p.node()
+		v      = p.value()
 		c      byte
 		key    string
-		values []V
+		values []child
 		numV   uint
 		i      uint
+		f      flags
 	)
-	n.set(vObject, "")
+
+	v.set(TypeObject, 0, "")
 	// Skip space after opening '{'
 	for ; pos < uint(len(s)); pos++ {
 		c = s[pos]
 		switch c {
 		case delimEndObject:
 			// Zero out the values slice to release key strings
-			for i := range n.values {
-				n.values[i] = V{}
+			for i := range v.children {
+				v.children[i] = child{}
 			}
-			n.values = n.values[:0]
+			v.children = v.children[:0]
 			return pos + 1
 		case delimString:
-			values = n.values[:cap(n.values)]
+			values = v.children[:cap(v.children)]
 			goto readKey
 		default:
 			if bytemapIsSpace[c] == 0 {
@@ -325,7 +327,7 @@ readKey:
 			case delimString:
 				// key = key[:i]
 				// Slice until closing quote
-				values = appendV(values, key[:i], p.n, numV)
+				values = appendChild(values, key[:i], p.n, numV)
 				numV++
 				pos += i
 				// key = key[:i]
@@ -342,6 +344,7 @@ readKey:
 				}
 				return p.eof(TypeObject, pos)
 			case delimEscape:
+				f |= flagEscapedString
 				i++
 			}
 		}
@@ -372,21 +375,22 @@ readValue:
 			}
 			return p.eof(TypeObject, pos)
 		case delimEndObject:
-			if numV < uint(len(n.values)) {
-				values = n.values[:numV]
-				n.values = n.values[numV:]
+			if numV < uint(len(v.children)) {
+				values = v.children[:numV]
+				v.children = v.children[numV:]
 				// Zero out unused values to release key strings
-				for i := range n.values {
-					n.values[i] = V{}
+				for i := range v.children {
+					v.children[i] = child{}
 				}
 			} else if numV < uint(len(values)) {
 				values = values[:numV]
 				// No need to zero out n.values because n will have no references after return
 			}
 			// Use id because n pointer might be invalid after a node() call
-			if id < uint(len(p.nodes)) {
-				n = &p.nodes[id]
-				n.values = values
+			if id < uint(len(p.values)) {
+				v = &p.values[id]
+				v.children = values
+				v.flags = f
 			}
 			return pos + 1
 		default:
@@ -396,7 +400,6 @@ readValue:
 		}
 	}
 	return p.eof(TypeObject, pos)
-
 }
 
 const (

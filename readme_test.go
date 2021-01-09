@@ -11,11 +11,11 @@ func Example() {
 
 	root, _, _ := d.Parse(`{"answer":42, "foo": {"bar": "baz"}}`)
 
-	answer, _ := root.Get("answer").ToInt()
+	answer, _ := root.Object().Get("answer").ToInt()
 	fmt.Println(answer)
 
 	n := root.Lookup("foo", "bar")
-	bar := n.Unescaped()
+	bar := n.Raw()
 	fmt.Println(bar)
 
 	n.SetString("Hello, 世界")

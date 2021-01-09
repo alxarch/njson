@@ -129,14 +129,27 @@ fallback:
 
 }
 
+const (
+	maxSafeIntegerFloat64 = 9007199254740991
+	minSafeIntegerFloat64 = -9007199254740991
+)
+
 // ParseInt parses an int from string
 func ParseInt(s string) (int64, bool) {
 	f := ParseFloat(s)
-	return int64(f), math.MinInt64 <= f && f < math.MaxInt64 && math.Trunc(f) == f
+	if minSafeIntegerFloat64 <= f && f <= maxSafeIntegerFloat64 && math.Trunc(f) == f {
+		return int64(f), true
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	return n, err == nil
 }
 
-// ParseUint parses an uint from string
+// ParseUint parses a uint from string
 func ParseUint(s string) (uint64, bool) {
 	f := ParseFloat(s)
-	return uint64(f), 0 <= f && f < math.MaxUint64 && math.Trunc(f) == f
+	if 0 <= f && f <= maxSafeIntegerFloat64 && math.Trunc(f) == f {
+		return uint64(f), true
+	}
+	n, err := strconv.ParseUint(s, 10, 64)
+	return n, err == nil
 }

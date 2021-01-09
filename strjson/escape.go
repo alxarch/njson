@@ -40,7 +40,7 @@ escape:
 				if size == 0 {
 					continue
 				}
-				if 0 <= pos && pos < i {
+				if pos < i {
 					b.WriteString(s[pos:i])
 				}
 				b.Write([]byte{'\\', 'u',
@@ -64,7 +64,7 @@ escape:
 			}
 		}
 
-		if 0 <= pos && pos < i {
+		if pos < i {
 			b.WriteString(s[pos:i])
 		}
 		i++
@@ -122,7 +122,7 @@ escape:
 				if size == 0 {
 					continue
 				}
-				if 0 <= pos && pos < i {
+				if pos < i {
 					dst = append(dst, s[pos:i]...)
 				}
 				dst = escapeUTF8(dst, r)
@@ -141,7 +141,7 @@ escape:
 			}
 		}
 
-		if 0 <= pos && pos < i {
+		if pos < i {
 			dst = append(dst, s[pos:i]...)
 		}
 		i++
@@ -179,4 +179,13 @@ func escapeUTF8(dst []byte, r rune) []byte {
 		toHex(byte(r)>>4),
 		toHex(byte(r)&0x0F),
 	)
+}
+
+func NeedsEscape(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if toJSON(s[i]) != utf8.RuneSelf {
+			return true
+		}
+	}
+	return false
 }

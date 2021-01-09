@@ -1,6 +1,7 @@
 package unjson
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -20,6 +21,18 @@ func Test_codec_SelfRef(t *testing.T) {
 	v := reflect.ValueOf(a)
 	c.decode(v.Elem(), node)
 	assert(t, a.B != nil, "Nil B")
+
+}
+
+type customJSONUnmarshal struct {
+	Foo string `json:"foo"`
+}
+
+func (c *customJSONUnmarshal) UnmarshalJSON(data []byte) error {
+	return json.Unmarshal(data, &c.Foo)
+}
+
+func TestDecodeJSONUnmarshaler(t *testing.T) {
 
 }
 

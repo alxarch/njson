@@ -10,83 +10,89 @@ import (
 
 // Document is a JSON document.
 type Document struct {
-	nodes []node
-	rev   uint // document revision incremented on every Reset/Close invalidating nodes
+	values []value
+	rev    uint // document revision incremented on every Reset/Close invalidating values
 }
 
-// node is a JSON document node.
-// node's data is only valid until Document.Close() or Document.Reset().
-type node struct {
-	info   info
-	raw    string
-	values []V
+// value is a JSON document value.
+// value's data is only valid until Document.Close() or Document.Reset().
+type value struct {
+	typ   Type
+	flags flags
+	// locks is the number of iterator locks.
+	// all mutations on the value should fail if it's not zero.
+	locks    uint16
+	raw      string
+	children []child
 }
 
-// V is a node's value referencing it's id.
+// child is a node's value referencing it's id.
 // Array node's values have empty string keys.
-type V struct {
+type child struct {
 	id  uint
 	key string
 }
 
 // Key returns a value's key
-func (v *V) Key() string {
+func (v *child) Key() string {
 	return v.key
 }
 
 // ID returns a value's id
-func (v *V) ID() uint {
+func (v *child) ID() uint {
 	return v.id
 }
 
 const maxUint = ^(uint(0))
 
-func (n *node) set(inf info, raw string) {
-	n.info = inf
-	n.raw = raw
+func (v *value) set(typ Type, f flags, raw string) {
+	v.typ = typ
+	v.flags = f
+	v.raw = raw
 }
 
-func (n *node) reset(inf info, raw string, values []V) {
-	for i := range n.values {
-		n.values[i] = V{}
+func (v *value) reset(typ Type, f flags, raw string, values []child) {
+	for i := range v.children {
+		v.children[i] = child{}
 	}
-	*n = node{
-		info:   inf,
-		raw:    raw,
-		values: values,
+	*v = value{
+		typ:      typ,
+		flags:    f,
+		raw:      raw,
+		children: values,
 	}
 }
 
 // lookup finds a node's id by path.
 func (d *Document) lookup(id uint, path []string) uint {
 	var (
-		v *V
-		n *node
+		c *child
+		v *value
 	)
 lookup:
 	for _, key := range path {
-		if n = d.get(id); n != nil {
-			switch n.info.Type() {
+		if v = d.get(id); v != nil {
+			switch v.typ {
 			case TypeObject:
-				for i := range n.values {
-					v = &n.values[i]
-					if v.key == key {
-						id = v.id
+				for i := range v.children {
+					c = &v.children[i]
+					if c.key == key {
+						id = c.id
 						continue lookup
 					}
 				}
 			case TypeArray:
 				i := 0
 				for _, c := range []byte(key) {
-					if c -= '0'; 0 <= c && c <= 9 {
+					if c -= '0'; c <= 9 {
 						i = i*10 + int(c)
 					} else {
 						return maxUint
 					}
 				}
-				if 0 <= i && i < len(n.values) {
-					v = &n.values[i]
-					id = v.id
+				if 0 <= i && i < len(v.children) {
+					c = &v.children[i]
+					id = c.id
 					continue lookup
 				}
 			}
@@ -98,33 +104,33 @@ lookup:
 
 // Null adds a new Null node to the document.
 func (d *Document) Null() Node {
-	id := uint(len(d.nodes))
-	n := d.grow()
-	n.reset(vNull|infRoot, strNull, n.values[:0])
+	id := uint(len(d.values))
+	v := d.grow()
+	v.reset(TypeNull, flagRoot, strNull, v.children[:0])
 	return d.Node(id)
 }
 
 // False adds a new Boolean node with it's value set to false to the document.
 func (d *Document) False() Node {
-	id := uint(len(d.nodes))
-	n := d.grow()
-	n.reset(vBoolean|infRoot, strFalse, n.values[:0])
+	id := uint(len(d.values))
+	v := d.grow()
+	v.reset(TypeBoolean, flagRoot, strFalse, v.children[:0])
 	return d.Node(id)
 }
 
 // True adds a new Boolean node with it's value set to true to the document.
 func (d *Document) True() Node {
-	id := uint(len(d.nodes))
-	n := d.grow()
-	n.reset(vBoolean|infRoot, strTrue, n.values[:0])
+	id := uint(len(d.values))
+	v := d.grow()
+	v.reset(TypeBoolean, flagRoot, strTrue, v.children[:0])
 	return d.Node(id)
 }
 
 // TextRaw adds a new String node to the document.
 func (d *Document) TextRaw(s string) Node {
-	id := uint(len(d.nodes))
-	n := d.grow()
-	n.reset(vString|infRoot, s, n.values[:0])
+	id := uint(len(d.values))
+	v := d.grow()
+	v.reset(TypeString, flagRoot, s, v.children[:0])
 	return d.Node(id)
 
 }
@@ -140,40 +146,55 @@ func (d *Document) TextHTML(s string) Node {
 }
 
 // Object adds a new empty Object node to the document.
-func (d *Document) Object() Node {
-	id := uint(len(d.nodes))
-	n := d.grow()
-	n.reset(vObject|infRoot, "", n.values[:0])
-	return d.Node(id)
+func (d *Document) Object() Object {
+	id := uint(len(d.values))
+	v := d.grow()
+	v.reset(TypeObject, flagRoot, "", v.children[:0])
+	return Object(d.Node(id))
 }
 
 // Array adds a new empty Array node to the document.
-func (d *Document) Array() Node {
-	id := uint(len(d.nodes))
-	n := d.grow()
-	n.reset(vArray|infRoot, "", n.values[:0])
-	return d.Node(id)
+func (d *Document) Array() Array {
+	id := uint(len(d.values))
+	v := d.grow()
+	v.reset(TypeArray, flagRoot, "", v.children[:0])
+	return Array(d.Node(id))
 }
 
 // Number adds a new Number node to the document.
 func (d *Document) Number(f float64) Node {
-	id := uint(len(d.nodes))
-	n := d.grow()
-	n.reset(vNumber|infRoot, numjson.FormatFloat(f, 64), n.values[:0])
+	id := uint(len(d.values))
+	v := d.grow()
+	v.reset(TypeNumber, flagRoot, numjson.FormatFloat(f, 64), v.children[:0])
 	return d.Node(id)
 }
 
-// Reset resets the document to empty.
+// RawNumber adds a new Number node to the document.
+func (d *Document) RawNumber(num string) Node {
+	id := uint(len(d.values))
+	v := d.grow()
+	v.reset(TypeNumber, flagRoot, num, v.children[:0])
+	return d.Node(id)
+}
+
+// Reset resets the document to empty and releases all strings.
 func (d *Document) Reset() {
-	d.nodes = d.nodes[:0]
+	for i := range d.values {
+		n := &d.values[i]
+		for j := range n.children {
+			n.children[j] = child{}
+		}
+		n.raw = ""
+	}
+	d.values = d.values[:0]
 	// Invalidate any partials
 	d.rev++
 }
 
 // get finds a node by id.
-func (d *Document) get(id uint) *node {
-	if d != nil && id < uint(len(d.nodes)) {
-		return &d.nodes[id]
+func (d *Document) get(id uint) *value {
+	if d != nil && id < uint(len(d.values)) {
+		return &d.values[id]
 	}
 	return nil
 }
@@ -188,17 +209,17 @@ func (d *Document) Root() Node {
 	return Node{0, d.rev, d}
 }
 
-// toInterface converts a node to any combatible go value (many allocations on large trees).
+// toInterface converts a node to any compatible go value (many allocations on large trees).
 func (d *Document) toInterface(id uint) (interface{}, bool) {
 	n := d.get(id)
 	if n == nil {
 		return nil, false
 	}
-	switch n.info.Type() {
+	switch n.typ {
 	case TypeObject:
-		return d.toInterfaceMap(n.values)
+		return d.toInterfaceMap(n.children)
 	case TypeArray:
-		return d.toInterfaceSlice(n.values)
+		return d.toInterfaceSlice(n.children)
 	case TypeString:
 		return strjson.Unescaped(n.raw), true
 	case TypeBoolean:
@@ -220,7 +241,7 @@ func (d *Document) toInterface(id uint) (interface{}, bool) {
 	}
 }
 
-func (d *Document) toInterfaceMap(values []V) (interface{}, bool) {
+func (d *Document) toInterfaceMap(values []child) (interface{}, bool) {
 	var (
 		m  = make(map[string]interface{}, len(values))
 		ok bool
@@ -234,7 +255,7 @@ func (d *Document) toInterfaceMap(values []V) (interface{}, bool) {
 	return m, true
 }
 
-func (d *Document) toInterfaceSlice(values []V) ([]interface{}, bool) {
+func (d *Document) toInterfaceSlice(values []child) ([]interface{}, bool) {
 	var (
 		x  = make([]interface{}, len(values))
 		ok bool
@@ -253,114 +274,128 @@ func (d *Document) AppendJSON(dst []byte) ([]byte, error) {
 	return d.appendJSON(dst, d.get(0))
 }
 
-func (d *Document) appendJSON(dst []byte, n *node) ([]byte, error) {
-	if n == nil {
-		return dst, newTypeError(TypeInvalid, TypeAnyValue)
-	}
-	switch n.info.Type() {
+func (d *Document) appendJSONEscaped(dst []byte, v *value) ([]byte, error) {
+	switch v.typ {
 	case TypeObject:
 		dst = append(dst, delimBeginObject)
 		var err error
-		for i, v := range n.values {
-			if i > 0 {
-				dst = append(dst, delimValueSeparator)
-			}
+		more := ""
+		for _, child := range v.children {
+			dst = append(dst, more...)
 			dst = append(dst, delimString)
-			dst = append(dst, v.key...)
+			dst = strjson.AppendEscaped(dst, child.key, true)
 			dst = append(dst, delimString, delimNameSeparator)
-			dst, err = d.appendJSON(dst, d.get(v.id))
+			dst, err = d.appendJSON(dst, d.get(child.id))
 			if err != nil {
 				return dst, err
 			}
+			more = ","
+		}
+		dst = append(dst, delimEndObject)
+		return dst, nil
+	case TypeString:
+		dst = append(dst, delimString)
+		dst = strjson.AppendEscaped(dst, v.raw, true)
+		dst = append(dst, delimString)
+		return dst, nil
+	default:
+		return dst, newTypeError(v.typ, TypeObject|TypeString)
+	}
+}
+
+func (d *Document) appendJSON(dst []byte, v *value) ([]byte, error) {
+	if v == nil {
+		return dst, newTypeError(TypeInvalid, TypeAnyValue)
+	}
+	if v.flags.IsUnescaped() {
+		return d.appendJSONEscaped(dst, v)
+	}
+	switch v.typ {
+	case TypeString:
+		dst = append(dst, delimString)
+		dst = append(dst, v.raw...)
+		dst = append(dst, delimString)
+	case TypeObject:
+		dst = append(dst, delimBeginObject)
+		var err error
+		more := ""
+		for _, child := range v.children {
+			dst = append(dst, more...)
+			dst = append(dst, delimString)
+			dst = append(dst, child.key...)
+			dst = append(dst, delimString, delimNameSeparator)
+			dst, err = d.appendJSON(dst, d.get(child.id))
+			if err != nil {
+				return dst, err
+			}
+			more = ","
 		}
 		dst = append(dst, delimEndObject)
 	case TypeArray:
 		dst = append(dst, delimBeginArray)
 		var err error
-		for i, v := range n.values {
+		for i, child := range v.children {
 			if i > 0 {
 				dst = append(dst, delimValueSeparator)
 			}
-			dst, err = d.appendJSON(dst, d.get(v.id))
+			dst, err = d.appendJSON(dst, d.get(child.id))
 			if err != nil {
 				return dst, err
 			}
 		}
 		dst = append(dst, delimEndArray)
-	case TypeString:
-		dst = append(dst, delimString)
-		dst = append(dst, n.raw...)
-		dst = append(dst, delimString)
+	case TypeBoolean, TypeNull, TypeNumber:
+		dst = append(dst, v.raw...)
 	default:
-		dst = append(dst, n.raw...)
+		return dst, newTypeError(TypeInvalid, TypeAnyValue)
 	}
 	return dst, nil
-
 }
 
-func (d *Document) ncopy(other *Document, n *node) uint {
-	id := uint(len(d.nodes))
+func (d *Document) copyValue(other *Document, v *value) uint {
+	id := uint(len(d.values))
 	cp := d.grow()
-	values := cp.values[:cap(cp.values)]
-	*cp = node{
-		raw:  n.raw,
-		info: n.info,
+	children := cp.children[:cap(cp.children)]
+	*cp = value{
+		typ:   v.typ,
+		flags: v.flags,
+		raw:   v.raw,
 	}
-	numV := uint(0)
-	for i := range n.values {
-		v := &n.values[i]
-		n := other.get(v.id)
-		if n != nil {
-			values = appendV(values, v.key, d.ncopy(other, n), numV)
-			numV++
+	numChildren := uint(0)
+	for i := range v.children {
+		c := &v.children[i]
+		vc := other.get(c.id)
+		if vc != nil {
+			children = appendChild(children, c.key, d.copyValue(other, vc), numChildren)
+			numChildren++
 		}
 	}
-	d.nodes[id].values = values[:numV]
+	d.values[id].children = children[:numChildren]
 	return id
 }
 
-// func (d *Document) ncopysafe(other *Document, n *node) uint {
-// 	id := uint(len(d.nodes))
-// 	cp := d.grow()
-// 	values := cp.values[:cap(cp.values)]
-// 	*cp = node{
-// 		raw:  scopy(n.raw),
-// 		info: n.info,
-// 	}
-// 	numV := uint(0)
-// 	for i := range n.values {
-// 		v := &n.values[i]
-// 		n := other.get(v.id)
-// 		if n != nil {
-// 			values = appendV(values, scopy(v.key), d.ncopysafe(other, n), numV)
-// 			numV++
-// 		}
-// 	}
-// 	d.nodes[id].values = values[:numV]
-// 	return id
-// }
-
-func (d *Document) copyOrAdopt(other *Document, id, to uint) uint {
-	n := other.get(id)
-	if n == nil {
-		return maxUint
+func (d *Document) copyNode(n Node, parent uint) (uint, bool) {
+	v := n.value()
+	if v == nil {
+		return 0, false
 	}
-	if other == d {
-		if id != to && n.info.IsRoot() && id != 0 {
-			n.info &^= infRoot
-			return id
-		}
+	if n.doc == d && n.id != parent && v.flags.IsRoot() && n.id != 0 {
+		v.flags &^= flagRoot
+		return n.id, true
 	}
-	return d.ncopy(other, n)
+	return d.copyValue(n.doc, v), true
 }
 
-func (d *Document) grow() (n *node) {
-	if len(d.nodes) < cap(d.nodes) {
-		d.nodes = d.nodes[:len(d.nodes)+1]
+// grow adds a value to the document.
+// It does not reset its data.
+// It is inlined by the compiler.
+func (d *Document) grow() *value {
+	if cap(d.values) > len(d.values) {
+		d.values = d.values[:len(d.values)+1]
 	} else {
-		d.nodes = append(d.nodes, node{})
+		d.values = append(d.values, value{})
 	}
-	return &d.nodes[len(d.nodes)-1]
+	return &d.values[len(d.values)-1]
 }
 
 // Pool is a pool of document objects
@@ -376,7 +411,7 @@ func (pool *Pool) Get() *Document {
 		return x.(*Document)
 	}
 	d := Document{
-		nodes: make([]node, 0, minNumNodes),
+		values: make([]value, 0, minNumNodes),
 	}
 	return &d
 }
@@ -387,8 +422,8 @@ func (pool *Pool) Put(d *Document) {
 		return
 	}
 	// // Free all heap pointers
-	// for i := range d.nodes {
-	// 	n := &d.nodes[i]
+	// for i := range d.values {
+	// 	n := &d.values[i]
 	// 	n.raw = ""
 	// 	for i := range n.values {
 	// 		n.values[i] = V{}
