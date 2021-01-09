@@ -201,7 +201,7 @@ func (c *structCodec) decode(v reflect.Value, n njson.Node) (err error) {
 		var (
 			field reflect.Value
 			fc    *codec
-			iter  = n.Values()
+			iter  = n.Object().Iter()
 		)
 		for iter.Next() {
 			fc = c.Get(iter.Key())
@@ -226,7 +226,7 @@ func (c *structCodec) decode(v reflect.Value, n njson.Node) (err error) {
 					}
 				}
 			}
-			if err = fc.decode(field, iter.Value()); err != nil {
+			if err = fc.decode(field, iter.Node()); err != nil {
 				return
 			}
 		}

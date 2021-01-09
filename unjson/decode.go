@@ -98,8 +98,7 @@ func (jsonDecoder) decode(v reflect.Value, n njson.Node) (err error) {
 		if v.IsNil() {
 			v.Set(reflect.New(v.Type().Elem()))
 		}
-		n.WrapUnmarshalJSON(v.Interface().(json.Unmarshaler))
-		return nil
+		return n.WrapUnmarshalJSON(v.Interface().(json.Unmarshaler))
 	}
 	return errInvalidValueType
 }
@@ -208,10 +207,10 @@ func newArrayDecoder(typ reflect.Type, options *Options, codecs cache) (*arrayDe
 func (dec *arrayDecoder) decode(v reflect.Value, n njson.Node) error {
 	switch n.Type() {
 	case njson.TypeArray:
-		iter := n.Values()
+		iter := n.Array().Iter()
 		for i := 0; i < dec.size; i++ {
 			if iter.Next() {
-				dec.decoder.decode(v.Index(i), iter.Value())
+				dec.decoder.decode(v.Index(i), iter.Node())
 			} else {
 				for ; i < dec.size; i++ {
 					el := v.Index(i)
@@ -261,15 +260,15 @@ func (d *sliceDecoder) decode(v reflect.Value, n njson.Node) (err error) {
 			v.SetLen(0)
 		}
 	case njson.TypeArray:
-		iter := n.Values()
-		if size := iter.Len(); v.IsNil() || v.Cap() < size {
+		arr := n.Array()
+		if size := arr.Len(); v.IsNil() || v.Cap() < size {
 			v.Set(reflect.MakeSlice(d.typ, size, size))
 		} else {
 			v.SetLen(size)
 		}
-		for iter.Next() {
-			i := iter.Index()
-			err = d.decoder.decode(v.Index(i), iter.Value())
+		iter := arr.Iter()
+		for i := 0; iter.Next(); i++ {
+			err = d.decoder.decode(v.Index(i), iter.Node())
 			if err != nil {
 				v.SetLen(i)
 				break
@@ -320,10 +319,10 @@ func (d *mapDecoder) decode(v reflect.Value, n njson.Node) (err error) {
 		return
 	case njson.TypeObject:
 		val := reflect.New(d.typ.Elem()).Elem()
-		iter := n.Values()
+		iter := n.Object().Iter()
 		for iter.Next() {
 			val.Set(d.zeroValue)
-			err = d.decoder.decode(val, iter.Value())
+			err = d.decoder.decode(val, iter.Node())
 			if err != nil {
 				return
 			}

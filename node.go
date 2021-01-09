@@ -41,7 +41,6 @@ func (n Node) IsZero() bool {
 	return n == Node{}
 }
 
-
 // Unmarshaler is the interface implemented by types that can unmarshal from a Node.
 type Unmarshaler interface {
 	UnmarshalNodeJSON(n Node) error
@@ -64,6 +63,7 @@ func (n Node) Object() Object {
 func (n Node) Array() Array {
 	return Array(n)
 }
+
 // AppendJSON appends a node's JSON data to a byte slice.
 func (n Node) AppendJSON(dst []byte) ([]byte, error) {
 	if v := n.value(); v != nil {
@@ -117,7 +117,6 @@ func (n Node) Text() (string, Type) {
 	}
 	return "", TypeInvalid
 }
-
 
 // ToFloat converts a node's value to float64.
 func (n Node) ToFloat() (float64, bool) {
@@ -246,7 +245,6 @@ func (n Node) WrapUnmarshalText(u encoding.TextUnmarshaler) (err error) {
 	}
 	return newTypeError(TypeInvalid, TypeString)
 }
-
 
 // SetInt sets a Node's value to an integer.
 func (n Node) SetInt(i int64) {

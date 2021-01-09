@@ -6,19 +6,6 @@ import (
 	"testing"
 )
 
-type customJSON struct{}
-
-func (customJSON) MarshalJSON() ([]byte, error) {
-	return []byte(`"custom"`), nil
-}
-func (customJSON) UnmarshalJSON(data []byte) error {
-	if string(data) != `"custom"` {
-		return errors.New("Invalid data " + string(data))
-
-	}
-	return nil
-}
-
 func TestCustomJSON(t *testing.T) {
 	v := customJSON{}
 	data, err := Marshal(v)
@@ -30,13 +17,25 @@ func TestCustomJSON(t *testing.T) {
 	assert(t, err != nil, "Custom json unmarshaler didn't propagate error")
 }
 
+type customJSON struct{}
+
+func (customJSON) MarshalJSON() ([]byte, error) {
+	return []byte(`"custom"`), nil
+}
+func (customJSON) UnmarshalJSON(data []byte) error {
+	if string(data) != `"custom"` {
+		return errors.New("Invalid data " + string(data))
+	}
+	return nil
+}
+
 type customText string
 
 func (t customText) MarshalText() ([]byte, error) {
-	return []byte(string(t)), nil
+	return []byte(t), nil
 }
 func (t *customText) UnmarshalText(data []byte) error {
-	*t = customText(string(data))
+	*t = customText(data)
 	return nil
 }
 
