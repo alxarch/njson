@@ -10,6 +10,8 @@ import (
 var _ starlark.Value = (*Array)(nil)
 var _ starlark.HasAttrs = (*Array)(nil)
 var _ starlark.Indexable = (*Array)(nil)
+var _ starlark.HasSetIndex = (*Array)(nil)
+var _ starlark.Iterable = (*Array)(nil)
 
 type Array struct {
 	node      njson.Array
@@ -18,8 +20,48 @@ type Array struct {
 	frozen    bool
 }
 
+func (a *Array) SetIndex(index int, value starlark.Value) error {
+	if err := a.checkMutable("insert to"); err != nil {
+		return err
+	}
+	node, err := nodeOf(a.node.Document(), value)
+	if err != nil {
+		return err
+	}
+	if a.node.Set(index, node).IsZero() {
+		return errors.New("unexpected error while inserting to njson array")
+	}
+	return nil
+}
+
+func (a *Array) Iterate() starlark.Iterator {
+	return &arrayIter{
+		ArrayIterator: a.node.Iter(),
+	}
+}
+
+type arrayIter struct {
+	njson.ArrayIterator
+}
+
+func (i *arrayIter) Next(p *starlark.Value) bool {
+	if i.ArrayIterator.Next() {
+		v, err := nodeValue(i.Node())
+		if err != nil {
+			return false
+		}
+		*p = v
+		return true
+	}
+	return false
+}
+
+func (i *arrayIter) Done() {
+	i.ArrayIterator.Close()
+}
+
 func (a *Array) Index(i int) starlark.Value {
-	if v := nodeValue(a.node.Get(i)); v != nil {
+	if v, _ := nodeValue(a.node.Get(i)); v != nil {
 		return v
 	}
 	return starlark.None
@@ -94,8 +136,71 @@ func arrayInsert(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tu
 	panic("implement me")
 }
 
-func arrayIndex(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	panic("implement me")
+func arrayIndex(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var seek, start_, end_ starlark.Value
+	if err := starlark.UnpackPositionalArgs(b.Name(), args, kwargs, 1, &seek, &start_, &end_); err != nil {
+		return nil, err
+	}
+	arr := b.Receiver().(*Array)
+	len := arr.Len()
+	start, end, err := indices(len, start_, end_)
+	if err != nil {
+		return nil, builtinError(b, err)
+	}
+	iter := arr.node.Iter()
+	defer iter.Close()
+	i := 0
+	for ; i < start; i++ {
+		iter.Next()
+	}
+	for ; iter.Next() && i < end; i++ {
+		el, err := nodeValue(iter.Node())
+		if err != nil {
+			return nil, builtinError(b, err)
+		}
+		eq, err := starlark.Equal(el, seek)
+		if err != nil {
+			return nil, builtinError(b, err)
+		}
+		if eq {
+			return starlark.MakeInt(i), nil
+		}
+	}
+	return nil, builtinError(b, "value not in array")
+}
+
+func indices(len int, start_, end_ starlark.Value) (int, int, error) {
+	if start_ == starlark.None {
+		return 0, len, nil
+	}
+	start, err := starlark.AsInt32(start_)
+	if err != nil {
+		return 0, len, err
+	}
+	start = asIndex(start, len)
+	if end_ == starlark.None {
+		return start, len, nil
+	}
+	end, err := starlark.AsInt32(end_)
+	if err != nil {
+		return start, len, err
+	}
+	end = asIndex(end, len)
+	return start, end, nil
+}
+
+func asIndex(i, n int) int {
+	if 0 <= i && i < n {
+		return i
+	}
+	if i >= n {
+		return n
+	}
+	i += n
+	if i < 0 {
+		return 0
+	}
+	return i
 }
 
 func arrayExtend(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -108,8 +213,8 @@ func arrayClear(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tup
 
 func arrayAppend(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	arr := fn.Receiver().(*Array)
-	if !arr.isMutable() {
-		return nil, errors.New("array is immutable")
+	if err := arr.checkMutable("append to"); err != nil {
+		return nil, err
 	}
 	var el starlark.Value
 	if err := starlark.UnpackPositionalArgs(fn.Name(), args, kwargs, 1, &el); err != nil {
@@ -117,9 +222,30 @@ func arrayAppend(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tu
 	}
 	node, err := nodeOf(arr.node.Document(), el)
 	if err != nil {
-		return nil, err
+		return nil, builtinError(fn, err)
 	}
 	arr.node.Push(node)
 	arr.len++
 	return starlark.None, nil
+}
+
+func builtinError(b *starlark.Builtin, msg interface{}) error {
+	err, _ := msg.(error)
+	return &namedError{
+		msg: fmt.Sprintf("%s: %s", b.Name(), msg),
+		err: err,
+	}
+}
+
+type namedError struct {
+	msg string
+	err error
+}
+
+func (e *namedError) Error() string {
+	return e.msg
+}
+
+func (e *namedError) Unwrap() error {
+	return e.err
 }

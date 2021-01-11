@@ -5,12 +5,49 @@ import (
 	"errors"
 	"github.com/alxarch/njson"
 	"go.starlark.net/starlark"
-	"math/big"
+	"strings"
 )
+
+const (
+	keyThreadLocalDocument = "njson"
+)
+
+func Parse(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if len(kwargs) != 0 {
+		return nil, errors.New("parse does not accept keyword arguments")
+	}
+	if len(args) != 1 {
+		return nil, errors.New("parse expects an argument")
+	}
+	var input string
+	if err := starlark.UnpackPositionalArgs("parse", args, kwargs, 1, &input); err != nil {
+		return nil, err
+	}
+	doc := documentFromThread(thread)
+	if doc == nil {
+		doc = &njson.Document{}
+		thread.SetLocal(keyThreadLocalDocument, doc)
+	}
+	node, tail, err := doc.Parse(input)
+	if err != nil {
+		return nil, err
+	}
+	if tail = strings.TrimSpace(tail); tail != "" {
+		return nil, errors.New("leftover text after parsing JSON")
+	}
+	return nodeValue(node)
+}
+
+func documentFromThread(thread *starlark.Thread) *njson.Document {
+	if doc, ok := thread.Local(keyThreadLocalDocument).(*njson.Document); ok {
+		return doc
+	}
+	return nil
+}
 
 type proto struct {
 	methods map[string]*starlark.Builtin
-	names  []string
+	names   []string
 }
 
 func newProto(methods map[string]*starlark.Builtin) *proto {
@@ -20,7 +57,7 @@ func newProto(methods map[string]*starlark.Builtin) *proto {
 	}
 	return &proto{
 		methods: methods,
-		names: names,
+		names:   names,
 	}
 }
 
@@ -34,46 +71,40 @@ func (p *proto) Names() []string {
 	return p.names
 }
 
-func nodeValue(n njson.Node) starlark.Value {
-	switch n.Type() {
+func nodeValue(n njson.Node) (starlark.Value, error) {
+	switch s, typ := n.Text(); typ {
 	case njson.TypeString:
-		s, _ := n.ToString()
-		return starlark.String(s)
+		return starlark.String(s), nil
 	case njson.TypeArray:
 		arr := njson.Array(n)
 		return &Array{
 			node: arr,
-			len: uint32(arr.Len()),
-		}
+			len:  uint32(arr.Len()),
+		}, nil
 	case njson.TypeObject:
 		obj := njson.Object(n)
 		return &Object{
 			node: obj,
-		}
+			len:  uint32(obj.Len()),
+		}, nil
 	case njson.TypeNumber:
-		if n, ok := n.ToInt(); ok {
-			return starlark.MakeInt64(n)
+		v, err := readNumber(s)
+		if err != nil {
+			return nil, nil
 		}
-		if n, ok := n.ToUint(); ok {
-			return starlark.MakeUint64(n)
-		}
-		if f, ok := n.ToFloat(); ok {
-			return starlark.Float(f)
-		}
-		b := big.NewInt(0)
-		b.SetString(n.Raw(), 10)
-		return starlark.MakeBigInt(b)
+		return v, nil
 	case njson.TypeBoolean:
-		if n.Raw() == "true" {
-			return starlark.True
+		if s == "true" {
+			return starlark.True, nil
 		}
-		return starlark.False
+		return starlark.False, nil
 	case njson.TypeNull:
-		return starlark.None
+		return starlark.None, nil
 	default:
-		return starlark.None
+		return nil, nil
 	}
 }
+
 var zeroNode njson.Node
 
 func nodeOf(doc *njson.Document, v starlark.Value) (njson.Node, error) {
@@ -124,7 +155,7 @@ func nodeOf(doc *njson.Document, v starlark.Value) (njson.Node, error) {
 		return doc.Null(), nil
 	case starlark.Int:
 		return doc.RawNumber(v.String()), nil
-	case interface {NJSON() njson.Node}:
+	case interface{ NJSON() njson.Node }:
 		return v.NJSON(), nil
 	default:
 		return zeroNode, errors.New("cannot handle type")

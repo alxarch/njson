@@ -138,7 +138,7 @@ func (a Array) Get(i int) Node {
 // Insert inserts a node at offset i of an Array node.
 func (a Array) Set(i int, el Node) Node {
 	n := Node(a)
-	if v := n.value(); v != nil && v.typ == TypeArray && 0 <= i && i < len(v.children) {
+	if v := n.value(); v != nil && v.typ == TypeArray && v.locks == 0 && 0 <= i && i < len(v.children) {
 		id, ok := n.doc.copyNode(el, n.id)
 		if !ok {
 			return Node{}

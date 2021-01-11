@@ -37,11 +37,13 @@ func benchmarkParseFloat(b *testing.B, s string) {
 		b.ReportAllocs()
 		b.SetBytes(int64(len(s)))
 		b.RunParallel(func(pb *testing.PB) {
-			var f float64
 			for pb.Next() {
-				f += ParseFloat(s)
+				num, err := Parse(s)
+				if err != nil {
+					b.Errorf("unexpected error: %s", err)
+				}
+				_ = num
 			}
-			atomic.AddUint64(&Sink, uint64(f))
 		})
 	})
 	b.Run("fastfloat", func(b *testing.B) {
