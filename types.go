@@ -2,6 +2,7 @@ package njson
 
 import (
 	"fmt"
+	"github.com/alxarch/njson/strjson"
 	"math/bits"
 )
 
@@ -18,6 +19,9 @@ const (
 	TypeBoolean
 	TypeNull
 	TypeAnyValue = TypeString | TypeNumber | TypeBoolean | TypeObject | TypeArray | TypeNull
+	TypeScalar = TypeString | TypeNumber | TypeBoolean
+	TypeImmutable = TypeString | TypeNumber | TypeBoolean | TypeNull
+	TypeComposite = TypeArray|TypeObject
 )
 
 // Types returns all types of a typemask
@@ -35,7 +39,22 @@ func (t Type) Types() (types []Type) {
 		}
 	}
 	return
+}
 
+func (t Type) IsScalar() bool {
+	return t&TypeScalar != 0
+}
+func (t Type) IsComposite() bool {
+	return t&TypeComposite != 0
+}
+func (t Type) IsNull() bool {
+	return t == TypeNull
+}
+func (t Type) IsValid() bool {
+	return t&TypeAnyValue != 0
+}
+func (t Type) IsImmutable() bool {
+	return t&TypeImmutable != 0
 }
 
 const (
@@ -71,20 +90,13 @@ func (t Type) String() string {
 	}
 }
 
-type flags uint8
+type flags strjson.Flags
 
 const (
-	flagRoot flags = 1 << iota
-	flagEscapedString
-	flagUnescapedString
+	flagRoot flags = 1 << 7
+	flagNew        = flagRoot | flags(strjson.FlagJSON)
 )
 
 func (f flags) IsRoot() bool {
 	return f&flagRoot == flagRoot
-}
-func (f flags) IsSimpleString() bool {
-	return f&flagEscapedString == 0
-}
-func (f flags) IsUnescaped() bool {
-	return f&flagUnescapedString == flagUnescapedString
 }

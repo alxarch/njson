@@ -3,6 +3,7 @@ package njson
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/alxarch/njson/numjson"
 	"reflect"
 	"testing"
 )
@@ -33,172 +34,177 @@ func TestNode_ToBool(t *testing.T) {
 	} else if v {
 		t.Errorf("Unexpected conversion %v", v)
 	}
-}
-
-func TestNode_ToFloat(t *testing.T) {
-	d := Document{}
-	n, _, err := d.Parse("1.2")
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err)
-	}
-	if f, ok := n.ToFloat(); !ok {
-		t.Errorf("Unexpected conversion error")
-	} else if f != 1.2 {
-		t.Errorf("Unexpected conversion %f", f)
-	} else if f, ok := n.ToFloat(); !ok {
-		t.Errorf("Unexpected conversion error")
-	} else if f != 1.2 {
-		t.Errorf("Unexpected conversion %f", f)
-	}
-
-	// if n, _, err := d.Parse("NaN"); err != nil {
-	// 	t.Errorf("Unexpected error: %s", err)
-	// } else if f, ok := n.Node().ToFloat(); !ok {
-	// 	t.Errorf("Unexpected conversion error")
-	// } else if !math.IsNaN(f) {
-	// 	t.Errorf("Unexpected conversion %f", f)
-	// }
-
-	if n, _, err := d.Parse("0"); err != nil {
-		t.Errorf("Unexpected error: %s", err)
-	} else if f, ok := n.ToFloat(); !ok {
-		t.Errorf("Unexpected conversion error")
-	} else if f != 0 {
-		t.Errorf("Unexpected conversion %f", f)
-	}
-
-	if n, _, err := d.Parse("-17"); err != nil {
-		t.Errorf("Unexpected error: %s", err)
-	} else if f, ok := n.ToFloat(); !ok {
-		t.Errorf("Unexpected conversion error")
-	} else if f != -17 {
-		t.Errorf("Unexpected conversion %f", f)
-	}
-
-	if n, _, err := d.Parse("-a7"); err != nil {
-		t.Errorf("Unexpected error: %s", err)
-	} else if _, ok := n.ToFloat(); ok {
-		t.Errorf("Expected conversion error")
-	}
 	if n, _, err := d.Parse("true"); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if _, ok := n.ToFloat(); ok {
-		t.Errorf("Unexpected conversion error")
-	}
-	// if v, ok := ((*Node)(nil)).ToFloat(); ok {
-	// 	t.Errorf("Unexpected conversion %v", v)
-	// } else if v != 0 {
-	// 	t.Errorf("Unexpected conversion %v", v)
-	// }
-}
-
-func TestNode_ToInt(t *testing.T) {
-	d := Document{}
-	if n, _, err := d.Parse("1.2"); err != nil {
-		t.Errorf("Unexpected error: %s", err)
-	} else if _, ok := n.ToInt(); ok {
-		t.Errorf("Unexpected conversion ok")
-	}
-	if n, _, err := d.Parse("-1.0"); err != nil {
-		t.Errorf("Unexpected error: %s", err)
-	} else if f, ok := n.ToInt(); !ok {
-		t.Errorf("Unexpected conversion error %v %d", n, f)
-	} else if f != -1 {
-		t.Errorf("Unexpected conversion %d", f)
-	}
-
-	// if n, _, err := d.Parse("NaN"); err != nil {
-	// 	t.Errorf("Unexpected error: %s", err)
-	// } else if _, ok := n.Node().ToInt(); ok {
-	// 	t.Errorf("Unexpected conversion error")
-	// }
-
-	if n, _, err := d.Parse("0"); err != nil {
-		t.Errorf("Unexpected error: %s", err)
-	} else if f, ok := n.ToInt(); !ok {
-		t.Errorf("Unexpected conversion error")
-	} else if f != 0 {
-		t.Errorf("Unexpected conversion %d", f)
-	}
-
-	if n, _, err := d.Parse("-17"); err != nil {
-		t.Errorf("Unexpected error: %s", err)
-	} else if f, ok := n.ToInt(); !ok {
-		t.Errorf("Unexpected conversion error")
-	} else if f != -17 {
-		t.Errorf("Unexpected conversion %d", f)
-	}
-	if n, _, err := d.Parse("42.0"); err != nil {
-		t.Errorf("Unexpected error: %s", err)
-	} else if f, ok := n.ToInt(); !ok {
-		t.Errorf("Unexpected conversion error")
-	} else if f != 42 {
-		t.Errorf("Unexpected conversion %d", f)
-	} else if f, ok := n.ToInt(); !ok {
-		t.Errorf("Unexpected conversion error")
-	} else if f != 42 {
-		t.Errorf("Unexpected conversion %d", f)
-	}
-
-	if n, _, err := d.Parse("-a7"); err != nil {
-		t.Errorf("Unexpected error: %s", err)
-	} else if v, ok := n.ToInt(); ok {
-		t.Errorf("Unexpected conversion %v", v)
+	} else if n.Boolean() != True {
+		t.Errorf("Unexpected conversion %v", n)
 	}
 }
 
-func TestNode_ToUint(t *testing.T) {
-	d := Document{}
-	n, _, err := d.Parse("1.2")
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err)
-	}
-	if _, ok := n.ToUint(); ok {
-		t.Errorf("Unexpected conversion ok")
-	}
-	if n, _, err := d.Parse("0"); err != nil {
-		t.Errorf("Unexpected error: %s", err)
-	} else if f, ok := n.ToUint(); !ok {
-		t.Errorf("Unexpected conversion error")
-	} else if f != 0 {
-		t.Errorf("Unexpected conversion %d", f)
-	}
-
-	// if n, _, err := d.Parse("NaN"); err != nil {
-	// 	t.Errorf("Unexpected error: %s", err)
-	// } else if _, ok := n.Node().ToUint(); ok {
-	// 	t.Errorf("Unexpected conversion error")
-	// }
-
-	if n, _, err := d.Parse("-17"); err != nil {
-		t.Errorf("Unexpected error: %s", err)
-	} else if _, ok := n.ToUint(); ok {
-		t.Errorf("Unexpected conversion ok")
-	}
-
-	if n, _, err := d.Parse("42.0"); err != nil {
-		t.Errorf("Unexpected error: %s", err)
-	} else if f, ok := n.ToUint(); !ok {
-		t.Errorf("Unexpected conversion error")
-	} else if f != 42 {
-		t.Errorf("Unexpected conversion %d", f)
-	} else if f, ok := n.ToUint(); !ok {
-		t.Errorf("Unexpected conversion error")
-	} else if f != 42 {
-		t.Errorf("Unexpected conversion %d", f)
-	}
-
-	if n, _, err := d.Parse("-a7"); err != nil {
-		t.Errorf("Unexpected error: %s", err)
-	} else if u, ok := n.ToUint(); ok {
-		t.Errorf("Unexpected conversion %d", u)
-	}
-	// if v, ok := ((*Node)(nil)).ToUint(); ok {
-	// 	t.Errorf("Unexpected conversion %v", v)
-	// } else if v != 0 {
-	// 	t.Errorf("Unexpected conversion %v", v)
-	// }
-}
+//func TestNode_ToFloat(t *testing.T) {
+//	d := Document{}
+//	n, _, err := d.Parse("1.2")
+//	if err != nil {
+//		t.Errorf("Unexpected error: %s", err)
+//	}
+//	if f, ok := n.ToFloat(); !ok {
+//		t.Errorf("Unexpected conversion error")
+//	} else if f != 1.2 {
+//		t.Errorf("Unexpected conversion %f", f)
+//	} else if f, ok := n.ToFloat(); !ok {
+//		t.Errorf("Unexpected conversion error")
+//	} else if f != 1.2 {
+//		t.Errorf("Unexpected conversion %f", f)
+//	}
+//
+//	// if n, _, err := d.Parse("NaN"); err != nil {
+//	// 	t.Errorf("Unexpected error: %s", err)
+//	// } else if f, ok := n.Node().ToFloat(); !ok {
+//	// 	t.Errorf("Unexpected conversion error")
+//	// } else if !math.IsNaN(f) {
+//	// 	t.Errorf("Unexpected conversion %f", f)
+//	// }
+//
+//	if n, _, err := d.Parse("0"); err != nil {
+//		t.Errorf("Unexpected error: %s", err)
+//	} else if f, ok := n.ToFloat(); !ok {
+//		t.Errorf("Unexpected conversion error")
+//	} else if f != 0 {
+//		t.Errorf("Unexpected conversion %f", f)
+//	}
+//
+//	if n, _, err := d.Parse("-17"); err != nil {
+//		t.Errorf("Unexpected error: %s", err)
+//	} else if f, ok := n.ToFloat(); !ok {
+//		t.Errorf("Unexpected conversion error")
+//	} else if f != -17 {
+//		t.Errorf("Unexpected conversion %f", f)
+//	}
+//
+//	if n, _, err := d.Parse("-a7"); err != nil {
+//		t.Errorf("Unexpected error: %s", err)
+//	} else if _, ok := n.ToFloat(); ok {
+//		t.Errorf("Expected conversion error")
+//	}
+//	if n, _, err := d.Parse("true"); err != nil {
+//		t.Errorf("Unexpected error: %s", err)
+//	} else if _, ok := n.ToFloat(); ok {
+//		t.Errorf("Unexpected conversion error")
+//	}
+//	// if v, ok := ((*Node)(nil)).ToFloat(); ok {
+//	// 	t.Errorf("Unexpected conversion %v", v)
+//	// } else if v != 0 {
+//	// 	t.Errorf("Unexpected conversion %v", v)
+//	// }
+//}
+//
+//func TestNode_ToInt(t *testing.T) {
+//	d := Document{}
+//	if n, _, err := d.Parse("1.2"); err != nil {
+//		t.Errorf("Unexpected error: %s", err)
+//	} else if _, ok := n.ToInt(); ok {
+//		t.Errorf("Unexpected conversion ok")
+//	}
+//	if n, _, err := d.Parse("-1.0"); err != nil {
+//		t.Errorf("Unexpected error: %s", err)
+//	} else if f, ok := n.ToInt(); !ok {
+//		t.Errorf("Unexpected conversion error %v %d", n, f)
+//	} else if f != -1 {
+//		t.Errorf("Unexpected conversion %d", f)
+//	}
+//
+//	// if n, _, err := d.Parse("NaN"); err != nil {
+//	// 	t.Errorf("Unexpected error: %s", err)
+//	// } else if _, ok := n.Node().ToInt(); ok {
+//	// 	t.Errorf("Unexpected conversion error")
+//	// }
+//
+//	if n, _, err := d.Parse("0"); err != nil {
+//		t.Errorf("Unexpected error: %s", err)
+//	} else if f, ok := n.ToInt(); !ok {
+//		t.Errorf("Unexpected conversion error")
+//	} else if f != 0 {
+//		t.Errorf("Unexpected conversion %d", f)
+//	}
+//
+//	if n, _, err := d.Parse("-17"); err != nil {
+//		t.Errorf("Unexpected error: %s", err)
+//	} else if f, ok := n.ToInt(); !ok {
+//		t.Errorf("Unexpected conversion error")
+//	} else if f != -17 {
+//		t.Errorf("Unexpected conversion %d", f)
+//	}
+//	if n, _, err := d.Parse("42.0"); err != nil {
+//		t.Errorf("Unexpected error: %s", err)
+//	} else if f, ok := n.ToInt(); !ok {
+//		t.Errorf("Unexpected conversion error")
+//	} else if f != 42 {
+//		t.Errorf("Unexpected conversion %d", f)
+//	} else if f, ok := n.ToInt(); !ok {
+//		t.Errorf("Unexpected conversion error")
+//	} else if f != 42 {
+//		t.Errorf("Unexpected conversion %d", f)
+//	}
+//
+//	if n, _, err := d.Parse("-a7"); err != nil {
+//		t.Errorf("Unexpected error: %s", err)
+//	} else if v, ok := n.ToInt(); ok {
+//		t.Errorf("Unexpected conversion %v", v)
+//	}
+//}
+//
+//func TestNode_ToUint(t *testing.T) {
+//	d := Document{}
+//	n, _, err := d.Parse("1.2")
+//	if err != nil {
+//		t.Errorf("Unexpected error: %s", err)
+//	}
+//	if _, ok := n.ToUint(); ok {
+//		t.Errorf("Unexpected conversion ok")
+//	}
+//	if n, _, err := d.Parse("0"); err != nil {
+//		t.Errorf("Unexpected error: %s", err)
+//	} else if f, ok := n.ToUint(); !ok {
+//		t.Errorf("Unexpected conversion error")
+//	} else if f != 0 {
+//		t.Errorf("Unexpected conversion %d", f)
+//	}
+//
+//	// if n, _, err := d.Parse("NaN"); err != nil {
+//	// 	t.Errorf("Unexpected error: %s", err)
+//	// } else if _, ok := n.Node().ToUint(); ok {
+//	// 	t.Errorf("Unexpected conversion error")
+//	// }
+//
+//	if n, _, err := d.Parse("-17"); err != nil {
+//		t.Errorf("Unexpected error: %s", err)
+//	} else if _, ok := n.ToUint(); ok {
+//		t.Errorf("Unexpected conversion ok")
+//	}
+//
+//	if n, _, err := d.Parse("42.0"); err != nil {
+//		t.Errorf("Unexpected error: %s", err)
+//	} else if f, ok := n.ToUint(); !ok {
+//		t.Errorf("Unexpected conversion error")
+//	} else if f != 42 {
+//		t.Errorf("Unexpected conversion %d", f)
+//	} else if f, ok := n.ToUint(); !ok {
+//		t.Errorf("Unexpected conversion error")
+//	} else if f != 42 {
+//		t.Errorf("Unexpected conversion %d", f)
+//	}
+//
+//	if n, _, err := d.Parse("-a7"); err != nil {
+//		t.Errorf("Unexpected error: %s", err)
+//	} else if u, ok := n.ToUint(); ok {
+//		t.Errorf("Unexpected conversion %d", u)
+//	}
+//	// if v, ok := ((*Node)(nil)).ToUint(); ok {
+//	// 	t.Errorf("Unexpected conversion %v", v)
+//	// } else if v != 0 {
+//	// 	t.Errorf("Unexpected conversion %v", v)
+//	// }
+//}
 
 type customJSONUnmarshaler struct {
 	Foo int
@@ -316,32 +322,18 @@ func TestNode_Unescaped(t *testing.T) {
 	defer d.Close()
 	if n, _, err := d.Parse(`"foo"`); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if s := n.Raw(); s != "foo" {
-		t.Errorf("Unexpected value: %s", s)
+	} else if s, typ := n.ToString(); typ != TypeString || s != "foo" {
+		t.Errorf("Unexpected value: %s(%s)", typ,s)
 	}
 	if n, _, err := d.Parse(`42`); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if s := n.Raw(); s != "" {
-		t.Errorf("Unexpected value: %s", s)
+	} else if s, typ := n.ToString(); typ != TypeNumber || s != "42" {
+		t.Errorf("Unexpected value: %s(%s)", typ,s)
 	}
 	if n, _, err := d.Parse(`"foo\n"`); err != nil {
 		t.Errorf("Unexpected error: %s", err)
-	} else if s := n.Raw(); s != "foo\n" {
-		t.Errorf("Unexpected value: %s", s)
-	} else if s := n.Raw(); s != "foo\n" {
-		t.Errorf("Unexpected value: %s", s)
-	}
-	if n, _, err := d.Parse(`"foo\n"`); err != nil {
-		t.Errorf("Unexpected error: %s", err)
-	} else if s := n.Raw(); string(s) != "foo\n" {
-		t.Errorf("Unexpected value: %s", s)
-	} else if s := n.Raw(); string(s) != "foo\n" {
-		t.Errorf("Unexpected value: %s", s)
-	}
-	if n, _, err := d.Parse(`"foo"`); err != nil {
-		t.Errorf("Unexpected error: %s", err)
-	} else if s := n.Raw(); string(s) != "foo" {
-		t.Errorf("Unexpected value: %s", s)
+	} else if s, typ := n.ToString(); typ != TypeString || s != "foo\n" {
+		t.Errorf("Unexpected value: %s(%s)", typ,s)
 	}
 }
 
@@ -361,7 +353,7 @@ func TestNode_ToInterface(t *testing.T) {
 		t.Errorf("Unexpected error: %s", err)
 	} else if x, ok := n.ToInterface(); !ok {
 		t.Errorf("Failed to convert %v to interface.", n)
-	} else if !reflect.DeepEqual(x, 42.0) {
+	} else if !reflect.DeepEqual(x, int64(42)) {
 		t.Errorf("Unexpected value: %v", x)
 	}
 
@@ -383,7 +375,7 @@ func TestNode_ToInterface(t *testing.T) {
 		t.Errorf("Unexpected error: %s", err)
 	} else if x, ok := n.ToInterface(); !ok {
 		t.Errorf("Failed to convert %v to interface.", n)
-	} else if !reflect.DeepEqual(x, map[string]interface{}{"answer": 42.0}) {
+	} else if !reflect.DeepEqual(x, map[string]interface{}{"answer": int64(42)}) {
 		t.Errorf("Unexpected value: %v", x)
 	}
 	if n, _, err := d.Parse(`true`); err != nil {
@@ -460,7 +452,7 @@ func TestNode_Index(t *testing.T) {
 	{
 		n := arr.Get(2)
 		assertEqual(t, n.Type(), TypeNumber)
-		assertEqual(t, n.Raw(), "3")
+		assertEqual(t, n.Number(), numjson.Int64(3))
 		assertEqual(t, n.id, uint(3))
 	}
 	{
@@ -523,8 +515,8 @@ func TestNode_Lookup(t *testing.T) {
 	if n.Type() != TypeString {
 		t.Errorf("Invalid type: %s", n.Type())
 	}
-	if n.Raw() != "baz" {
-		t.Errorf("Invalid value: %s", n.Raw())
+	if s, _ := n.ToString(); s != "baz" {
+		t.Errorf("Invalid value: %s", s)
 	}
 	data, err := n.AppendJSON(nil)
 	if err != nil {
@@ -538,10 +530,10 @@ func TestNode_Lookup(t *testing.T) {
 
 func TestNode_Append(t *testing.T) {
 	d := Document{}
-	n := d.Array()
-	n.Push(d.Text("foo"))
-	n.Push(d.Text("bar"))
-	n.Push(d.Text("baz"))
+	n := d.NewArray()
+	n.Push(d.NewString("foo"))
+	n.Push(d.NewString("bar"))
+	n.Push(d.NewString("baz"))
 	data, err := n.Node().AppendJSON(nil)
 	assertNoError(t, err)
 	assertEqual(t, string(data), `["foo","bar","baz"]`)
@@ -554,7 +546,7 @@ func TestNode_Append(t *testing.T) {
 	if string(data) != `["foo","bar"]` {
 		t.Errorf("Invalid append result: %s", data)
 	}
-	n.Replace(0, d.Number(42))
+	n.Replace(0, d.NewInt(42))
 	data, err = n.Node().AppendJSON(nil)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
@@ -585,8 +577,8 @@ func TestNode_Values(t *testing.T) {
 	iterIndices := []int{}
 	for i := 0; v.Next(); i++ {
 		iterKeys = append(iterKeys, v.Key())
-		n, _ := v.Node().ToInt()
-		iterValues = append(iterValues, n)
+		n := v.Node().Number()
+		iterValues = append(iterValues, n.Int64())
 		iterIndices = append(iterIndices, i)
 	}
 	assertEqual(t, iterKeys, []string{"foo", "bar", "baz"})
@@ -596,63 +588,67 @@ func TestNode_Values(t *testing.T) {
 	v.Close()
 	assertEqual(t, v.Next(), false)
 	assertEqual(t, v.node, Node{})
-	assertEqual(t, v.iter, childIter{})
+	assertEqual(t, v.iter, iterator{})
 }
 
 func TestNode_SetX(t *testing.T) {
 	d := Document{}
-	n := d.Text("foo")
-	n.SetString("bar")
-	assertEqual(t, n.Raw(), "bar")
-	assertEqual(t, n.Type(), TypeString)
-	n.SetInt(42)
-	assertEqual(t, n.Raw(), "42")
-	assertEqual(t, n.Type(), TypeNumber)
-	n.SetFloat(1)
-	assertEqual(t, n.Raw(), "1")
-	assertEqual(t, n.Type(), TypeNumber)
-	n.SetUint(2)
-	assertEqual(t, n.Raw(), "2")
-	assertEqual(t, n.Type(), TypeNumber)
-	n.SetNull()
-	assertEqual(t, n.Raw(), "null")
-	assertEqual(t, n.Type(), TypeNull)
-	n.SetFalse()
-	assertEqual(t, n.Raw(), "false")
-	assertEqual(t, n.Type(), TypeBoolean)
-	n.SetTrue()
-	assertEqual(t, n.Raw(), "true")
-	assertEqual(t, n.Type(), TypeBoolean)
-	n.SetStringHTML("<p>foo</p>")
-	assertEqual(t, n.Raw(), `\u003cp\u003efoo\u003c\/p\u003e`)
-	assertEqual(t, n.Type(), TypeString)
-	obj := d.Object()
-	obj.Set("foo", d.Text("bar"))
-	obj.Set("foo", d.Text("baz"))
-	assertEqual(t, obj.Get("foo").Raw(), "baz")
-
+	//n := d.Text("foo")
+	//n.SetString("bar")
+	//assertEqual(t, n.Raw(), "bar")
+	//assertEqual(t, n.Type(), TypeString)
+	//n.SetInt(42)
+	//assertEqual(t, n.Raw(), "42")
+	//assertEqual(t, n.Type(), TypeNumber)
+	//n.SetFloat(1)
+	//assertEqual(t, n.Raw(), "1")
+	//assertEqual(t, n.Type(), TypeNumber)
+	//n.SetUint(2)
+	//assertEqual(t, n.Raw(), "2")
+	//assertEqual(t, n.Type(), TypeNumber)
+	//n.SetNull()
+	//assertEqual(t, n.Raw(), "null")
+	//assertEqual(t, n.Type(), TypeNull)
+	//n.SetFalse()
+	//assertEqual(t, n.Raw(), "false")
+	//assertEqual(t, n.Type(), TypeBoolean)
+	//n.SetTrue()
+	//assertEqual(t, n.Raw(), "true")
+	//assertEqual(t, n.Type(), TypeBoolean)
+	//n.SetStringHTML("<p>foo</p>")
+	//assertEqual(t, n.Raw(), `\u003cp\u003efoo\u003c\/p\u003e`)
+	//assertEqual(t, n.Type(), TypeString)
+	obj := d.NewObject()
+	obj.Set("foo", d.NewStringSafe("bar"))
+	obj.Set("foo", d.NewString("baz"))
+	foo := obj.Get("foo")
+	v, ok := foo.ToInterface()
+	assert(t, ok, "interface is valid")
+	assertEqual(t, "baz", v)
 }
 
 func TestNode_Empty(t *testing.T) {
 	n := Node{}
 	assertEqual(t, n.Type(), TypeInvalid)
-	assertEqual(t, n.Raw(), "")
+	s, typ := n.Inspect()
+	assertEqual(t, TypeInvalid, typ)
+	assertEqual(t, "", s)
 	assertEqual(t, n.value(), (*value)(nil))
-	{
-		n, ok := n.ToUint()
-		assertEqual(t, n, uint64(0))
-		assertEqual(t, ok, false)
-	}
-	{
-		n, ok := n.ToFloat()
-		assertEqual(t, n, float64(0))
-		assertEqual(t, ok, false)
-	}
-	{
-		n, ok := n.ToInt()
-		assertEqual(t, n, int64(0))
-		assertEqual(t, ok, false)
-	}
+	//{
+	//	n, ok := n.ToUint()
+	//	assertEqual(t, n, uint64(0))
+	//	assertEqual(t, ok, false)
+	//}
+	//{
+	//	n, ok := n.ToFloat()
+	//	assertEqual(t, n, float64(0))
+	//	assertEqual(t, ok, false)
+	//}
+	//{
+	//	n, ok := n.ToInt()
+	//	assertEqual(t, n, int64(0))
+	//	assertEqual(t, ok, false)
+	//}
 	{
 		b, ok := n.ToBool()
 		assertEqual(t, b, false)

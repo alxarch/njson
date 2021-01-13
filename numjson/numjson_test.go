@@ -6,6 +6,17 @@ import (
 	"testing"
 )
 
+func TestNumber_IsZero(t *testing.T) {
+	assert := require.New(t)
+	assert.True(Float64(0).IsZero())
+	assert.True(Int64(0).IsZero())
+	assert.True(Uint64(0).IsZero())
+	assert.False(Number{}.IsZero())
+	assert.False(Int64(1).IsZero())
+	assert.False(Float64(1).IsZero())
+	assert.False(Uint64(1).IsZero())
+}
+
 func TestParseUint(t *testing.T) {
 	assert := require.New(t)
 	{
@@ -18,9 +29,20 @@ func TestParseUint(t *testing.T) {
 		assert.Equal(".25", tail)
 		assert.Equal(123, int(n))
 	}
+	{
+		n, tail := parseUint("18446744073709551615", 0)
+		assert.Equal("", tail)
+		assert.Equal(uint64(18446744073709551615), n)
+	}
+}
+func TestParse(t *testing.T) {
+	assert := require.New(t)
+	num, err := Parse("12345678901234567890")
+	assert.NoError(err)
+	assert.Equal(Uint, num.Type(), "unexpected type %q", num.Type())
 }
 
-func TestParse(t *testing.T) {
+func TestParse_TestSuite(t *testing.T) {
 	type testCase struct {
 		Input  string
 		Expect Number
@@ -101,12 +123,12 @@ func TestParse(t *testing.T) {
 		{"0e0", Float64(0)},
 		{"123e+001", Float64(123e1)},
 		{"0e12", Float64(0)},
-		{"-0E123", Float64(0)},
-		{"-0E-123", Float64(0)},
-		{"-0E+123", Float64(0)},
+		{"-0E123", Float64(0).Neg()},
+		{"-0E-123", Float64(0).Neg()},
+		{"-0E+123", Float64(0).Neg()},
 		{"123e12", Float64(123e12)},
 		{"-123E-12", Float64(-123E-12)},
-		{"-123e-400", Float64(0)},
+		{"-123e-400", Float64(0).Neg()},
 		{"123e456", Float64(math.Inf(1))},   // too big exponent
 		{"-123e456", Float64(math.Inf(-1))}, // too big exponent
 
@@ -117,9 +139,14 @@ func TestParse(t *testing.T) {
 		tc := tc
 		t.Run("parse_"+tc.Input, func(t *testing.T) {
 			num, err := Parse(tc.Input)
-			if !tc.Expect.IsValid() && err == nil {
-				t.Errorf("expected error while parsing %q", tc.Input)
+			if !tc.Expect.IsValid() {
+				if err == nil {
+					t.Errorf("expected error while parsing %q", tc.Input)
+				}
 				return
+			}
+			if err != nil {
+				t.Errorf("unexpected error while parsing %q: %s", tc.Input, err)
 			}
 			if num.Type() != tc.Expect.Type() {
 				t.Errorf("invalid result type %q ->\n%s !=\n%s", tc.Input, num.Type(), tc.Expect.Type())
@@ -130,8 +157,6 @@ func TestParse(t *testing.T) {
 			}
 		})
 	}
-
-
 
 }
 

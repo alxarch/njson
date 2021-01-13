@@ -31,7 +31,7 @@ func benchmark(src string) func(b *testing.B) {
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
-			p.Reset()
+			p.Clear()
 			p.Parse(src)
 		}
 	}

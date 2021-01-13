@@ -110,7 +110,7 @@ func main() {
 	var t *generator.Generator
 	// if *tests {
 	// 	t = g.Test()
-	// 	t.Reset()
+	// 	t.Clear()
 	// }
 
 	for _, typ := range types {

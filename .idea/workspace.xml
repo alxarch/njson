@@ -20,29 +20,12 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="5310851f-2632-48a4-a7c0-e844b4c2ed1b" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/njson.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/array.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/foojson/node.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/object.go" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/iterator.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/array.go" beforeDir="false" afterPath="$PROJECT_DIR$/array.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/document.go" beforeDir="false" afterPath="$PROJECT_DIR$/document.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/document_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/document_test.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/go.mod" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/go.sum" beforeDir="false" afterPath="$PROJECT_DIR$/go.sum" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/internal/generator/unmarshal.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/generator/unmarshal.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/node.go" beforeDir="false" afterPath="$PROJECT_DIR$/node.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/node_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/node_test.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/numjson/numjson.go" beforeDir="false" afterPath="$PROJECT_DIR$/numjson/numjson.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/parser.go" beforeDir="false" afterPath="$PROJECT_DIR$/parser.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/parser_benchmark_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/parser_benchmark_test.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/parser_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/parser_test.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/strjson/escape.go" beforeDir="false" afterPath="$PROJECT_DIR$/strjson/escape.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/types.go" beforeDir="false" afterPath="$PROJECT_DIR$/types.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/types_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/types_test.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/unjson/decode.go" beforeDir="false" afterPath="$PROJECT_DIR$/unjson/decode.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/unjson/decode_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/unjson/decode_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/object.go" beforeDir="false" afterPath="$PROJECT_DIR$/object.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -71,6 +54,7 @@
   </component>
   <component name="PropertiesComponent">
     <property name="DefaultGoTemplateProperty" value="Go File" />
+    <property name="GO_FMT" value="true" />
     <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="com.intellij.ide.scratch.LRUPopupBuilder$1/New Scratch File" value="JSON&#10;JSON5" />
@@ -78,39 +62,40 @@
     <property name="go.sdk.automatically.set" value="true" />
     <property name="go.tried.to.enable.integration.vgo.integrator" value="true" />
     <property name="last_opened_file_path" value="$USER_HOME$" />
+    <property name="settings.editor.selected.configurable" value="com.maddyhome.idea.vim.ui.VimEmulationConfigurable" />
   </component>
-  <component name="RunManager" selected="Go Test.BenchmarkParse in github.com/alxarch/njson">
-    <configuration name="BenchmarkParse in github.com/alxarch/njson" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+  <component name="RunManager" selected="Go Test.TestDecoderFloat in github.com/alxarch/njson/unjson">
+    <configuration name="Example in github.com/alxarch/njson" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
       <module name="njson" />
       <working_directory value="$PROJECT_DIR$" />
-      <framework value="gobench" />
+      <framework value="gotest" />
       <kind value="PACKAGE" />
       <package value="github.com/alxarch/njson" />
       <directory value="$PROJECT_DIR$" />
       <filePath value="$PROJECT_DIR$" />
-      <pattern value="^BenchmarkParse$" />
+      <pattern value="^\QExample\E$" />
       <method v="2" />
     </configuration>
-    <configuration name="BenchmarkParse/encoding_json\-aws\.json in github.com/alxarch/njson" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+    <configuration name="TestDecoderFloat in github.com/alxarch/njson/unjson" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
       <module name="njson" />
-      <working_directory value="$PROJECT_DIR$" />
-      <framework value="gobench" />
+      <working_directory value="$PROJECT_DIR$/unjson" />
+      <framework value="gotest" />
       <kind value="PACKAGE" />
-      <package value="github.com/alxarch/njson" />
+      <package value="github.com/alxarch/njson/unjson" />
       <directory value="$PROJECT_DIR$" />
       <filePath value="$PROJECT_DIR$" />
-      <pattern value="^BenchmarkParse$/^encoding_json\-aws\.json$" />
+      <pattern value="^\QTestDecoderFloat\E$" />
       <method v="2" />
     </configuration>
-    <configuration name="BenchmarkParse/jsoniter\-aws\.json in github.com/alxarch/njson" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+    <configuration name="TestDocument_Create in github.com/alxarch/njson" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
       <module name="njson" />
       <working_directory value="$PROJECT_DIR$" />
-      <framework value="gobench" />
+      <framework value="gotest" />
       <kind value="PACKAGE" />
       <package value="github.com/alxarch/njson" />
       <directory value="$PROJECT_DIR$" />
       <filePath value="$PROJECT_DIR$" />
-      <pattern value="^BenchmarkParse$/^jsoniter\-aws\.json$" />
+      <pattern value="^\QTestDocument_Create\E$" />
       <method v="2" />
     </configuration>
     <configuration name="go test github.com/alxarch/njson" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
@@ -123,23 +108,23 @@
       <filePath value="$PROJECT_DIR$" />
       <method v="2" />
     </configuration>
-    <configuration name="gobench github.com/alxarch/njson" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+    <configuration name="go test github.com/alxarch/njson/unjson" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
       <module name="njson" />
-      <working_directory value="$PROJECT_DIR$" />
-      <framework value="gobench" />
+      <working_directory value="$PROJECT_DIR$/unjson" />
+      <framework value="gotest" />
       <kind value="PACKAGE" />
-      <package value="github.com/alxarch/njson" />
+      <package value="github.com/alxarch/njson/unjson" />
       <directory value="$PROJECT_DIR$" />
       <filePath value="$PROJECT_DIR$" />
       <method v="2" />
     </configuration>
     <recent_temporary>
       <list>
-        <item itemvalue="Go Test.BenchmarkParse in github.com/alxarch/njson" />
-        <item itemvalue="Go Test.BenchmarkParse/jsoniter\-aws\.json in github.com/alxarch/njson" />
-        <item itemvalue="Go Test.BenchmarkParse/encoding_json\-aws\.json in github.com/alxarch/njson" />
-        <item itemvalue="Go Test.gobench github.com/alxarch/njson" />
+        <item itemvalue="Go Test.TestDecoderFloat in github.com/alxarch/njson/unjson" />
+        <item itemvalue="Go Test.go test github.com/alxarch/njson/unjson" />
         <item itemvalue="Go Test.go test github.com/alxarch/njson" />
+        <item itemvalue="Go Test.TestDocument_Create in github.com/alxarch/njson" />
+        <item itemvalue="Go Test.Example in github.com/alxarch/njson" />
       </list>
     </recent_temporary>
   </component>
@@ -159,50 +144,65 @@
     </option>
     <option name="oldMeFiltersMigrated" value="true" />
   </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="Update unjson" />
+    <option name="LAST_COMMIT_MESSAGE" value="Update unjson" />
+  </component>
   <component name="VgoProject">
     <integration-enabled>true</integration-enabled>
-  </component>
-  <component name="WindowStateProjectService">
-    <state x="641" y="261" width="628" height="514" key="#com.intellij.openapi.updateSettings.impl.PluginUpdateInfoDialog" timestamp="1610151213627">
-      <screen x="0" y="0" width="1920" height="1080" />
-    </state>
-    <state x="641" y="261" width="628" height="514" key="#com.intellij.openapi.updateSettings.impl.PluginUpdateInfoDialog/0.0.1920.1080@0.0.1920.1080" timestamp="1610151213627" />
-    <state width="1874" height="291" key="GridCell.Tab.0.bottom" timestamp="1606862265138">
-      <screen x="0" y="0" width="1920" height="1080" />
-    </state>
-    <state width="1874" height="291" key="GridCell.Tab.0.bottom/0.0.1920.1080@0.0.1920.1080" timestamp="1606862265138" />
-    <state width="1874" height="291" key="GridCell.Tab.0.center" timestamp="1606862265138">
-      <screen x="0" y="0" width="1920" height="1080" />
-    </state>
-    <state width="1874" height="291" key="GridCell.Tab.0.center/0.0.1920.1080@0.0.1920.1080" timestamp="1606862265138" />
-    <state width="1874" height="291" key="GridCell.Tab.0.left" timestamp="1606862265138">
-      <screen x="0" y="0" width="1920" height="1080" />
-    </state>
-    <state width="1874" height="291" key="GridCell.Tab.0.left/0.0.1920.1080@0.0.1920.1080" timestamp="1606862265138" />
-    <state width="1874" height="291" key="GridCell.Tab.0.right" timestamp="1606862265138">
-      <screen x="0" y="0" width="1920" height="1080" />
-    </state>
-    <state width="1874" height="291" key="GridCell.Tab.0.right/0.0.1920.1080@0.0.1920.1080" timestamp="1606862265138" />
-    <state x="666" y="285" width="587" height="512" key="find.popup" timestamp="1606815644565">
-      <screen x="0" y="0" width="1920" height="1080" />
-    </state>
-    <state x="666" y="285" width="587" height="512" key="find.popup/0.0.1920.1080@0.0.1920.1080" timestamp="1606815644565" />
-    <state x="1116" y="320" width="1204" height="904" key="search.everywhere.popup" timestamp="1609763300673">
-      <screen x="0" y="0" width="3440" height="1440" />
-    </state>
-    <state x="623" y="240" width="672" height="678" key="search.everywhere.popup/0.0.1920.1080@0.0.1920.1080" timestamp="1606866920666" />
-    <state x="1116" y="320" width="1204" height="904" key="search.everywhere.popup/635.1440.1920.1080/0.0.3440.1440@0.0.3440.1440" timestamp="1609763300673" />
-    <state x="1258" y="1680" width="672" height="678" key="search.everywhere.popup/635.1440.1920.1080/0.0.3440.1440@635.1440.1920.1080" timestamp="1608814668997" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/array_test.go</url>
+          <line>17</line>
+          <option name="timeStamp" value="2" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/node_test.go</url>
+          <line>492</line>
+          <option name="timeStamp" value="3" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/node_test.go</url>
+          <line>107</line>
+          <option name="timeStamp" value="4" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/node.go</url>
+          <line>259</line>
+          <option name="timeStamp" value="6" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/numjson/numjson.go</url>
+          <line>4</line>
+          <option name="timeStamp" value="15" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/numjson/numjson_test.go</url>
+          <line>37</line>
+          <option name="timeStamp" value="20" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/readme_test.go</url>
+          <line>24</line>
+          <option name="timeStamp" value="24" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/node_test.go</url>
+          <line>351</line>
+          <option name="timeStamp" value="25" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
           <url>file://$PROJECT_DIR$/document.go</url>
-          <line>317</line>
-          <option name="timeStamp" value="1" />
+          <line>231</line>
+          <option name="timeStamp" value="26" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
+  </component>
+  <component name="com.intellij.coverage.CoverageDataManagerImpl">
+    <SUITE FILE_PATH="coverage/njson$go_test_github_com_alxarch_njson.out" NAME="go test github.com/alxarch/njson Coverage Results" MODIFIED="1610524579274" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="GoCoverage" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" />
   </component>
 </project>

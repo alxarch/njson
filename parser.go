@@ -1,6 +1,7 @@
 package njson
 
 import (
+	"github.com/alxarch/njson/strjson"
 	"strings"
 )
 
@@ -84,7 +85,11 @@ func (p *parser) parseValue(s string, pos uint) uint {
 	var (
 		c   byte
 		typ Type
-		f   flags
+		// We initialize the flag to JSON.
+		// This only applies to string values.
+		// We read a string by jumping to the closing quote.
+		// Since we do not check every character, we do not know if the string is 'safe' or not.
+		f   = flags(strjson.FlagJSON)
 	)
 
 	for ; pos < uint(len(s)); pos++ {
@@ -145,7 +150,6 @@ readString:
 		i := strings.IndexByte(s, delimString) - 1
 		if 0 <= i && i < len(s) {
 			if s[i] == delimEscape {
-				f |= flagEscapedString
 				// Advance past '\' and '"' and scan the remaining string
 				for i += 2; 0 <= i && i < len(s); i++ { // Avoid bounds check
 					switch s[i] {
@@ -219,7 +223,7 @@ func (p *parser) parseArray(s string, pos uint) uint {
 		values []child
 		numV   uint
 	)
-	v.set(TypeArray, 0, "")
+	v.set(TypeArray, flags(strjson.FlagJSON), "")
 	// Skip space after '['
 	for ; pos < uint(len(s)); pos++ {
 		c = s[pos]
@@ -285,7 +289,9 @@ func (p *parser) parseObject(s string, pos uint) uint {
 		values []child
 		numV   uint
 		i      uint
-		f      flags
+		// Mark all keys as safe JSON
+		// If we encounter a backslash ('\\') on any key, we unset safe
+		f = flags(strjson.FlagSafe | strjson.FlagJSON)
 	)
 
 	v.set(TypeObject, 0, "")
@@ -325,7 +331,6 @@ readKey:
 		for i = 0; i < uint(len(key)); i++ {
 			switch key[i] {
 			case delimString:
-				// key = key[:i]
 				// Slice until closing quote
 				values = appendChild(values, key[:i], p.n, numV)
 				numV++
@@ -344,7 +349,8 @@ readKey:
 				}
 				return p.eof(TypeObject, pos)
 			case delimEscape:
-				f |= flagEscapedString
+				// Unset safe flag
+				f &^= flags(strjson.FlagSafe)
 				i++
 			}
 		}

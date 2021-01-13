@@ -16,7 +16,9 @@ func TestArrayIterator(t *testing.T) {
 	defer iter.Close()
 	expect := []string{"foo", "bar", "baz"}
 	for i := 0; iter.Next(); i++ {
-		assertEqual(t, iter.Node().Raw(), expect[i])
+		s, typ := iter.Node().ToString()
+		assertEqual(t, njson.TypeString, typ)
+		assertEqual(t, expect[i], s)
 	}
 }
 

@@ -1,9 +1,9 @@
 package njson
 
 import (
-	"sync"
-
 	"github.com/alxarch/njson/strjson"
+	"math"
+	"sync"
 
 	"github.com/alxarch/njson/numjson"
 )
@@ -11,17 +11,19 @@ import (
 // Document is a JSON document.
 type Document struct {
 	values []value
-	rev    uint // document revision incremented on every Reset/Close invalidating values
+	rev    uint // document revision incremented on every Clear/Close invalidating values
+	pool   *Pool
 }
 
 // value is a JSON document value.
-// value's data is only valid until Document.Close() or Document.Reset().
+// value's data is only valid until Document.Close() or Document.Clear().
 type value struct {
 	typ   Type
 	flags flags
-	// locks is the number of iterator locks.
+	// locks holds the number of locks for Array, Object
 	// all mutations on the value should fail if it's not zero.
-	locks    uint16
+	locks uint16
+	// raw holds the JSON literal for String, Number, Bool, Null
 	raw      string
 	children []child
 }
@@ -57,7 +59,7 @@ func (v *value) reset(typ Type, f flags, raw string, values []child) {
 	}
 	*v = value{
 		typ:      typ,
-		flags:    f,
+		flags:    f | flags(strjson.FlagJSON),
 		raw:      raw,
 		children: values,
 	}
@@ -69,31 +71,18 @@ func (d *Document) lookup(id uint, path []string) uint {
 		c *child
 		v *value
 	)
-lookup:
 	for _, key := range path {
 		if v = d.get(id); v != nil {
 			switch v.typ {
 			case TypeObject:
-				for i := range v.children {
-					c = &v.children[i]
-					if c.key == key {
-						id = c.id
-						continue lookup
-					}
+				if c = v.get(key); c != nil {
+					id = c.id
+					continue
 				}
 			case TypeArray:
-				i := 0
-				for _, c := range []byte(key) {
-					if c -= '0'; c <= 9 {
-						i = i*10 + int(c)
-					} else {
-						return maxUint
-					}
-				}
-				if 0 <= i && i < len(v.children) {
-					c = &v.children[i]
+				if c = v.index(key); c != nil {
 					id = c.id
-					continue lookup
+					continue
 				}
 			}
 		}
@@ -106,7 +95,7 @@ lookup:
 func (d *Document) Null() Node {
 	id := uint(len(d.values))
 	v := d.grow()
-	v.reset(TypeNull, flagRoot, strNull, v.children[:0])
+	v.reset(TypeNull, flagNew, strNull, v.children[:0])
 	return d.Node(id)
 }
 
@@ -114,7 +103,7 @@ func (d *Document) Null() Node {
 func (d *Document) False() Node {
 	id := uint(len(d.values))
 	v := d.grow()
-	v.reset(TypeBoolean, flagRoot, strFalse, v.children[:0])
+	v.reset(TypeBoolean, flagNew, strFalse, v.children[:0])
 	return d.Node(id)
 }
 
@@ -122,63 +111,90 @@ func (d *Document) False() Node {
 func (d *Document) True() Node {
 	id := uint(len(d.values))
 	v := d.grow()
-	v.reset(TypeBoolean, flagRoot, strTrue, v.children[:0])
+	v.reset(TypeBoolean, flagNew, strTrue, v.children[:0])
 	return d.Node(id)
 }
 
-// TextRaw adds a new String node to the document.
-func (d *Document) TextRaw(s string) Node {
+// NewString adds a new String node to the document escaping JSON unsafe characters.
+func (d *Document) NewString(s string) Node {
+	return d.NewStringJSON(strjson.FromString(s).Escape(false))
+}
+
+// NewStringSafe adds a new String node to the document without escaping JSON unsafe characters.
+func (d *Document) NewStringSafe(s string) Node {
+	return d.NewStringJSON(strjson.FromSafeString(s).Escape(false))
+}
+
+// NewStringHTML adds a new String node to the document escaping JSON and HTML unsafe characters.
+func (d *Document) NewStringHTML(s string) Node {
+	return d.NewStringJSON(strjson.FromHTML(s).Escape(true))
+}
+
+func (d *Document) NewStringJSON(s strjson.String) Node {
 	id := uint(len(d.values))
 	v := d.grow()
-	v.reset(TypeString, flagRoot, s, v.children[:0])
+	v.reset(TypeString, flagNew|flags(s.Flags()), s.Value, v.children[:0])
 	return d.Node(id)
-
 }
 
-// Text adds a new String node to the document escaping JSON unsafe characters.
-func (d *Document) Text(s string) Node {
-	return d.TextRaw(strjson.Escaped(s, false, false))
-}
-
-// TextHTML adds a new String node to the document escaping HTML and JSON unsafe characters.
-func (d *Document) TextHTML(s string) Node {
-	return d.TextRaw(strjson.Escaped(s, true, false))
-}
-
-// Object adds a new empty Object node to the document.
-func (d *Document) Object() Object {
+// NewObject adds a new empty Object node to the document.
+func (d *Document) NewObject() Object {
 	id := uint(len(d.values))
 	v := d.grow()
-	v.reset(TypeObject, flagRoot, "", v.children[:0])
+	v.reset(TypeObject, flagNew, "", v.children[:0])
 	return Object(d.Node(id))
 }
 
-// Array adds a new empty Array node to the document.
-func (d *Document) Array() Array {
+// NewArray adds a new empty Array node to the document.
+func (d *Document) NewArray() Array {
 	id := uint(len(d.values))
 	v := d.grow()
-	v.reset(TypeArray, flagRoot, "", v.children[:0])
+	v.reset(TypeArray, flagNew, "", v.children[:0])
 	return Array(d.Node(id))
 }
 
-// Number adds a new Number node to the document.
-func (d *Document) Number(f float64) Node {
-	id := uint(len(d.values))
-	v := d.grow()
-	v.reset(TypeNumber, flagRoot, numjson.FormatFloat(f, 64), v.children[:0])
-	return d.Node(id)
+// NewFloat adds a new decimal Number node to the document.
+func (d *Document) NewFloat(f float64) Node {
+	return d.NewNumber(numjson.Float64(f))
 }
 
-// RawNumber adds a new Number node to the document.
-func (d *Document) RawNumber(num string) Node {
+// NewUint adds a new decimal Number node to the document.
+func (d *Document) NewUint(u uint64) Node {
+	return d.NewNumber(numjson.Uint64(u))
+}
+
+// NewInt adds a new integer Number node to the document.
+func (d *Document) NewInt(i int64) Node {
+	return d.NewNumber(numjson.Int64(i))
+}
+
+// NewNumber adds a new Number node to the document.
+func (d *Document) NewNumber(num numjson.Number) Node {
+	if num := num.String(); num != "" {
+		return d.NewNumberString(num)
+	}
+	return Node{}
+}
+
+// NewNumberString adds a new Number literal to the document.
+// Use this for big numbers that cannot be represented as numjson.Number.
+func (d *Document) NewNumberString(num string) Node {
 	id := uint(len(d.values))
 	v := d.grow()
 	v.reset(TypeNumber, flagRoot, num, v.children[:0])
 	return d.Node(id)
 }
 
-// Reset resets the document to empty and releases all strings.
+// Reset resets the document to empty
 func (d *Document) Reset() {
+	d.values = d.values[:0]
+	// Invalidate all node references
+	d.rev++
+}
+
+// Clear resets the document to empty and releases all strings.
+func (d *Document) Clear() {
+	// We free all heap references
 	for i := range d.values {
 		n := &d.values[i]
 		for j := range n.children {
@@ -186,9 +202,7 @@ func (d *Document) Reset() {
 		}
 		n.raw = ""
 	}
-	d.values = d.values[:0]
-	// Invalidate any partials
-	d.rev++
+	d.Reset()
 }
 
 // get finds a node by id.
@@ -234,8 +248,11 @@ func (d *Document) toInterface(id uint) (interface{}, bool) {
 	case TypeNull:
 		return nil, true
 	case TypeNumber:
-		f := numjson.ParseFloat(n.raw)
-		return f, f == f
+		num, err := numjson.Parse(n.raw)
+		if err != nil {
+			return nil, false
+		}
+		return num.Value(), true
 	default:
 		return nil, false
 	}
@@ -307,7 +324,7 @@ func (d *Document) appendJSON(dst []byte, v *value) ([]byte, error) {
 	if v == nil {
 		return dst, newTypeError(TypeInvalid, TypeAnyValue)
 	}
-	if v.flags.IsUnescaped() {
+	if !strjson.Flags(v.flags).IsJSONSafe() {
 		return d.appendJSONEscaped(dst, v)
 	}
 	switch v.typ {
@@ -359,7 +376,7 @@ func (d *Document) copyValue(other *Document, v *value) uint {
 	*cp = value{
 		typ:   v.typ,
 		flags: v.flags,
-		raw:   v.raw,
+		raw:   copyRaw(v.raw),
 	}
 	numChildren := uint(0)
 	for i := range v.children {
@@ -374,14 +391,33 @@ func (d *Document) copyValue(other *Document, v *value) uint {
 	return id
 }
 
+// This protects from copying locks
+func copyRaw(raw string) string {
+	// raw Len is zero even if locks exist
+	if len(raw) == 0 {
+		return ""
+	}
+	return raw
+}
+
+const zeroID uint = 0
+
 func (d *Document) copyNode(n Node, parent uint) (uint, bool) {
 	v := n.value()
 	if v == nil {
 		return 0, false
 	}
-	if n.doc == d && n.id != parent && v.flags.IsRoot() && n.id != 0 {
-		v.flags &^= flagRoot
-		return n.id, true
+	// For nodes of the same document we can skip copying in some cases.
+	if n.doc == d && n.id != parent && n.id != zeroID {
+		// Since immutable nodes cannot change we can reuse their id without copy.
+		// Nodes created with the NewArray or NewObject  methods have a 'root' flag set.
+		// The first time they are assigned as a child of another node, we unset the flag and use their id directly.
+		// This allows building 'deep' node trees without unnecessary copying.
+		// This only happens once for each node so cyclic assignments always result in copying.
+		if v.typ.IsImmutable() || v.flags.IsRoot() {
+			v.flags &^= flagRoot
+			return n.id, true
+		}
 	}
 	return d.copyValue(n.doc, v), true
 }
@@ -412,24 +448,17 @@ func (pool *Pool) Get() *Document {
 	}
 	d := Document{
 		values: make([]value, 0, minNumNodes),
+		pool:   pool,
 	}
 	return &d
 }
 
 // Put returns a document to the pool
 func (pool *Pool) Put(d *Document) {
-	if d == nil {
+	if d == nil || d.pool != pool {
 		return
 	}
-	// // Free all heap pointers
-	// for i := range d.values {
-	// 	n := &d.values[i]
-	// 	n.raw = ""
-	// 	for i := range n.values {
-	// 		n.values[i] = V{}
-	// 	}
-	// }
-	d.Reset()
+	d.Clear()
 	pool.docs.Put(d)
 }
 
@@ -443,5 +472,38 @@ func Blank() *Document {
 
 // Close resets and returns the document to the default pool to be reused.
 func (d *Document) Close() {
-	defaultPool.Put(d)
+	if d != nil && d.pool != nil {
+		d.pool.Put(d)
+	}
 }
+
+func (d *Document) Pool() *Pool {
+	if d != nil {
+		return d.pool
+	}
+	return nil
+}
+
+func (v *value) lock() bool {
+	if v.locks < math.MaxUint16 {
+		v.locks++
+		return true
+	}
+	return false
+}
+
+func (v *value) unlock() bool {
+	if v.locks > 0 {
+		v.locks--
+		return true
+	}
+	return false
+}
+
+func (v *value) unlocked() bool {
+	return v.locks == 0
+}
+func (v *value) locked() bool {
+	return v.locks != 0
+}
+

@@ -17,8 +17,8 @@ func (o Object) Document() *Document {
 func (o Object) Get(key string) Node {
 	n := Node(o)
 	if v := n.value(); v != nil && v.typ == TypeObject {
-		if i := v.child(key); 0 <= i && i < len(v.children) {
-			return n.with(v.children[i].id)
+		if c := v.get(key); c != nil {
+			return n.with(c.id)
 		}
 	}
 	return Node{}
@@ -36,8 +36,8 @@ func (o Object) Set(key string, value Node) Node {
 		// copyNode might grow values array invalidating value pointer
 		// so we need to 'refresh' the value
 		v = &n.doc.values[n.id]
-		if i := v.child(key); 0 <= i && i < len(v.children) {
-			v.children[i].id = id
+		if c := v.get(key); c != nil {
+			c.id = id
 			return n.with(id)
 		}
 		v.children = append(v.children, child{
@@ -113,7 +113,7 @@ func (o Object) Iter() ObjectIterator {
 type ObjectIterator struct {
 	key  string
 	node Node
-	iter childIter
+	iter iterator
 }
 
 func (i *ObjectIterator) Key() string {
@@ -137,10 +137,10 @@ func (i *ObjectIterator) Close() {
 }
 
 func (v *value) del(key string) (uint, bool) {
-	if v.locks != 0 {
+	if !v.unlocked() {
 		return 0, false
 	}
-	if ok := v.flags.IsUnescaped() || v.flags.IsSimpleString(); !ok && strjson.NeedsEscape(key) {
+	if !strjson.Flags(v.flags).IsGoSafe() && strjson.NeedsEscape(key) {
 		v.unescapeKeys()
 	}
 	if i := len(v.children) - 1; 0 <= i && i < len(v.children) {
@@ -161,16 +161,53 @@ func (v *value) del(key string) (uint, bool) {
 	return 0, false
 }
 
-func (v *value) child(key string) int {
-	if ok := v.flags.IsUnescaped() || v.flags.IsSimpleString(); !ok && strjson.NeedsEscape(key) {
-		v.unescapeKeys()
+func (v *value) get(key string) *child {
+	if !strjson.Flags(v.flags).IsGoSafe() {
+		for i := uint(0); i < uint(len(key)); i++ {
+			if strjson.NeedsEscapeByte(key[i]) {
+				v.unescapeKeys()
+				break
+			}
+		}
 	}
 	for i := range v.children {
 		if c := &v.children[i]; c.key == key {
-			return i
+			return c
 		}
 	}
-	return -1
+	return nil
+}
+func (v *value) index(key string) *child {
+	switch len(key) {
+	case 1:
+		// Fast path for small indexes
+		if len(key) == 1 {
+			if i := uint(key[0] - '0'); i < uint(len(v.children)) && i <= 9 {
+				return &v.children[i]
+			}
+		}
+		return nil
+	case 0:
+		return nil
+	default:
+		// We inline index parsing to avoid extra function call
+		var index, i, digit uint
+		// stop parsing index early
+		cutoff := uint(len(v.children))
+		for i = uint(0); i < uint(len(key)); i++ {
+			// byte will roll on underflow
+			digit = uint(key[i] - '0')
+			if digit <= 9 && index < cutoff {
+				index = index*10 + digit
+			} else {
+				return nil
+			}
+		}
+		if index < uint(len(v.children)) {
+			return &v.children[index]
+		}
+		return nil
+	}
 }
 
 func (v *value) unescapeKeys() {
@@ -178,5 +215,5 @@ func (v *value) unescapeKeys() {
 		c := &v.children[i]
 		c.key = strjson.Unescaped(c.key)
 	}
-	v.flags |= flagUnescapedString
+	v.flags = 0
 }

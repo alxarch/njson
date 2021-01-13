@@ -4,7 +4,11 @@ package starlarknjson
 import (
 	"errors"
 	"github.com/alxarch/njson"
+	"github.com/alxarch/njson/numjson"
 	"go.starlark.net/starlark"
+	"math"
+	"math/big"
+	"strconv"
 	"strings"
 )
 
@@ -35,7 +39,7 @@ func Parse(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kw
 	if tail = strings.TrimSpace(tail); tail != "" {
 		return nil, errors.New("leftover text after parsing JSON")
 	}
-	return nodeValue(node)
+	return Value(node), nil
 }
 
 func documentFromThread(thread *starlark.Thread) *njson.Document {
@@ -71,52 +75,76 @@ func (p *proto) Names() []string {
 	return p.names
 }
 
-func nodeValue(n njson.Node) (starlark.Value, error) {
-	switch s, typ := n.Text(); typ {
+func Value(n njson.Node) starlark.Value {
+	switch s, typ := n.ToString(); typ {
 	case njson.TypeString:
-		return starlark.String(s), nil
+		return starlark.String(s)
 	case njson.TypeArray:
 		arr := njson.Array(n)
 		return &Array{
 			node: arr,
 			len:  uint32(arr.Len()),
-		}, nil
+		}
 	case njson.TypeObject:
 		obj := njson.Object(n)
 		return &Object{
 			node: obj,
 			len:  uint32(obj.Len()),
-		}, nil
+		}
 	case njson.TypeNumber:
-		v, err := readNumber(s)
+		num, err := numjson.Parse(s)
 		if err != nil {
-			return nil, nil
+			if numErr, ok := err.(*strconv.NumError); ok {
+				if _, ok := numErr.Err.(*numjson.TooBigError); ok {
+					if b, ok := big.NewInt(0).SetString(s, 10); ok {
+						return starlark.MakeBigInt(b)
+					}
+				}
+			}
+			// We handle failed parse in the default clause below.
+			// This way, any changes to the way parse behaves will not break this code.
 		}
-		return v, nil
+		switch num.Type() {
+		case numjson.Float:
+			return starlark.Float(num.Float64())
+		case numjson.Int:
+			return starlark.MakeInt64(num.Int64())
+		case numjson.Uint:
+			u := num.Uint64()
+			if v := uint(u); uint64(v) == u {
+				return starlark.MakeUint(v)
+			}
+			b := big.NewInt(0).SetUint64(u)
+			return starlark.MakeBigInt(b)
+		default:
+			// An error occurred during parsing, we fallback to strconv.ParseFloat
+			if f, err := strconv.ParseFloat(s, 64); err == nil {
+				return starlark.Float(f)
+			}
+			// If that failed as well, return NaN
+			return starlark.Float(math.NaN())
+		}
 	case njson.TypeBoolean:
-		if s == "true" {
-			return starlark.True, nil
-		}
-		return starlark.False, nil
+		return starlark.Bool(njson.Const(s).IsTrue())
 	case njson.TypeNull:
-		return starlark.None, nil
+		return starlark.None
 	default:
-		return nil, nil
+		return nil
 	}
 }
 
 var zeroNode njson.Node
 
-func nodeOf(doc *njson.Document, v starlark.Value) (njson.Node, error) {
+func Node(doc *njson.Document, v starlark.Value) (njson.Node, error) {
 	switch v := v.(type) {
 	case *Array:
 		return njson.Node(v.node), nil
 	case *Object:
 		return njson.Node(v.node), nil
 	case starlark.String:
-		return doc.Text(string(v)), nil
+		return doc.NewString(string(v)), nil
 	case starlark.IterableMapping:
-		obj := doc.Object()
+		obj := doc.NewObject()
 		iter := v.Iterate()
 		var key starlark.Value
 		for iter.Next(&key) {
@@ -125,7 +153,7 @@ func nodeOf(doc *njson.Document, v starlark.Value) (njson.Node, error) {
 				return zeroNode, errors.New("invalid dict key")
 			}
 			val, _, _ := v.Get(key)
-			node, err := nodeOf(doc, val)
+			node, err := Node(doc, val)
 			if err != nil {
 				return zeroNode, err
 			}
@@ -133,11 +161,11 @@ func nodeOf(doc *njson.Document, v starlark.Value) (njson.Node, error) {
 		}
 		return obj.Node(), nil
 	case starlark.Iterable:
-		arr := doc.Array()
+		arr := doc.NewArray()
 		iter := v.Iterate()
 		var el starlark.Value
 		for iter.Next(&el) {
-			el, err := nodeOf(doc, el)
+			el, err := Node(doc, el)
 			if err != nil {
 				return njson.Node{}, err
 			}
@@ -150,13 +178,13 @@ func nodeOf(doc *njson.Document, v starlark.Value) (njson.Node, error) {
 		}
 		return doc.False(), nil
 	case starlark.Float:
-		return doc.Number(float64(v)), nil
+		return doc.NewFloat(float64(v)), nil
 	case starlark.NoneType:
 		return doc.Null(), nil
 	case starlark.Int:
-		return doc.RawNumber(v.String()), nil
-	case interface{ NJSON() njson.Node }:
-		return v.NJSON(), nil
+		return doc.NewNumberString(v.String()), nil
+	case interface{ NJSON(d *njson.Document) njson.Node }:
+		return v.NJSON(doc), nil
 	default:
 		return zeroNode, errors.New("cannot handle type")
 	}

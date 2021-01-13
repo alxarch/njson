@@ -6,7 +6,13 @@ import (
 )
 
 // Escaped returns the JSON escaped form of string.
+//
 // It allocates a new string so if possible use AppendEscaped for best performance.
+//
+// Use the HTML flag to escape problematic HTML characters.
+// This will escape &, <, and > to \u0026, \u003c, and \u003e
+// to avoid certain safety problems that can arise when embedding JSON in HTML.
+// Use the quoted flag to surround the value with '""
 func Escaped(s string, HTML bool, quoted bool) string {
 	if len(s) == 0 {
 		if quoted {
@@ -90,6 +96,10 @@ escape:
 }
 
 // AppendEscaped appends the JSON escaped form of a string to a buffer.
+//
+// Use the HTML flag to escape problematic HTML characters.
+// This will escape &, <, and > to \u0026, \u003c, and \u003e
+// to avoid certain safety problems that can arise when embedding JSON in HTML.
 func AppendEscaped(dst []byte, s string, HTML bool) []byte {
 	if len(s) == 0 {
 		return dst
@@ -182,10 +192,14 @@ func escapeUTF8(dst []byte, r rune) []byte {
 }
 
 func NeedsEscape(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if toJSON(s[i]) != utf8.RuneSelf {
+	for i := uint(0); i < uint(len(s)); i++ {
+		if NeedsEscapeByte(s[i]) {
 			return true
 		}
 	}
 	return false
+}
+
+func NeedsEscapeByte(c byte) bool {
+	return toJSON(c) != utf8.RuneSelf
 }

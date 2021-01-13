@@ -41,7 +41,7 @@ func BenchmarkParseAndUnmarshal(b *testing.B) {
 	var err error
 	var n njson.Node
 	for i := 0; i < b.N; i++ {
-		d.Reset()
+		d.Clear()
 		if n, _, err = d.Parse(mediumJSON); err != nil {
 			b.Errorf("UnexpectedError: %s", err)
 		}
@@ -67,7 +67,7 @@ func BenchmarkUnmarshaler_Unmarshal(b *testing.B) {
 	m := medium{}
 	var n njson.Node
 	for i := 0; i < b.N; i++ {
-		d.Reset()
+		d.Clear()
 		if n, _, err = d.Parse(mediumJSON); err != nil {
 			b.Errorf("UnexpectedError: %s", err)
 			return

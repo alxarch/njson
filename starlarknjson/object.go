@@ -32,10 +32,10 @@ func (o *Object) AttrNames() []string {
 func (o *Object) Get(key starlark.Value) (v starlark.Value, found bool, err error) {
 	if k, ok := key.(starlark.String); ok {
 		node := o.node.Get(string(k))
-		if node.IsZero() {
+		if node.IsValid() {
 			return nil, false, nil
 		}
-		return nodeValue(node), true, nil
+		return Value(node), true, nil
 	}
 	return nil, false, errors.New("invalid key")
 }
@@ -69,7 +69,7 @@ func (o *Object) Items() []starlark.Tuple {
 	for iter.Next() && len(values) >= 2 {
 		item, values = values[:2], values[2:]
 		item[0] = starlark.String(iter.Key())
-		item[1], _ = nodeValue(iter.Node())
+		item[1] = Value(iter.Node())
 		items = append(items, item)
 	}
 	return items

@@ -1,6 +1,7 @@
 package njson
 
 import (
+	"github.com/alxarch/njson/strjson"
 	"strings"
 	"testing"
 )
@@ -26,7 +27,7 @@ func Benchmark_parser(b *testing.B) {
 	d := Document{}
 	b.SetBytes(int64(len(mediumJSON)))
 	for i := 0; i < b.N; i++ {
-		d.Reset()
+		d.Clear()
 		d.Parse(mediumJSON)
 	}
 }
@@ -34,8 +35,8 @@ func Benchmark_parser(b *testing.B) {
 func TestDocument_Object(t *testing.T) {
 	d := Blank()
 	defer d.Close()
-	n := d.Object().Node()
-	n.Object().Set("foo", d.Text("bar"))
+	n := d.NewObject().Node()
+	n.Object().Set("foo", d.NewString("bar"))
 	if data, err := n.AppendJSON(nil); err != nil {
 		t.Errorf("Unexpected error: %s", err)
 		return
@@ -57,56 +58,56 @@ func TestDocument_Create(t *testing.T) {
 	n := d.Null()
 	assertEqual(t, n.value(), &value{
 		typ:      TypeNull,
-		flags:     flagRoot,
+		flags:     flagRoot|flags(strjson.FlagJSON),
 		raw:      strNull,
 		children: nil,
 	})
-	n = d.Text("foo")
+	n = d.NewString("foo")
 	assertEqual(t, n.value(), &value{
 		typ:      TypeString,
-		flags:     flagRoot,
+		flags:     flagRoot|flags(strjson.FlagValid|strjson.FlagJSON|strjson.FlagSafe),
 		raw:      "foo",
 		children: nil,
 	})
-	n = d.TextHTML("<p>Foo</p>")
+	n = d.NewStringHTML("<p>Foo</p>")
 	assertEqual(t, n.value(), &value{
 		typ:      TypeString,
-		flags:     flagRoot,
+		flags:     flagRoot|flags(strjson.FlagValid|strjson.FlagJSON|strjson.FlagHTML),
 		raw:      `\u003cp\u003eFoo\u003c\/p\u003e`,
 		children: nil,
 	})
-	n = d.Number(42)
+	n = d.NewInt(42)
 	assertEqual(t, n.value(), &value{
 		typ:      TypeNumber,
-		flags:     flagRoot,
+		flags:     flagRoot|flags(strjson.FlagJSON),
 		raw:      `42`,
 		children: nil,
 	})
-	n = d.Array().Node()
+	n = d.NewArray().Node()
 	assertEqual(t, n.value(), &value{
 		typ:      TypeArray,
-		flags:     flagRoot,
+		flags:     flagRoot|flags(strjson.FlagJSON),
 		raw:      ``,
 		children: nil,
 	})
-	n = d.Object().Node()
+	n = d.NewObject().Node()
 	assertEqual(t, n.value(), &value{
 		typ:      TypeObject,
-		flags:     flagRoot,
+		flags:     flagRoot|flags(strjson.FlagJSON),
 		raw:      ``,
 		children: nil,
 	})
 	n = d.True()
 	assertEqual(t, n.value(), &value{
 		typ:      TypeBoolean,
-		flags:     flagRoot,
+		flags:     flagRoot|flags(strjson.FlagJSON),
 		raw:      `true`,
 		children: nil,
 	})
 	n = d.False()
 	assertEqual(t, n.value(), &value{
 		typ:      TypeBoolean,
-		flags:     flagRoot,
+		flags:     flagRoot|flags(strjson.FlagJSON),
 		raw:      `false`,
 		children: nil,
 	})
@@ -115,9 +116,9 @@ func TestDocument_Create(t *testing.T) {
 
 func Test_DocumentReset(t *testing.T) {
 	d := new(Document)
-	n := d.Text("foo")
+	n := d.NewString("foo")
 	assertEqual(t, n.Document(), d)
-	d.Reset()
+	d.Clear()
 	if n.Document() != nil {
 		t.Errorf("Node document not nil after reset")
 	}
@@ -126,14 +127,14 @@ func Test_DocumentReset(t *testing.T) {
 
 func TestDocument_ncopy(t *testing.T) {
 	d := new(Document)
-	n := d.Object().Node()
-	n.Object().Set("foo", d.Text("bar"))
+	n := d.NewObject().Node()
+	n.Object().Set("foo", d.NewString("bar"))
 	assertEqual(t, len(d.values), 2)
 	id := d.copyValue(d, d.get(0))
 	assertEqual(t, id, uint(2))
 	assertEqual(t, len(d.values), 4)
 	other := new(Document)
-	other.Object()
+	other.NewObject()
 	id = d.copyValue(other, other.get(0))
 	assertEqual(t, id, uint(4))
 	assertEqual(t, len(d.values), 5)

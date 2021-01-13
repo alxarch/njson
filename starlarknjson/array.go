@@ -24,11 +24,11 @@ func (a *Array) SetIndex(index int, value starlark.Value) error {
 	if err := a.checkMutable("insert to"); err != nil {
 		return err
 	}
-	node, err := nodeOf(a.node.Document(), value)
+	node, err := Node(a.node.Node().Document(), value)
 	if err != nil {
 		return err
 	}
-	if a.node.Set(index, node).IsZero() {
+	if a.node.Set(index, node).IsValid() {
 		return errors.New("unexpected error while inserting to njson array")
 	}
 	return nil
@@ -46,11 +46,7 @@ type arrayIter struct {
 
 func (i *arrayIter) Next(p *starlark.Value) bool {
 	if i.ArrayIterator.Next() {
-		v, err := nodeValue(i.Node())
-		if err != nil {
-			return false
-		}
-		*p = v
+		*p = Value(i.Node())
 		return true
 	}
 	return false
@@ -61,7 +57,7 @@ func (i *arrayIter) Done() {
 }
 
 func (a *Array) Index(i int) starlark.Value {
-	if v, _ := nodeValue(a.node.Get(i)); v != nil {
+	if v := Value(a.node.Get(i)); v != nil {
 		return v
 	}
 	return starlark.None
@@ -154,7 +150,7 @@ func arrayIndex(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kw
 		iter.Next()
 	}
 	for ; iter.Next() && i < end; i++ {
-		el, err := nodeValue(iter.Node())
+		el := Value(iter.Node())
 		if err != nil {
 			return nil, builtinError(b, err)
 		}
@@ -220,7 +216,7 @@ func arrayAppend(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tu
 	if err := starlark.UnpackPositionalArgs(fn.Name(), args, kwargs, 1, &el); err != nil {
 		return nil, err
 	}
-	node, err := nodeOf(arr.node.Document(), el)
+	node, err := Node(arr.node.Node().Document(), el)
 	if err != nil {
 		return nil, builtinError(fn, err)
 	}

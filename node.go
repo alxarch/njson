@@ -3,8 +3,9 @@ package njson
 import (
 	"encoding"
 	"encoding/json"
+	"errors"
 	"io"
-	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/alxarch/njson/numjson"
@@ -27,6 +28,15 @@ func (n Node) Type() Type {
 	return TypeInvalid
 }
 
+// Inspect returns a node's raw string and type
+// Object and Array values return an empty string.
+func (n Node) Inspect() (string, Type) {
+	if v := n.value(); v != nil {
+		return v.raw, v.typ
+	}
+	return "", TypeInvalid
+}
+
 // Document returns a node's document.
 func (n Node) Document() *Document {
 	if d := n.doc; d != nil && d.rev == n.rev {
@@ -37,8 +47,86 @@ func (n Node) Document() *Document {
 	return nil
 }
 
-func (n Node) IsZero() bool {
-	return n == Node{}
+func (n Node) IsValid() bool {
+	return n.value() != nil
+}
+
+func (n Node) Object() Object {
+	return Object(n)
+}
+func (n Node) Array() Array {
+	return Array(n)
+}
+
+func (n Node) ToString() (string, Type) {
+	if v := n.value(); v != nil {
+		switch v.typ {
+		case TypeString:
+			s, f := v.str()
+			if f.IsGoSafe() {
+				return s, TypeString
+			}
+			if f.IsJSON() && strings.IndexByte(s, '\\') == -1 {
+				v.flags |= flags(strjson.FlagSafe)
+				return s, TypeString
+			}
+			return strjson.Unescaped(s), TypeString
+		case TypeNumber, TypeBoolean, TypeNull:
+			return v.raw, v.typ
+		default:
+			return "", v.typ
+		}
+	}
+	// fallback to an invalid empty string
+	return "", TypeInvalid
+}
+
+func (v *value) str() (string, strjson.Flags) {
+	return v.raw, strjson.Flags(v.flags)
+}
+
+// Number parses a node's value as numjson.Number
+// If the parsing fails, or the node is not a JSON number, an invalid numjson.Number is returned
+func (n Node) Number() numjson.Number {
+	if s, typ := n.Inspect(); typ == TypeNumber {
+		if num, err := numjson.Parse(s); err == nil {
+			return num
+		}
+	}
+	return numjson.Number{}
+}
+
+func (n Node) Boolean() Const {
+	if v := n.value(); v != nil && v.typ == TypeBoolean {
+		return Const(v.raw)
+	}
+	return ""
+}
+
+// Const is a constant JSON value
+type Const string
+
+const (
+	True  Const = "true"
+	False Const = "false"
+	Null  Const = "null"
+)
+
+func (c Const) IsTrue() bool {
+	return c == True
+}
+func (c Const) IsFalse() bool {
+	return c == False
+}
+func (c Const) IsNull() bool {
+	return c == Null
+}
+
+func (n Node) IsNull() bool {
+	if v := n.value(); v != nil {
+		return v.typ == TypeNull
+	}
+	return false
 }
 
 // Unmarshaler is the interface implemented by types that can unmarshal from a Node.
@@ -51,17 +139,10 @@ func (n Node) value() *value {
 		if n.id < uint(len(n.doc.values)) {
 			return &n.doc.values[n.id]
 		}
-	} else {
-		// Unlink invalid Document reference
-		n.doc = nil
 	}
+	// Unlink invalid Document reference
+	n.doc = nil
 	return nil
-}
-func (n Node) Object() Object {
-	return Object(n)
-}
-func (n Node) Array() Array {
-	return Array(n)
 }
 
 // AppendJSON appends a node's JSON data to a byte slice.
@@ -72,75 +153,29 @@ func (n Node) AppendJSON(dst []byte) ([]byte, error) {
 	return nil, &typeError{TypeInvalid, TypeAnyValue}
 }
 
-// Raw returns the JSON string of a Node's value.
-// Object and Array values return an empty string.
-func (n Node) Raw() string {
-	if n := n.value(); n != nil {
-		return n.raw
-	}
-	return ""
-}
-
-func (n Node) ToString() (string, bool) {
-	if v := n.value(); v != nil && v.typ == TypeString {
-		if v.flags.IsSimpleString() {
-			return v.raw, true
-		}
-		return strjson.Unescaped(v.raw), true
-	}
-	return "", false
-}
-
-// Data returns a node's raw string and type
-func (n Node) Data() (string, Type) {
+// ToNumber converts a node's value to numjson.Number
+// If a node's value cannot be converted to a number an error is returned
+func (n Node) ToNumber() (numjson.Number, error) {
 	if v := n.value(); v != nil {
-		return v.raw, v.typ
+		return v.toNumber()
 	}
-	return "", TypeInvalid
+	return numjson.Number{}, errNodeInvalid
 }
 
-func (n Node) Text() (string, Type) {
-	if v := n.value(); v != nil {
-		switch v.typ {
-		case TypeString:
-			if v.flags.IsSimpleString() || v.flags.IsUnescaped() {
-				return v.raw, TypeString
-			}
-			v.raw = strjson.Unescaped(v.raw)
-			v.flags |= flagUnescapedString
-			return v.raw, TypeString
-		case TypeNumber, TypeBoolean:
-			return v.raw, v.typ
-		default:
-			return "", v.typ
+var errNodeInvalid = errors.New("node is not valid")
+
+func (v *value) toNumber() (numjson.Number, error) {
+	switch v.typ {
+	case TypeNumber, TypeString:
+		return numjson.Parse(v.raw)
+	case TypeBoolean:
+		if v.raw == "true" {
+			return numjson.Int64(1), nil
 		}
+		return numjson.Int64(0), nil
+	default:
+		return numjson.Number{}, newTypeError(v.typ, TypeNumber|TypeString|TypeBoolean)
 	}
-	return "", TypeInvalid
-}
-
-// ToFloat converts a node's value to float64.
-func (n Node) ToFloat() (float64, bool) {
-	if n := n.value(); n != nil {
-		f := numjson.ParseFloat(n.raw)
-		return f, f == f
-	}
-	return 0, false
-}
-
-// ToInt converts a node's value to int64.
-func (n Node) ToInt() (int64, bool) {
-	if n := n.value(); n != nil {
-		return numjson.ParseInt(n.raw)
-	}
-	return 0, false
-}
-
-// ToUint converts a node's  value to uint64.
-func (n Node) ToUint() (uint64, bool) {
-	if n := n.value(); n != nil {
-		return numjson.ParseUint(n.raw)
-	}
-	return 0, false
 }
 
 // ToBool converts a Node to bool.
@@ -244,69 +279,6 @@ func (n Node) WrapUnmarshalText(u encoding.TextUnmarshaler) (err error) {
 		}
 	}
 	return newTypeError(TypeInvalid, TypeString)
-}
-
-// SetInt sets a Node's value to an integer.
-func (n Node) SetInt(i int64) {
-	if v := n.value(); v != nil {
-		v.reset(TypeNumber, v.flags&flagRoot, strconv.FormatInt(i, 10), v.children[:0])
-	}
-
-}
-
-// SetUint sets a Node's value to an unsigned integer.
-func (n Node) SetUint(u uint64) {
-	if v := n.value(); v != nil {
-		v.reset(TypeNumber, v.flags&flagRoot, strconv.FormatUint(u, 10), v.children[:0])
-	}
-
-}
-
-// SetFloat sets a Node's value to a float number.
-func (n Node) SetFloat(f float64) {
-	if v := n.value(); v != nil {
-		v.reset(TypeNumber, v.flags&flagRoot, numjson.FormatFloat(f, 64), v.children[:0])
-	}
-}
-
-// SetString sets a Node's value to a string escaping invalid JSON characters.
-func (n Node) SetString(s string) {
-	n.SetStringRaw(strjson.Escaped(s, false, false))
-}
-
-// SetStringHTML sets a Node's value to a string escaping invalid JSON and unsafe HTML characters.
-func (n Node) SetStringHTML(s string) {
-	n.SetStringRaw(strjson.Escaped(s, true, false))
-}
-
-// SetStringRaw sets a Node's value to a string without escaping.
-// The provided string *must* not contain any JSON invalid characters,
-// otherwise JSON output from this Node will be invalid.
-func (n Node) SetStringRaw(s string) {
-	if v := n.value(); v != nil {
-		v.reset(TypeString, v.flags&flagRoot, s, v.children[:0])
-	}
-}
-
-// SetFalse sets a Node's value to false.
-func (n Node) SetFalse() {
-	if v := n.value(); v != nil {
-		v.reset(TypeBoolean, v.flags&flagRoot, strFalse, v.children[:0])
-	}
-}
-
-// SetTrue sets a Node's value to true.
-func (n Node) SetTrue() {
-	if v := n.value(); v != nil {
-		v.reset(TypeBoolean, v.flags&flagRoot, strTrue, v.children[:0])
-	}
-}
-
-// SetNull sets a Node's value to null.
-func (n Node) SetNull() {
-	if v := n.value(); v != nil {
-		v.reset(TypeNull, v.flags&flagRoot, strNull, v.children[:0])
-	}
 }
 
 // With returns a document node for id.

@@ -4,10 +4,8 @@ import (
 	"encoding"
 	"encoding/json"
 	"errors"
-	"reflect"
-	"strconv"
-
 	"github.com/alxarch/njson/strjson"
+	"reflect"
 
 	"github.com/alxarch/njson/numjson"
 
@@ -370,7 +368,7 @@ func (d *ptrDecoder) decode(v reflect.Value, n njson.Node) error {
 type stringDecoder struct{}
 
 func (stringDecoder) decode(v reflect.Value, n njson.Node) error {
-	switch raw, typ := n.Data(); typ {
+	switch raw, typ := n.Inspect(); typ {
 	case njson.TypeString:
 		v.SetString(strjson.Unescaped(raw))
 		return nil
@@ -414,6 +412,7 @@ func (boolDecoder) decode(v reflect.Value, n njson.Node) (err error) {
 		return nil
 	}
 	if n.Type() == njson.TypeNull {
+		// TODO: check json.Unmarshal behavior on this
 		v.SetBool(false)
 		return nil
 	}
@@ -423,21 +422,26 @@ func (boolDecoder) decode(v reflect.Value, n njson.Node) (err error) {
 
 type uintDecoder struct{}
 
-func (uintDecoder) decode(v reflect.Value, n njson.Node) (err error) {
-	switch raw, t := n.Data(); t {
+func (uintDecoder) decode(v reflect.Value, n njson.Node) error {
+	switch raw, t := n.Inspect(); t {
 	case njson.TypeNumber:
-		n, ok := numjson.ParseUint(raw)
-		if ok {
-			v.SetUint(n)
-			return nil
+		n, err := numjson.Parse(raw)
+		if err != nil {
+			return err
 		}
-		if n, err = strconv.ParseUint(raw, 10, 64); err == nil {
-			v.SetUint(n)
+		switch n.Type() {
+		case numjson.Int:
+			if n := n.Int64(); 0 <= n {
+				v.SetUint(uint64(n))
+			}
+		case numjson.Uint:
+			v.SetUint(n.Uint64())
 		}
-		return
+		return errInvalidValueType
 	default:
 		return n.TypeError(njson.TypeNumber)
 	case njson.TypeNull:
+		// TODO: check json.Unmarshal behavior on this
 		v.SetUint(0)
 		return nil
 	}
@@ -445,21 +449,22 @@ func (uintDecoder) decode(v reflect.Value, n njson.Node) (err error) {
 
 type intDecoder struct{}
 
-func (intDecoder) decode(v reflect.Value, n njson.Node) (err error) {
-	switch raw, t := n.Data(); t {
+func (intDecoder) decode(v reflect.Value, n njson.Node) error {
+	switch raw, t := n.Inspect(); t {
 	case njson.TypeNumber:
-		n, ok := numjson.ParseInt(raw)
-		if ok {
-			v.SetInt(n)
+		num, err := numjson.Parse(raw)
+		if err != nil {
+			return err
+		}
+		if num.Type() == numjson.Int {
+			v.SetInt(num.Int64())
 			return nil
 		}
-		if n, err = strconv.ParseInt(raw, 10, 64); err == nil {
-			v.SetInt(n)
-		}
-		return
+		return errInvalidValueType
 	default:
 		return n.TypeError(njson.TypeNumber)
 	case njson.TypeNull:
+		// TODO: check json.Unmarshal behavior on this
 		v.SetInt(0)
 		return nil
 	}
@@ -467,23 +472,26 @@ func (intDecoder) decode(v reflect.Value, n njson.Node) (err error) {
 
 type floatDecoder struct{}
 
-func (floatDecoder) decode(v reflect.Value, n njson.Node) (err error) {
-	switch raw, typ := n.Data(); typ {
+func (floatDecoder) decode(v reflect.Value, n njson.Node) error {
+	switch raw, t := n.Inspect(); t {
 	case njson.TypeNumber:
-		f := numjson.ParseFloat(raw)
-		if f == f {
-			v.SetFloat(f)
+		num, err := numjson.Parse(raw)
+		if err != nil {
+			return err
+		}
+		switch num.Type() {
+		case numjson.Float, numjson.Int, numjson.Uint:
+			v.SetFloat(num.Float64())
 			return nil
 		}
-		if f, err = strconv.ParseFloat(raw, 64); err == nil {
-			v.SetFloat(f)
+		if num.Type() == numjson.Float {
 		}
-		return
+		return errInvalidValueType
+	default:
+		return n.TypeError(njson.TypeNumber)
 	case njson.TypeNull:
 		v.SetFloat(0)
 		return nil
-	default:
-		return n.TypeError(njson.TypeNumber)
 	}
 }
 

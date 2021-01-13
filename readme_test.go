@@ -11,14 +11,15 @@ func Example() {
 
 	root, _, _ := d.Parse(`{"answer":42, "foo": {"bar": "baz"}}`)
 
-	answer, _ := root.Object().Get("answer").ToInt()
+	answer := root.Object().Get("answer").Number().Int64()
 	fmt.Println(answer)
 
 	n := root.Lookup("foo", "bar")
-	bar := n.Raw()
-	fmt.Println(bar)
+	bar, typ := n.ToString()
+	fmt.Println(bar, typ)
 
-	n.SetString("Hello, 世界")
+	obj := root.Lookup("foo").Object()
+	obj.Set("bar", d.NewString("Hello, 世界"))
 
 	data := make([]byte, 64)
 	data, _ = root.AppendJSON(data[:0])
@@ -26,6 +27,6 @@ func Example() {
 
 	// Output:
 	// 42
-	// baz
+	// baz String
 	// {"answer":42,"foo":{"bar":"Hello, 世界"}}
 }
