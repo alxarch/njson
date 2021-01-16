@@ -16,11 +16,15 @@ func (d *Document) Parse(s string) (Node, string, error) {
 	p := d.parser()
 	id := p.n
 	pos := p.parseValue(s, 0)
+	// Check for any parse errors
 	switch p.err.(type) {
 	case nil:
+		// Update the document
+		// Get the values arena from the parser
 		d.values = p.values[:p.n]
+		// Mark value as root
 		d.get(id).flags |= flagRoot
-		// Return tail of input string
+		// Return any tail string after the value
 		if pos < uint(len(s)) {
 			return Node{id, d.rev, d}, s[pos:], nil
 		}
@@ -145,13 +149,14 @@ readString:
 	if pos++; pos < uint(len(s)) {
 		// Slice after the opening quote
 		s = s[pos:]
-		pos++ // Early jump to the next character after the closing quote
-		// Immediately decrement to check if previous byte is '\'
+		pos++ // Optimization: Early jump to the next character after the closing quote compiles to faster ASM
+
+		// Find the closing quote (") and check its preceding byte to see if it is escaped
 		i := strings.IndexByte(s, delimString) - 1
-		if 0 <= i && i < len(s) {
+		if 0 <= i && i < len(s) { // bounds check elision
 			if s[i] == delimEscape {
 				// Advance past '\' and '"' and scan the remaining string
-				for i += 2; 0 <= i && i < len(s); i++ { // Avoid bounds check
+				for i += 2; 0 <= i && i < len(s); i++ { // bounds check elision
 					switch s[i] {
 					case delimString:
 						// Slice until the closing quote
@@ -163,7 +168,8 @@ readString:
 						i++
 					}
 				}
-			} else if i++; 0 <= i && i <= len(s) { // Avoid bounds check
+			// The end of the string is here
+			} else if i++; 0 <= i && i <= len(s) { // bounds check elision
 				// Slice until the closing quote
 				s = s[:i]
 				pos += uint(i)
