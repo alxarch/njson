@@ -11,7 +11,7 @@ type parser struct {
 	err    error
 }
 
-// Parse parses a JSON string and returns the root node
+// Parse parses a single JSON value from a string and returns a Node and the remaining string
 func (d *Document) Parse(s string) (Node, string, error) {
 	p := d.parser()
 	id := p.n
@@ -90,10 +90,9 @@ func (p *parser) parseValue(s string, pos uint) uint {
 		c   byte
 		typ Type
 		// We initialize the flag to JSON.
-		// This only applies to string values.
 		// We read a string by jumping to the closing quote.
 		// Since we do not check every character, we do not know if the string is 'safe' or not.
-		f   = flags(strjson.FlagJSON)
+		f = flags(strjson.FlagJSON)
 	)
 
 	for ; pos < uint(len(s)); pos++ {
@@ -151,32 +150,31 @@ readString:
 		s = s[pos:]
 		pos++ // Optimization: Early jump to the next character after the closing quote compiles to faster ASM
 
-		// Find the closing quote (") and check its preceding byte to see if it is escaped
-		i := strings.IndexByte(s, delimString) - 1
-		if 0 <= i && i < len(s) { // bounds check elision
-			if s[i] == delimEscape {
-				// Advance past '\' and '"' and scan the remaining string
-				for i += 2; 0 <= i && i < len(s); i++ { // bounds check elision
-					switch s[i] {
-					case delimString:
-						// Slice until the closing quote
-						s = s[:i]
-						pos += uint(i)
-						goto done
-					case delimEscape:
-						// Jump over the next character
-						i++
-					}
+		// Find the closing quote (")
+		i := strings.IndexByte(s, delimString)
+		// Check its preceding byte to see if it is escaped
+		if j := i-1; 0 <= j && j < len(s) && s[j] == delimEscape { // bounds check elision
+			// Advance past '\' and '"' and scan the remaining string
+			for i++; 0 <= i && i < len(s); i++ { // bounds check elision
+				switch s[i] {
+				case delimString:
+					// Slice until the closing quote
+					s = s[:i]
+					pos += uint(i)
+					goto done
+				case delimEscape:
+					// Jump over the next character
+					i++
 				}
-			// The end of the string is here
-			} else if i++; 0 <= i && i <= len(s) { // bounds check elision
-				// Slice until the closing quote
-				s = s[:i]
-				pos += uint(i)
-				goto done
 			}
-		} else if i == -1 {
-			s = ""
+			return p.eof(TypeString, pos-1)
+		}
+		// The end of the string is here
+		if 0 <= i && i <= len(s) { // bounds check elision
+			// Slice until the closing quote
+			s = s[:i]
+			// Advance past the closing quote (pos was already incremented)
+			pos += uint(i)
 			goto done
 		}
 	}
