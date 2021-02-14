@@ -48,11 +48,18 @@ func (i *iterator) Next(p *child) bool {
 	next := uintptr(unsafe.Pointer(i.cur)) + sizeOfChild
 	if next <= i.end {
 		*p = *i.cur
+		//nolint:unsafeptr
 		i.cur = (*child)(unsafe.Pointer(next))
 		return true
 	}
 	i.Done()
 	return false
+}
+func (i *iterator) Len() int {
+	if i.v != nil {
+		return len(i.v.children)
+	}
+	return -1
 }
 
 func (i *iterator) Done() {

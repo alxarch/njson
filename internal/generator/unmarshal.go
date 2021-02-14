@@ -331,7 +331,7 @@ func (g *Generator) StructUnmarshaler(t *types.Struct) (code meta.Code) {
 			}
 			code = g.Code(`%s
 				case %s:
-					n := values.Value()
+					n := iter.Value()
 					%s{
 						r := &r%s
 						%s
@@ -346,8 +346,10 @@ func (g *Generator) StructUnmarshaler(t *types.Struct) (code meta.Code) {
 		if n.Type() != njson.TypeObject {
 			return n.TypeError(njson.TypeObject)
 		}
-		for values := n.Values(); values.Next(); {
-			switch values.Key() {
+		iter := n.Object().Iterate()
+		defer iter.Close()
+		for iter.Next(); {
+			switch iter.Key() {
 				%s
 			}
 		}`, code).Import(njsonPkg)

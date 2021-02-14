@@ -13,6 +13,13 @@ type Document struct {
 	values []value
 	rev    uint // document revision incremented on every Clear/Close invalidating values
 	pool   *Pool
+	err    error
+}
+
+func errNode(err error) Node {
+	return Node{
+		doc: &Document{err: err},
+	}
 }
 
 // value is a JSON document value.
@@ -65,6 +72,104 @@ func (v *value) reset(typ Type, f flags, raw string, values []child) {
 	}
 }
 
+func (v *value) remove(index int) (uint, bool) {
+	if 0 <= index && index < len(v.children) {
+		id, _ := v.children[index].id, copy(v.children[index:], v.children[index+1:])
+		v.children = v.children[:len(v.children)-1]
+		return id, true
+	}
+	return 0, false
+}
+
+func (v *value) get(key string) *child {
+	if !strjson.Flags(v.flags).IsGoSafe() {
+		for i := uint(0); i < uint(len(key)); i++ {
+			if strjson.NeedsEscapeByte(key[i]) {
+				v.unescapeKeys()
+				break
+			}
+		}
+	}
+	for i := range v.children {
+		if c := &v.children[i]; c.key == key {
+			return c
+		}
+	}
+	return nil
+}
+
+func (v *value) index(key string) *child {
+	switch len(key) {
+	case 1:
+		// Fast path for small indexes
+		if len(key) == 1 {
+			if i := uint(key[0] - '0'); i < uint(len(v.children)) && i <= 9 {
+				return &v.children[i]
+			}
+		}
+		return nil
+	case 0:
+		return nil
+	default:
+		// We inline index parsing to avoid extra function call
+		var index, i, digit uint
+		// stop parsing index early
+		cutoff := uint(len(v.children))
+		for i = uint(0); i < uint(len(key)); i++ {
+			// byte will roll on underflow
+			digit = uint(key[i] - '0')
+			if digit <= 9 && index < cutoff {
+				index = index*10 + digit
+			} else {
+				return nil
+			}
+		}
+		if index < uint(len(v.children)) {
+			return &v.children[index]
+		}
+		return nil
+	}
+}
+
+func (v *value) unescapeKeys() {
+	for i := range v.children {
+		c := &v.children[i]
+		c.key = strjson.Unescaped(c.key)
+	}
+	v.flags = 0
+}
+
+func (v *value) del(key string, stable bool) (uint, bool) {
+	if !strjson.Flags(v.flags).IsGoSafe() && strjson.NeedsEscape(key) {
+		v.unescapeKeys()
+	}
+	if stable {
+		for i := range v.children {
+			c := &v.children[i]
+			if c.key == key {
+				return v.remove(i)
+			}
+		}
+		return 0, false
+	}
+	if i := len(v.children) - 1; 0 <= i && i < len(v.children) {
+		children, last := v.children[:i], v.children[i]
+		if last.key == key {
+			v.children = children
+			return last.id, true
+		}
+		for i := range children {
+			if c := &children[i]; c.key == key {
+				id := c.id
+				*c = last
+				v.children = children
+				return id, true
+			}
+		}
+	}
+	return 0, false
+}
+
 // lookup finds a node's id by path.
 func (d *Document) lookup(id uint, path []string) uint {
 	var (
@@ -94,7 +199,7 @@ func (d *Document) lookup(id uint, path []string) uint {
 // Null adds a new Null node to the document.
 func (d *Document) Null() Node {
 	id := uint(len(d.values))
-	v := d.grow()
+	v := d.alloc()
 	v.reset(TypeNull, flagNew, strNull, v.children[:0])
 	return d.Node(id)
 }
@@ -102,7 +207,7 @@ func (d *Document) Null() Node {
 // False adds a new Boolean node with it's value set to false to the document.
 func (d *Document) False() Node {
 	id := uint(len(d.values))
-	v := d.grow()
+	v := d.alloc()
 	v.reset(TypeBoolean, flagNew, strFalse, v.children[:0])
 	return d.Node(id)
 }
@@ -110,7 +215,7 @@ func (d *Document) False() Node {
 // True adds a new Boolean node with it's value set to true to the document.
 func (d *Document) True() Node {
 	id := uint(len(d.values))
-	v := d.grow()
+	v := d.alloc()
 	v.reset(TypeBoolean, flagNew, strTrue, v.children[:0])
 	return d.Node(id)
 }
@@ -132,7 +237,7 @@ func (d *Document) NewStringHTML(s string) Node {
 
 func (d *Document) NewStringJSON(s strjson.String) Node {
 	id := uint(len(d.values))
-	v := d.grow()
+	v := d.alloc()
 	v.reset(TypeString, flagNew|flags(s.Flags()), s.Value, v.children[:0])
 	return d.Node(id)
 }
@@ -140,7 +245,7 @@ func (d *Document) NewStringJSON(s strjson.String) Node {
 // NewObject adds a new empty Object node to the document.
 func (d *Document) NewObject() Object {
 	id := uint(len(d.values))
-	v := d.grow()
+	v := d.alloc()
 	v.reset(TypeObject, flagNew, "", v.children[:0])
 	return Object(d.Node(id))
 }
@@ -148,7 +253,7 @@ func (d *Document) NewObject() Object {
 // NewArray adds a new empty Array node to the document.
 func (d *Document) NewArray() Array {
 	id := uint(len(d.values))
-	v := d.grow()
+	v := d.alloc()
 	v.reset(TypeArray, flagNew, "", v.children[:0])
 	return Array(d.Node(id))
 }
@@ -180,7 +285,7 @@ func (d *Document) NewNumber(num numjson.Number) Node {
 // Use this for big numbers that cannot be represented as numjson.Number.
 func (d *Document) NewNumberString(num string) Node {
 	id := uint(len(d.values))
-	v := d.grow()
+	v := d.alloc()
 	v.reset(TypeNumber, flagRoot, num, v.children[:0])
 	return d.Node(id)
 }
@@ -215,12 +320,12 @@ func (d *Document) get(id uint) *value {
 
 // Node returns a node with id set to id.
 func (d *Document) Node(id uint) Node {
-	return Node{id, d.rev, d}
+	return Node{d, id, d.rev}
 }
 
 // Root returns the document root node.
 func (d *Document) Root() Node {
-	return Node{0, d.rev, d}
+	return Node{d, 0, d.rev}
 }
 
 // toInterface converts a node to any compatible go value (many allocations on large trees).
@@ -371,7 +476,7 @@ func (d *Document) appendJSON(dst []byte, v *value) ([]byte, error) {
 
 func (d *Document) copyValue(other *Document, v *value) uint {
 	id := uint(len(d.values))
-	cp := d.grow()
+	cp := d.alloc()
 	children := cp.children[:cap(cp.children)]
 	*cp = value{
 		typ:   v.typ,
@@ -422,10 +527,10 @@ func (d *Document) copyNode(n Node, parent uint) (uint, bool) {
 	return d.copyValue(n.doc, v), true
 }
 
-// grow adds a value to the document.
+// alloc adds a value to the document.
 // It does not reset its data.
 // It is inlined by the compiler.
-func (d *Document) grow() *value {
+func (d *Document) alloc() *value {
 	if cap(d.values) > len(d.values) {
 		d.values = d.values[:len(d.values)+1]
 	} else {
@@ -506,4 +611,3 @@ func (v *value) unlocked() bool {
 func (v *value) locked() bool {
 	return v.locks != 0
 }
-

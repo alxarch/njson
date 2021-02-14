@@ -2,21 +2,36 @@ package njson
 
 import "fmt"
 
-type typeError struct {
-	Type Type
-	Want Type
+func errNodeInvalid(typ Type, op string, n Node) Node {
+	if err := n.Err(); err != nil {
+		return n
+	}
+	return errNode(fmt.Errorf("method %s.%s() called on an invalid node", typ, op))
+}
+func errNodeLocked(typ Type, op string) Node {
+	return errNode(fmt.Errorf("method %s.%s() called during iteration", typ, op))
+}
+
+func errNodeType(typ Type, op string, got Type) Node {
+	return errNode(fmt.Errorf("method %s.%s() called on a %s node", typ, op, got))
 }
 
 // newTypeError returns a type mismatch error.
 func newTypeError(t, want Type) error {
-	return typeError{t, want}
+	return &TypeError{Type: t, Want: want}
 }
 
-func (e typeError) Error() string {
-	if e.Want&e.Type != 0 {
-		return fmt.Sprintf("Invalid value for type %s", e.Type)
+type TypeError struct {
+	Type Type
+	Want Type
+}
+
+func (e *TypeError) Error() string {
+	if e.Type == TypeInvalid && e.Want == TypeAnyValue {
+		return "value type is not valid"
+
 	}
-	return fmt.Sprintf("Invalid type %s not in %v", e.Type, e.Want.Types())
+	return fmt.Sprintf("value type is %s, expecting %v", e.Type, e.Want.Types())
 }
 
 // ParseError signifies an invalid token in JSON data
@@ -41,14 +56,14 @@ func (e *ParseError) Error() string {
 	if e == nil {
 		return fmt.Sprintf("%v", error(nil))
 	}
-	return fmt.Sprintf("Invalid token %q != %q at position %d while scanning %s", e.got, e.want, e.pos, e.typ.String())
+	return fmt.Sprintf("invalid token %q != %q at position %d while scanning %s", e.got, e.want, e.pos, e.typ.String())
 }
 
 // UnexpectedEOF signifies incomplete JSON data
 type UnexpectedEOF Type
 
 func (e UnexpectedEOF) Error() string {
-	return fmt.Sprintf("Unexpected end of input while scanning %s", Type(e).String())
+	return fmt.Sprintf("unexpected end of input while scanning %s", Type(e).String())
 }
 
 func abort(pos int, typ Type, got interface{}, want interface{}) error {
@@ -58,4 +73,12 @@ func abort(pos int, typ Type, got interface{}, want interface{}) error {
 		got:  got,
 		want: want,
 	}
+}
+
+type KeyError struct {
+	Key string
+}
+
+func (e *KeyError) Error() string {
+	return fmt.Sprintf("key %q not found in JSON object", e.Key)
 }

@@ -2,10 +2,12 @@
 package starlarknjson
 
 import (
+	"encoding/json"
 	"errors"
 	"github.com/alxarch/njson"
 	"github.com/alxarch/njson/numjson"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 	"math"
 	"math/big"
 	"strconv"
@@ -15,6 +17,47 @@ import (
 const (
 	keyThreadLocalDocument = "njson"
 )
+
+var Module = starlarkstruct.Module{
+	Name: "njson",
+	Members: starlark.StringDict{
+		"parse":  starlark.NewBuiltin("parse", Parse),
+		"object": starlark.NewBuiltin("object", MakeObject),
+		"array": starlark.NewBuiltin("array", MakeArray),
+	},
+}
+
+func MakeObject(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	doc := documentFromThread(thread)
+	if doc == nil {
+		doc = &njson.Document{}
+		thread.SetLocal(keyThreadLocalDocument, doc)
+	}
+	obj := Object{
+		obj: doc.NewObject(),
+	}
+	_, err := starlark.NewBuiltin(fn.Name(), objectUpdate).BindReceiver(&obj).CallInternal(thread, args, kwargs)
+	if err != nil {
+		return nil, err
+	}
+	return &obj, nil
+}
+
+func MakeArray(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	doc := documentFromThread(thread)
+	if doc == nil {
+		doc = &njson.Document{}
+		thread.SetLocal(keyThreadLocalDocument, doc)
+	}
+	arr := Array{
+		arr: doc.NewArray(),
+	}
+	_, err := starlark.NewBuiltin(fn.Name(), arrayExtend).BindReceiver(&arr).CallInternal(thread, args, kwargs)
+	if err != nil {
+		return nil, err
+	}
+	return &arr, nil
+}
 
 func Parse(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(kwargs) != 0 {
@@ -65,7 +108,7 @@ func newProto(methods map[string]*starlark.Builtin) *proto {
 	}
 }
 
-func (p *proto) Get(name string, recv starlark.Value) (starlark.Value, error) {
+func (p *proto) Get(name string, recv starlark.Value) (*starlark.Builtin, error) {
 	if m := p.methods[name]; m != nil {
 		return m.BindReceiver(recv), nil
 	}
@@ -82,14 +125,12 @@ func Value(n njson.Node) starlark.Value {
 	case njson.TypeArray:
 		arr := njson.Array(n)
 		return &Array{
-			node: arr,
-			len:  uint32(arr.Len()),
+			arr: arr,
 		}
 	case njson.TypeObject:
 		obj := njson.Object(n)
 		return &Object{
-			node: obj,
-			len:  uint32(obj.Len()),
+			obj: obj,
 		}
 	case njson.TypeNumber:
 		num, err := numjson.Parse(s)
@@ -138,26 +179,15 @@ var zeroNode njson.Node
 func Node(doc *njson.Document, v starlark.Value) (njson.Node, error) {
 	switch v := v.(type) {
 	case *Array:
-		return njson.Node(v.node), nil
+		return njson.Node(v.arr), nil
 	case *Object:
-		return njson.Node(v.node), nil
+		return njson.Node(v.obj), nil
 	case starlark.String:
 		return doc.NewString(string(v)), nil
 	case starlark.IterableMapping:
 		obj := doc.NewObject()
-		iter := v.Iterate()
-		var key starlark.Value
-		for iter.Next(&key) {
-			key, ok := key.(starlark.String)
-			if !ok {
-				return zeroNode, errors.New("invalid dict key")
-			}
-			val, _, _ := v.Get(key)
-			node, err := Node(doc, val)
-			if err != nil {
-				return zeroNode, err
-			}
-			obj.Set(string(key), node)
+		if err := setIterableMapping(obj, v); err != nil {
+			return zeroNode, err
 		}
 		return obj.Node(), nil
 	case starlark.Iterable:
@@ -183,8 +213,17 @@ func Node(doc *njson.Document, v starlark.Value) (njson.Node, error) {
 		return doc.Null(), nil
 	case starlark.Int:
 		return doc.NewNumberString(v.String()), nil
-	case interface{ NJSON(d *njson.Document) njson.Node }:
+	case interface {
+		NJSON(d *njson.Document) njson.Node
+	}:
 		return v.NJSON(doc), nil
+	case json.Marshaler:
+		data, err := v.MarshalJSON()
+		if err != nil {
+			return zeroNode, err
+		}
+		node, _, err := doc.Parse(string(data))
+		return node, err
 	default:
 		return zeroNode, errors.New("cannot handle type")
 	}

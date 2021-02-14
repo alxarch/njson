@@ -7,16 +7,16 @@ import (
 )
 
 type structCodec struct {
-	fields    []codec
+	fields    []fieldCodec
 	zeroValue reflect.Value
 	typ       reflect.Type
 }
 
-func (c *structCodec) Add(f codec) {
+func (c *structCodec) Add(f fieldCodec) {
 	c.fields = append(c.fields, f)
 }
 
-func (c *structCodec) Get(key string) *codec {
+func (c *structCodec) Get(key string) *fieldCodec {
 	for i := range c.fields {
 		f := &c.fields[i]
 		if f.key == key {
@@ -27,7 +27,7 @@ func (c *structCodec) Get(key string) *codec {
 }
 
 // codec is a field encoder/decoder
-type codec struct {
+type fieldCodec struct {
 	key   string
 	index []int // embedded struct index
 	decoder
@@ -63,7 +63,7 @@ func (c *structCodec) encode(b []byte, v reflect.Value) ([]byte, error) {
 		err  error
 		more uint
 		fv   reflect.Value
-		fc   *codec
+		fc   *fieldCodec
 	)
 	for i := range c.fields {
 		fc = &c.fields[i]
@@ -144,7 +144,7 @@ func (c *structCodec) merge(typ reflect.Type, options *Options, index []int, cod
 			omit = omitNever{}
 		}
 
-		c.Add(codec{
+		c.Add(fieldCodec{
 			key:     tag,
 			index:   copyIndex(index),
 			decoder: dec,
@@ -168,7 +168,7 @@ func newStructCodec(typ reflect.Type, options *Options, codecs cache) (*structCo
 	}
 	c := structCodec{
 		typ:       typ,
-		fields:    make([]codec, 0, typ.NumField()),
+		fields:    make([]fieldCodec, 0, typ.NumField()),
 		zeroValue: reflect.Zero(typ),
 	}
 	codecs[cacheKey{typ, 0}] = &c
@@ -200,8 +200,8 @@ func (c *structCodec) decode(v reflect.Value, n njson.Node) (err error) {
 	case njson.TypeObject:
 		var (
 			field reflect.Value
-			fc    *codec
-			iter  = n.Object().Iter()
+			fc    *fieldCodec
+			iter  = n.Object().Iterate()
 		)
 		for iter.Next() {
 			fc = c.Get(iter.Key())

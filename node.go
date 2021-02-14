@@ -15,9 +15,9 @@ import (
 // Node is a reference to a node in a JSON Document.
 // It is a versioned reference to avoid document manipulation after reset.
 type Node struct {
+	doc *Document
 	id  uint
 	rev uint
-	doc *Document
 }
 
 // Type returns a Node's type.
@@ -26,6 +26,16 @@ func (n Node) Type() Type {
 		return v.typ
 	}
 	return TypeInvalid
+}
+
+func (n Node) Err() error {
+	if d := n.doc; d != nil {
+		if d.rev == n.rev && n.id < uint(len(d.values)) {
+			return nil
+		}
+		return d.err
+	}
+	return ErrNodeInvalid
 }
 
 // Inspect returns a node's raw string and type
@@ -42,8 +52,6 @@ func (n Node) Document() *Document {
 	if d := n.doc; d != nil && d.rev == n.rev {
 		return d
 	}
-	// Unlink invalid Document reference
-	n.doc = nil
 	return nil
 }
 
@@ -73,8 +81,10 @@ func (n Node) ToString() (string, Type) {
 			return strjson.Unescaped(s), TypeString
 		case TypeNumber, TypeBoolean, TypeNull:
 			return v.raw, v.typ
-		default:
+		case TypeObject, TypeArray:
 			return "", v.typ
+		default:
+			return "", TypeInvalid
 		}
 	}
 	// fallback to an invalid empty string
@@ -135,13 +145,9 @@ type Unmarshaler interface {
 }
 
 func (n Node) value() *value {
-	if n.doc != nil && n.doc.rev == n.rev {
-		if n.id < uint(len(n.doc.values)) {
-			return &n.doc.values[n.id]
-		}
+	if d := n.doc; d != nil && d.rev == n.rev && n.id < uint(len(d.values)) {
+		return &d.values[n.id]
 	}
-	// Unlink invalid Document reference
-	n.doc = nil
 	return nil
 }
 
@@ -150,7 +156,7 @@ func (n Node) AppendJSON(dst []byte) ([]byte, error) {
 	if v := n.value(); v != nil {
 		return n.doc.appendJSON(dst, v)
 	}
-	return nil, &typeError{TypeInvalid, TypeAnyValue}
+	return nil, ErrNodeInvalid
 }
 
 // ToNumber converts a node's value to numjson.Number
@@ -159,10 +165,10 @@ func (n Node) ToNumber() (numjson.Number, error) {
 	if v := n.value(); v != nil {
 		return v.toNumber()
 	}
-	return numjson.Number{}, errNodeInvalid
+	return numjson.Number{}, ErrNodeInvalid
 }
 
-var errNodeInvalid = errors.New("node is not valid")
+var ErrNodeInvalid = errors.New("node is not valid")
 
 func (v *value) toNumber() (numjson.Number, error) {
 	switch v.typ {
@@ -193,7 +199,7 @@ func (n Node) ToBool() (bool, bool) {
 
 // TypeError returns an error for a type not matching a Node's type.
 func (n Node) TypeError(want Type) error {
-	return typeError{n.Type(), want}
+	return newTypeError(n.Type(), want)
 }
 
 // Lookup finds a node by path
@@ -236,7 +242,7 @@ func (n Node) PrintJSON(w io.Writer) (int, error) {
 func (n Node) WrapUnmarshalJSON(u json.Unmarshaler) (err error) {
 	v := n.value()
 	if v == nil {
-		return typeError{TypeInvalid, TypeAnyValue}
+		return ErrNodeInvalid
 	}
 
 	switch v.typ {
@@ -253,7 +259,7 @@ func (n Node) WrapUnmarshalJSON(u json.Unmarshaler) (err error) {
 			return u.UnmarshalJSON([]byte{delimString, delimString})
 		}
 	case TypeInvalid:
-		return typeError{TypeInvalid, TypeAnyValue}
+		return newTypeError(TypeInvalid, TypeAnyValue)
 	}
 	data := bufferPool.Get().([]byte)
 	data, err = n.AppendJSON(data[:0])

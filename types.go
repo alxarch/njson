@@ -67,7 +67,7 @@ const (
 func (t Type) String() string {
 	switch t {
 	case TypeInvalid:
-		return "InvalidToken"
+		return "Invalid"
 	case TypeString:
 		return "String"
 	case TypeArray:
@@ -86,7 +86,7 @@ func (t Type) String() string {
 		if bits.OnesCount(uint(t)) > 1 {
 			return fmt.Sprint(t.Types())
 		}
-		return "InvalidToken"
+		return "Invalid"
 	}
 }
 

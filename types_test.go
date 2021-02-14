@@ -6,7 +6,7 @@ import (
 
 func TestType_String(t *testing.T) {
 	for expect, typ := range map[string]Type{
-		"InvalidToken":  TypeInvalid,
+		"Invalid":       TypeInvalid,
 		"Number":        TypeNumber,
 		"Array":         TypeArray,
 		"Boolean":       TypeBoolean,
@@ -16,9 +16,7 @@ func TestType_String(t *testing.T) {
 		"AnyValue":      TypeAnyValue,
 		"[Number Null]": TypeNumber | TypeNull,
 	} {
-		if actual := typ.String(); actual != expect {
-			t.Errorf("Invalid string %s != %s", actual, expect)
-		}
+		assertEqual(t, expect, typ.String())
 	}
 
 }
@@ -47,4 +45,3 @@ func TestType_Types(t *testing.T) {
 	// t.Error(TypeError{TypeString, typ})
 	assertEqual(t, Type(0).Types(), []Type{})
 }
-

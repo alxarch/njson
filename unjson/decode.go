@@ -205,7 +205,7 @@ func newArrayDecoder(typ reflect.Type, options *Options, codecs cache) (*arrayDe
 func (dec *arrayDecoder) decode(v reflect.Value, n njson.Node) error {
 	switch n.Type() {
 	case njson.TypeArray:
-		iter := n.Array().Iter()
+		iter := n.Array().Iterate()
 		for i := 0; i < dec.size; i++ {
 			if iter.Next() {
 				dec.decoder.decode(v.Index(i), iter.Node())
@@ -264,7 +264,7 @@ func (d *sliceDecoder) decode(v reflect.Value, n njson.Node) (err error) {
 		} else {
 			v.SetLen(size)
 		}
-		iter := arr.Iter()
+		iter := arr.Iterate()
 		for i := 0; iter.Next(); i++ {
 			err = d.decoder.decode(v.Index(i), iter.Node())
 			if err != nil {
@@ -317,7 +317,7 @@ func (d *mapDecoder) decode(v reflect.Value, n njson.Node) (err error) {
 		return
 	case njson.TypeObject:
 		val := reflect.New(d.typ.Elem()).Elem()
-		iter := n.Object().Iter()
+		iter := n.Object().Iterate()
 		for iter.Next() {
 			val.Set(d.zeroValue)
 			err = d.decoder.decode(val, iter.Node())

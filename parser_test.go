@@ -77,6 +77,7 @@ func TestParser_Parse(t *testing.T) {
 		// {`-a7`, nil, `-a7`, true},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(strconv.Quote(tt.args), func(t *testing.T) {
 			gotN, gotS, err := p.Parse(tt.args)
 			if (err != nil) != tt.wantErr {
@@ -126,7 +127,7 @@ func Test_parseInvalidInput(t *testing.T) {
 		n, tail, err := d.Parse(tt.input)
 		// e, _ := err.(*ParseError)
 		assertEqual(t, err.Error(), tt.err.Error())
-		assertEqual(t, n, Node{0, 0, nil})
+		assertEqual(t, n, Node{})
 		if e, ok := err.(*ParseError); ok {
 			assertEqual(t, tail, "")
 			assertEqual(t, tt.input[e.Pos():], tt.tail)

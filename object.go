@@ -1,6 +1,9 @@
 package njson
 
-import "github.com/alxarch/njson/strjson"
+import (
+	"errors"
+	"fmt"
+)
 
 type Object Node
 
@@ -8,87 +11,187 @@ func (o Object) Node() Node {
 	return Node(o)
 }
 
-func (o Object) Document() *Document {
-	return o.doc
-}
-
 // Get gets a value Node by key.
 // If the key is not found the returned node is zero.
 func (o Object) Get(key string) Node {
+	const opName = "Get"
 	n := Node(o)
-	if v := n.value(); v != nil && v.typ == TypeObject {
-		if c := v.get(key); c != nil {
-			return n.with(c.id)
-		}
+	v := n.value()
+	if v == nil {
+		return errNodeInvalid(TypeObject, opName, n)
 	}
-	return Node{}
+	if v.typ != TypeObject {
+		return errNodeType(TypeObject, opName, v.typ)
+	}
+	if c := v.get(key); c != nil {
+		return n.with(c.id)
+	}
+	return errNode(&KeyError{Key: key})
 }
 
 // Set assigns a Node to the key of an Object Node.
 func (o Object) Set(key string, value Node) Node {
+	const opName = "Set"
 	n := Node(o)
-	if v := n.value(); v != nil && v.typ == TypeObject {
-		// Make a copy of the value if it's not Orphan to avoid cyclic references and infinite loops.
-		id, ok := n.doc.copyNode(value, n.id)
-		if !ok {
-			return Node{}
-		}
-		// copyNode might grow values array invalidating value pointer
-		// so we need to 'refresh' the value
-		v = &n.doc.values[n.id]
-		if c := v.get(key); c != nil {
-			c.id = id
-			return n.with(id)
-		}
-		v.children = append(v.children, child{
-			id:  id,
-			key: key,
-		})
+	v := n.value()
+	if v == nil {
+		return errNodeInvalid(TypeObject, opName, n)
+	}
+	if v.typ != TypeObject {
+		return errNodeType(TypeObject, opName, v.typ)
+	}
+	if v.locked() {
+		return errNodeLocked(TypeObject, opName)
+	}
+	// Make a copy of the value if it's not Orphan to avoid cyclic references and infinite loops.
+	id, ok := n.doc.copyNode(value, n.id)
+	if !ok {
+		return errNodeInvalid(TypeAnyValue, opName, value)
+	}
+	// copyNode might alloc values array invalidating value pointer
+	// so we need to 'refresh' the value
+	v = &n.doc.values[n.id]
+	if c := v.get(key); c != nil {
+		c.id = id
 		return n.with(id)
 	}
-	return Node{}
-}
-func (o Object) Each(fn func(key string, value Node) bool) {
-	n := Node(o)
-	if v := n.value(); v != nil && v.typ == TypeObject {
-		for i := range v.children {
-			c := &v.children[i]
-			if !fn(c.key, n.with(c.id)) {
-				return
-			}
-		}
-	}
+	v.children = append(v.children, child{
+		id:  id,
+		key: key,
+	})
+	return n.with(id)
 }
 
-// Strip recursively deletes a key from a node.
-func (o Object) Strip(key string) (total int) {
+func (o Object) Pop() (string, Node) {
 	n := Node(o)
 	if v := n.value(); v != nil && v.typ == TypeObject {
-		if _, ok := v.del(key); ok {
+		var lastChild child
+		if last := len(v.children) - 1; 0 <= last && last < len(v.children) {
+			lastChild, v.children = v.children[last], v.children[:last]
+			return lastChild.key, n.with(lastChild.id)
+		}
+	}
+	return "", Node{}
+}
+func (o Object) Clear() Object {
+	n := Node(o)
+	v := n.value()
+	if v == nil {
+		return o
+	}
+	if v.typ != TypeObject {
+		return errNode(newTypeError(v.typ, TypeObject)).Object()
+	}
+	if v.locked() {
+		return errNode(ErrObjectLocked).Object()
+	}
+	for i := range v.children {
+		c := &v.children[i]
+		n.doc.get(c.id).flags |= flagRoot
+		*c = child{}
+	}
+	v.children = v.children[:0]
+	return o
+}
+
+// Strip recursively deletes a key from an object node.
+func (o Object) Strip(key string) (int, error) {
+	n := Node(o)
+	if v := n.value(); v != nil && v.typ == TypeObject {
+		locked := maxUint
+		total, ok := n.strip(key, &locked)
+		if !ok {
+			return total, &ImmutableNodeError{Node: n.with(locked)}
+		}
+		return total, nil
+	}
+	return 0, n.TypeError(TypeObject)
+}
+
+func (n Node) strip(key string, locked *uint) (int, bool) {
+	v := n.value()
+	if v == nil {
+		return 0, false
+	}
+	total := 0
+	switch v.typ {
+	case TypeObject:
+		if v.locked() {
+			*locked = n.id
+			return 0, false
+		}
+		index := -1
+		for i := range v.children {
+			c := &v.children[i]
+			if c.key == key {
+				index = i
+				continue
+			}
+			n := n.with(c.id)
+			d, ok := n.strip(key, locked)
+			if !ok {
+				return 0, false
+			}
+			total += d
+		}
+		if id, ok := v.remove(index); ok {
+			n.doc.values[id].flags |= flagRoot
 			total++
 		}
+		return total, true
+	case TypeArray:
+		if v.locked() {
+			*locked = n.id
+			return 0, false
+		}
 		for i := range v.children {
 			c := &v.children[i]
-			total += Object(n.with(c.id)).Strip(key)
+			n := n.with(c.id)
+			d, ok := n.strip(key, locked)
+			if !ok {
+				return 0, false
+			}
+			total += d
 		}
+		return total, true
+	default:
+		return 0, true
 	}
-	return
 }
 
-// Del finds a key in an Object node's values and removes it.
-// It does not keep the order of keys.
-func (o Object) Del(key string) Node {
-	n := Node(o)
-	if v := n.value(); v != nil && v.typ == TypeObject {
-		if id, ok := v.del(key); ok {
-			el := n.with(id)
-			if v := el.value(); v != nil {
-				v.flags |= flagRoot
-				return el
-			}
-		}
+type ImmutableNodeError struct {
+	Node Node
+}
+
+func (e *ImmutableNodeError) Error() string {
+	return fmt.Sprintf("%s node is not mutable", e.Node.Type())
+}
+
+var ErrObjectLocked = errors.New("cannot modify an object during an iteration")
+
+// Del finds a key in an Object node's values and removes it
+// If stable is true, the operation will preserver key order.
+func (o Object) Del(key string, stable bool) Node {
+	const opName = "Del"
+	n := o.Node()
+	v := n.value()
+	if v == nil {
+		return errNodeInvalid(TypeObject, opName, n)
 	}
-	return Node{}
+	if v.typ != TypeObject {
+		return errNodeType(TypeObject, opName, v.typ)
+	}
+	if v.locked() {
+		return errNodeLocked(TypeObject, opName)
+	}
+	if id, ok := v.del(key, stable); ok {
+		el := n.with(id)
+		if v := el.value(); v != nil {
+			v.flags |= flagRoot
+		}
+		return el
+	}
+	return errNode(fmt.Errorf("key %q not found in %s", key, TypeObject))
 }
 
 // Len return the number of keys in the object.
@@ -99,7 +202,8 @@ func (o Object) Len() int {
 	}
 	return -1
 }
-func (o Object) Iter() ObjectIterator {
+
+func (o Object) Iterate() ObjectIterator {
 	if v := Node(o).value(); v != nil {
 		return ObjectIterator{
 			key:  "",
@@ -123,6 +227,10 @@ func (i *ObjectIterator) Node() Node {
 	return i.node
 }
 
+func (i *ObjectIterator) Len() int {
+	return i.iter.Len()
+}
+
 func (i *ObjectIterator) Next() bool {
 	if next := (child{}); i.iter.Next(&next) {
 		i.key = next.key
@@ -131,89 +239,15 @@ func (i *ObjectIterator) Next() bool {
 	}
 	return false
 }
+
 func (i *ObjectIterator) Close() {
 	i.node = Node{}
 	i.iter.Done()
 }
 
-func (v *value) del(key string) (uint, bool) {
-	if !v.unlocked() {
-		return 0, false
+func (o Object) IsMutable() bool {
+	if v := Node(o).value(); v != nil {
+		return v.unlocked()
 	}
-	if !strjson.Flags(v.flags).IsGoSafe() && strjson.NeedsEscape(key) {
-		v.unescapeKeys()
-	}
-	if i := len(v.children) - 1; 0 <= i && i < len(v.children) {
-		children, last := v.children[:i], &v.children[i]
-		if last.key == key {
-			v.children = children
-			return last.id, true
-		}
-		for i := range children {
-			if c := &children[i]; c.key == key {
-				id := c.id
-				*c = *last
-				v.children = children
-				return id, true
-			}
-		}
-	}
-	return 0, false
-}
-
-func (v *value) get(key string) *child {
-	if !strjson.Flags(v.flags).IsGoSafe() {
-		for i := uint(0); i < uint(len(key)); i++ {
-			if strjson.NeedsEscapeByte(key[i]) {
-				v.unescapeKeys()
-				break
-			}
-		}
-	}
-	for i := range v.children {
-		if c := &v.children[i]; c.key == key {
-			return c
-		}
-	}
-	return nil
-}
-func (v *value) index(key string) *child {
-	switch len(key) {
-	case 1:
-		// Fast path for small indexes
-		if len(key) == 1 {
-			if i := uint(key[0] - '0'); i < uint(len(v.children)) && i <= 9 {
-				return &v.children[i]
-			}
-		}
-		return nil
-	case 0:
-		return nil
-	default:
-		// We inline index parsing to avoid extra function call
-		var index, i, digit uint
-		// stop parsing index early
-		cutoff := uint(len(v.children))
-		for i = uint(0); i < uint(len(key)); i++ {
-			// byte will roll on underflow
-			digit = uint(key[i] - '0')
-			if digit <= 9 && index < cutoff {
-				index = index*10 + digit
-			} else {
-				return nil
-			}
-		}
-		if index < uint(len(v.children)) {
-			return &v.children[index]
-		}
-		return nil
-	}
-}
-
-func (v *value) unescapeKeys() {
-	for i := range v.children {
-		c := &v.children[i]
-		c.key = strjson.Unescaped(c.key)
-	}
-	v.flags = 0
+	return false
 }

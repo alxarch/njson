@@ -270,18 +270,8 @@ func TestNode_WrapUnmarshalJSON(t *testing.T) {
 	{
 		c := customJSONUnmarshaler{}
 		n := Node{}
-		if err := n.WrapUnmarshalJSON(&c); err == nil {
-			t.Errorf("Expected error got nil")
-		} else if c.Foo != 0 {
-			t.Errorf("Unexpected value: %d", c.Foo)
-		} else if e, ok := err.(typeError); !ok {
-			t.Errorf("Unexpected error: %v", err)
-		} else if e.Want != TypeAnyValue {
-			t.Errorf("Unexpected type error: %v", e.Want)
-		} else if e.Type != TypeInvalid {
-			t.Errorf("Unexpected type error: %v", e.Type)
-		}
-
+		err := n.WrapUnmarshalJSON(&c)
+		assertEqual(t, ErrNodeInvalid, err)
 	}
 }
 
@@ -314,7 +304,7 @@ func TestNode_WrapUnmarshalText(t *testing.T) {
 			t.Errorf("Unexpected error: %s", err)
 		}
 		err = n.WrapUnmarshalText(&c)
-		assertEqual(t, err, typeError{TypeObject, TypeString})
+		assertEqual(t, err, &TypeError{TypeObject, TypeString})
 	}
 }
 func TestNode_Unescaped(t *testing.T) {
@@ -457,7 +447,8 @@ func TestNode_Index(t *testing.T) {
 	}
 	{
 		n := arr.Get(8)
-		assertEqual(t, Node{}, n)
+		assert(t, n.Err()!= nil, "node has error")
+		assert(t, !n.IsValid(), "is invalid node")
 	}
 }
 func TestNode_Del(t *testing.T) {
@@ -468,7 +459,7 @@ func TestNode_Del(t *testing.T) {
 		t.Errorf("Unexpected error: %s", err)
 		return
 	}
-	Object(n).Del("wrong_answer")
+	Object(n).Del("wrong_answer", false)
 	data, err := n.AppendJSON(nil)
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err)
@@ -490,7 +481,8 @@ func TestNode_Strip(t *testing.T) {
 		"foo": {}
 	}`)
 	assertNoError(t, err)
-	total := Object(n).Strip("foo")
+	total, err := Object(n).Strip("foo")
+	assertNoError(t, err)
 	data, err := n.AppendJSON(nil)
 	assertNoError(t, err)
 	assertEqual(t, 2, total)
@@ -532,29 +524,27 @@ func TestNode_Append(t *testing.T) {
 	d := Document{}
 	n := d.NewArray()
 	n.Push(d.NewString("foo"))
+	assertNoError(t, n.Node().Err())
 	n.Push(d.NewString("bar"))
+	assertNoError(t, n.Node().Err())
 	n.Push(d.NewString("baz"))
+	assertNoError(t, n.Node().Err())
 	data, err := n.Node().AppendJSON(nil)
 	assertNoError(t, err)
 	assertEqual(t, string(data), `["foo","bar","baz"]`)
-	n.Slice(0, 2)
-	data, err = n.Node().AppendJSON(nil)
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err)
-		return
-	}
-	if string(data) != `["foo","bar"]` {
-		t.Errorf("Invalid append result: %s", data)
-	}
+	//n.Slice(0, 2)
+	//data, err = n.Node().AppendJSON(nil)
+	//if err != nil {
+	//	t.Errorf("Unexpected error: %s", err)
+	//	return
+	//}
+	//if string(data) != `["foo","bar"]` {
+	//	t.Errorf("Invalid append result: %s", data)
+	//}
 	n.Replace(0, d.NewInt(42))
 	data, err = n.Node().AppendJSON(nil)
-	if err != nil {
-		t.Errorf("Unexpected error: %s", err)
-		return
-	}
-	if string(data) != `[42,"bar"]` {
-		t.Errorf("Invalid append result: %s", data)
-	}
+	assertNoError(t, err)
+	assertEqual(t, `[42,"bar","baz"]`, string(data))
 
 }
 func TestNode_Values(t *testing.T) {
@@ -568,7 +558,7 @@ func TestNode_Values(t *testing.T) {
 		t.Errorf("Unexpected error: %s", err)
 		return
 	}
-	v := n.Object().Iter()
+	v := n.Object().Iterate()
 	if n.Object().Len() != 3 {
 		t.Errorf("Invalid iterator len: %d", n.Object().Len())
 	}

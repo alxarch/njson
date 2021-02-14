@@ -26,9 +26,9 @@ func (d *Document) Parse(s string) (Node, string, error) {
 		d.get(id).flags |= flagRoot
 		// Return any tail string after the value
 		if pos < uint(len(s)) {
-			return Node{id, d.rev, d}, s[pos:], nil
+			return Node{d, id, d.rev}, s[pos:], nil
 		}
-		return Node{id, d.rev, d}, "", nil
+		return Node{d, id, d.rev}, "", nil
 	case UnexpectedEOF:
 		// Return input as is. Caller can append more data and re-parse.
 		return Node{}, s, p.err
@@ -53,20 +53,21 @@ func (p *parser) abort(pos uint, typ Type, got, want interface{}) uint {
 // node returns a node pointer. The pointer is valid until the next call to node()
 func (p *parser) value() *value {
 	if p.n < uint(len(p.values)) {
-		n := &p.values[p.n]
+		v := &p.values[p.n]
 		p.n++
-		return n
+		return v
 	}
 	values := make([]value, 2*len(p.values)+1)
 	copy(values, p.values)
 	p.values = values
 	if p.n < uint(len(p.values)) {
-		n := &p.values[p.n]
+		v := &p.values[p.n]
 		p.n++
-		return n
+		return v
 	}
 	return nil
 }
+
 func appendChild(values []child, key string, id, i uint) []child {
 	if i < uint(len(values)) {
 		values[i] = child{id, key}
@@ -153,7 +154,7 @@ readString:
 		// Find the closing quote (")
 		i := strings.IndexByte(s, delimString)
 		// Check its preceding byte to see if it is escaped
-		if j := i-1; 0 <= j && j < len(s) && s[j] == delimEscape { // bounds check elision
+		if j := i - 1; 0 <= j && j < len(s) && s[j] == delimEscape { // bounds check elision
 			// Advance past '\' and '"' and scan the remaining string
 			for i++; 0 <= i && i < len(s); i++ { // bounds check elision
 				switch s[i] {
